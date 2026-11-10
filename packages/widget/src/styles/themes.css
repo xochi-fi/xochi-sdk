@@ -1,0 +1,237 @@
+/* Xochi - Theme Overrides
+ *
+ * Default theme (dim) is defined in base.css :root.
+ * Dark and light themes override CSS custom properties via data-theme attribute.
+ */
+
+/* ============================================================
+   Dark / High Contrast
+   ============================================================
+   True black, pure white text, no atmospheric effects.
+   Accessibility-focused: 7:1+ contrast on primary text.
+*/
+
+[data-theme="dark"] {
+  --obsidian: #000000;
+  --deep-night: #0a0a0a;
+  --shadow-blockchain: #050510;
+
+  /* Text scale. Only the rungs are declared; --text-faint/hint/ghost are
+     aliases in base.css and follow --text-muted / --text-dim from here.
+     Contrast is against this theme's card surface, rgb(10,10,10), which is
+     --panel-bg composited over --obsidian. Every ratio below is asserted by
+     textContrast.test.ts against the shipped declaration, so a stale number
+     fails the build rather than sitting here misinforming the next reader.
+
+     This theme is picked BY people who want more contrast, so where a merge had
+     to pick a side it picked the brighter one: --text-faint was 0.45 (4.48:1)
+     and now resolves to --text-muted at 0.6 (7.30:1). That flattens two rungs
+     into one here, which is a real loss of hierarchy and a deliberate trade --
+     the alternative was dimming --text-muted, and dimming the most-used token
+     in the high-contrast theme is the wrong direction. */
+  --pearl-cream: #ffffff;
+  --text-emphasis: rgba(255, 255, 255, 0.85); /* 14.16:1 */
+  --text-strong: rgba(255, 255, 255, 0.75); /* 11.11:1 */
+  --text-secondary: rgba(255, 255, 255, 0.7); /*  9.76:1 */
+  --text-muted: rgba(255, 255, 255, 0.6); /*  7.30:1 */
+  --text-dim: rgba(255, 255, 255, 0.46); /*  4.68:1  (was 0.35 = 3.15, under AA) */
+  --line-subtle: rgba(255, 255, 255, 0.12);
+  --line-strong: rgba(255, 255, 255, 0.46);
+  --crypto-frost: #ffffff;
+  --ghost-white: rgba(255, 255, 255, 0.95);
+
+  --muted-gold: #c4b496;
+  --muted-gold-glow: rgba(196, 180, 150, 0.4);
+  --muted-gold-subtle: rgba(196, 180, 150, 0.08);
+  --muted-gold-10: rgba(196, 180, 150, 0.1);
+  --muted-gold-15: rgba(196, 180, 150, 0.15);
+  --muted-gold-25: rgba(196, 180, 150, 0.25);
+  --muted-gold-30: rgba(196, 180, 150, 0.3);
+  --muted-coral: rgba(255, 215, 170, 0.6);
+
+  --axol-coral: #ffd8a8;
+  --decentralized-coral: #f09080;
+  --cryptowave-sky: #6cb8d9;
+  --node-indigo: #4a5bc4;
+
+  --panel-bg: rgba(10, 10, 10, 0.95);
+  --panel-bg-elevated: rgba(18, 18, 18, 0.98);
+  --panel-bg-subtle: rgba(8, 8, 8, 0.9);
+  --panel-border: rgba(255, 255, 255, 0.12);
+  --panel-border-hover: rgba(255, 255, 255, 0.2);
+
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.7);
+  --shadow-glow: 0 4px 20px rgba(196, 180, 150, 0.15);
+
+  --tier-standard: rgba(196, 180, 150, 0.15);
+  --tier-standard-text: #c4b496;
+  --tier-trusted: rgba(108, 184, 217, 0.15);
+  --tier-trusted-text: #6cb8d9;
+  --tier-verified: rgba(74, 91, 196, 0.15);
+  --tier-verified-text: #8b9ae6;
+  --tier-premium: rgba(255, 216, 168, 0.15);
+  --tier-premium-text: #ffd8a8;
+  --tier-institutional: rgba(240, 144, 128, 0.15);
+  --tier-institutional-text: #f09080;
+
+  --inset-bg: rgba(0, 0, 0, 0.6);
+  --inset-bg-deep: rgba(0, 0, 0, 0.5);
+  --inset-bg-heavy: rgba(0, 0, 0, 0.7);
+
+  --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+
+  /* Sky scale for dark theme (brighter) */
+  --sky-05: rgba(108, 184, 217, 0.05);
+  --sky-10: rgba(108, 184, 217, 0.1);
+  --sky-12: rgba(108, 184, 217, 0.12);
+  --sky-15: rgba(108, 184, 217, 0.15);
+  --sky-20: rgba(108, 184, 217, 0.2);
+  --sky-25: rgba(108, 184, 217, 0.25);
+  --sky-30: rgba(108, 184, 217, 0.3);
+  --sky-40: rgba(108, 184, 217, 0.4);
+
+  /* Deep-space atmosphere: cool indigo/violet nebula on true black */
+  --pearl-violet: rgba(60, 50, 180, 0.7);
+  --pearl-green: rgba(70, 150, 220, 0.6);
+  --pearl-pink: rgba(180, 90, 140, 0.5);
+  --pearl-blue: rgba(60, 110, 200, 0.5);
+
+  --atmosphere-opacity: 0.35;
+  --overlay-start: rgba(0, 0, 0, 0.15);
+  --overlay-mid: rgba(0, 0, 0, 0.35);
+  --overlay-end: rgba(0, 0, 0, 0.55);
+  --grain-opacity: 0;
+  --orb-opacity: 0.15;
+}
+
+/* ============================================================
+   Light
+   ============================================================
+   Warm off-white, dark text, no atmospheric effects.
+   Clean and readable for extended use.
+*/
+
+[data-theme="light"] {
+  --obsidian: #f5f3ef;
+  --deep-night: #eae7e1;
+  --shadow-blockchain: #e0ddd6;
+
+  /* Text scale, and the theme that needed this most.
+     Contrast is against this theme's card surface, rgb(254,253,253), which is
+     --panel-bg (rgba(255,255,255,0.85)) composited over --obsidian (#f5f3ef).
+     Note the direction: here the card is LIGHTER than the page it sits on, so
+     for dark ink the card is the flattering surface, the opposite of the dark
+     themes. Text on the bare page reads slightly lower (--text-dim 4.72:1),
+     still over AA. Every ratio below is asserted by textContrast.test.ts.
+
+     It had inherited the dark themes' alphas without accounting for the flip.
+     Dark ink on a light ground needs MORE alpha for the same contrast, not
+     less: AA here wants 0.597 where the dim theme wants 0.505. It was carrying
+     0.5 and below, so --text-dim read at 1.93:1 and --text-muted, the most-used
+     text token in the app, read at 3.31:1.
+
+     The range above the floor is narrower than the dark themes have (0.597 to
+     1.0, against 0.505 to 1.0), so the rungs are packed tighter here. They are
+     still rungs: the ladder below steps 14% or more in contrast at every gap,
+     against the ~7% just-noticeable difference. An earlier draft of this scale
+     measured against the wrong surface, concluded the floor was 0.616, and
+     collapsed --text-muted and --text-dim to 0.02 apart, which reproduced the
+     one-rung-two-names defect this whole change exists to remove. */
+  --pearl-cream: #1a1a1c;
+  --text-emphasis: rgba(26, 26, 28, 0.8); /* 9.10:1 */
+  --text-strong: rgba(26, 26, 28, 0.74); /* 7.33:1  (was 0.7  = 6.37) */
+  --text-secondary: rgba(26, 26, 28, 0.69); /* 6.16:1  (was 0.65 = 5.38) */
+  --text-muted: rgba(26, 26, 28, 0.64); /* 5.17:1  (was 0.5  = 3.31, under AA) */
+  --text-dim: rgba(26, 26, 28, 0.6); /* 4.53:1  (was 0.3  = 1.93, unreadable) */
+  --line-subtle: rgba(26, 26, 28, 0.08);
+  --line-strong: rgba(26, 26, 28, 0.62);
+  --crypto-frost: #0a0a0c;
+  --ghost-white: rgba(26, 26, 28, 0.85);
+
+  --muted-gold: #7a6e5a;
+  --muted-gold-glow: rgba(122, 110, 90, 0.3);
+  --muted-gold-subtle: rgba(122, 110, 90, 0.06);
+  --muted-gold-10: rgba(122, 110, 90, 0.08);
+  --muted-gold-15: rgba(122, 110, 90, 0.12);
+  --muted-gold-25: rgba(122, 110, 90, 0.2);
+  --muted-gold-30: rgba(122, 110, 90, 0.25);
+  --muted-coral: rgba(180, 120, 60, 0.5);
+
+  --axol-coral: #b8802e;
+  --decentralized-coral: #b54e40;
+  --cryptowave-sky: #2a7498;
+  --node-indigo: #28338b;
+
+  --pearl-pink: rgba(181, 78, 64, 0.15);
+  --pearl-green: rgba(42, 116, 152, 0.15);
+  --pearl-violet: rgba(40, 51, 139, 0.1);
+  --pearl-blue: rgba(42, 116, 152, 0.1);
+
+  --panel-bg: rgba(255, 255, 255, 0.85);
+  --panel-bg-elevated: rgba(255, 255, 255, 0.95);
+  --panel-bg-subtle: rgba(255, 255, 255, 0.6);
+  --panel-border: rgba(26, 26, 28, 0.1);
+  --panel-border-hover: rgba(26, 26, 28, 0.18);
+
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.12);
+  --shadow-glow: 0 4px 20px rgba(122, 110, 90, 0.1);
+
+  --color-warning: #b8860b;
+  --color-success: #1a8a3e;
+  --color-error: #c53030;
+  --color-negative: #8b4c4c;
+  --color-negative-emphasis: #a33636;
+
+  --tier-standard: rgba(122, 110, 90, 0.12);
+  --tier-standard-text: #7a6e5a;
+  --tier-trusted: rgba(42, 116, 152, 0.12);
+  --tier-trusted-text: #2a7498;
+  --tier-verified: rgba(40, 51, 139, 0.12);
+  --tier-verified-text: #3a4bc0;
+  --tier-premium: rgba(184, 128, 46, 0.12);
+  --tier-premium-text: #b8802e;
+  --tier-institutional: rgba(181, 78, 64, 0.12);
+  --tier-institutional-text: #b54e40;
+
+  --inset-bg: rgba(0, 0, 0, 0.04);
+  --inset-bg-deep: rgba(0, 0, 0, 0.03);
+  --inset-bg-heavy: rgba(0, 0, 0, 0.06);
+
+  --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.06);
+
+  /* Sky scale for light theme (darker) */
+  --sky-05: rgba(42, 116, 152, 0.05);
+  --sky-10: rgba(42, 116, 152, 0.1);
+  --sky-12: rgba(42, 116, 152, 0.12);
+  --sky-15: rgba(42, 116, 152, 0.15);
+  --sky-20: rgba(42, 116, 152, 0.2);
+  --sky-25: rgba(42, 116, 152, 0.25);
+  --sky-30: rgba(42, 116, 152, 0.3);
+  --sky-40: rgba(42, 116, 152, 0.4);
+
+  /* Negative scale for light theme */
+  --negative-08: rgba(197, 48, 48, 0.08);
+  --negative-15: rgba(197, 48, 48, 0.12);
+  --negative-20: rgba(197, 48, 48, 0.15);
+  --negative-25: rgba(197, 48, 48, 0.2);
+  --negative-30: rgba(197, 48, 48, 0.25);
+
+  /* Warm watercolor atmosphere: amber/rose/sage on off-white */
+  --pearl-violet: rgba(160, 130, 70, 0.6);
+  --pearl-green: rgba(60, 140, 130, 0.5);
+  --pearl-pink: rgba(200, 120, 100, 0.55);
+  --pearl-blue: rgba(90, 120, 170, 0.45);
+
+  --atmosphere-opacity: 0.5;
+  --overlay-start: rgba(245, 243, 239, 0.15);
+  --overlay-mid: rgba(245, 243, 239, 0.3);
+  --overlay-end: rgba(245, 243, 239, 0.5);
+  --grain-opacity: 0;
+  --orb-opacity: 0.15;
+}

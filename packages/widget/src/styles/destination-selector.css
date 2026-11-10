@@ -1,0 +1,353 @@
+/* Xochi - Destination Selector Styles */
+
+/* ============================================================
+   Selector Wrapper
+   ============================================================ */
+
+.destination-selector {
+  position: relative;
+}
+
+/* Compact inline variant (in input header) */
+.input-header .destination-selector {
+  width: auto;
+}
+
+/* ============================================================
+   Badge Button (collapsed state)
+   ============================================================ */
+
+.destination-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  background: var(--inset-bg);
+  border: 1px solid var(--panel-border-hover);
+  border-radius: 6px;
+  color: var(--pearl-cream);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+/* Compact badge in input header */
+.input-header .destination-badge {
+  width: auto;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.65rem;
+  background: transparent;
+  border: none;
+  gap: 0.35rem;
+}
+
+.input-header .destination-badge:hover:not(:disabled) {
+  background: var(--muted-gold-10);
+  border-radius: 4px;
+}
+
+.input-header .destination-icon {
+  width: 16px;
+  height: 16px;
+  font-size: 0.6rem;
+}
+
+.input-header .destination-label {
+  font-size: 0.65rem;
+}
+
+.input-header .destination-tag {
+  font-size: 0.6rem;
+  padding: 0.1rem 0.25rem;
+}
+
+.input-header .destination-chevron {
+  font-size: 0.6rem;
+}
+
+.destination-badge:hover:not(:disabled) {
+  background: var(--muted-gold-10);
+  border-color: var(--muted-gold-30);
+}
+
+.destination-badge:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.destination-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: var(--muted-gold-15);
+  border-radius: 4px;
+  color: var(--muted-gold);
+}
+
+.destination-label {
+  flex: 1;
+  text-align: left;
+}
+
+.destination-tag {
+  padding: 0.15rem 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  background: var(--sky-15);
+  border-radius: 3px;
+  color: var(--cryptowave-sky);
+}
+
+.destination-tag.stealth {
+  background: rgba(130, 160, 190, 0.2);
+  color: var(--tier-verified-accent);
+}
+
+.destination-chevron {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-muted);
+}
+
+/* Type-specific badge colors */
+.destination-badge[data-type="aztec"] {
+  border-color: var(--sky-25);
+}
+
+.destination-badge[data-type="aztec"] .destination-icon {
+  background: var(--sky-20);
+  color: var(--cryptowave-sky);
+}
+
+.destination-badge[data-type="chain"] {
+  border-color: rgba(166, 134, 176, 0.25);
+}
+
+.destination-badge[data-type="chain"] .destination-icon {
+  background: rgba(166, 134, 176, 0.15);
+  color: var(--color-muted-purple);
+}
+
+.destination-badge[data-type="stealth"] {
+  border-color: rgba(130, 160, 190, 0.25);
+}
+
+.destination-badge[data-type="stealth"] .destination-icon {
+  background: rgba(130, 160, 190, 0.2);
+  color: var(--tier-verified-accent);
+}
+
+/* ============================================================
+   Dropdown
+   ============================================================ */
+
+.destination-dropdown {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  min-width: 260px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.5rem;
+  background: var(--panel-bg-elevated);
+  border: 1px solid var(--panel-border-hover);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(12px);
+  animation: slideDown 0.15s ease;
+}
+
+/* Privacy bars icon */
+.privacy-bars {
+  flex-shrink: 0;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ============================================================
+   Option Button
+   ============================================================ */
+
+.destination-option {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.6rem 0.5rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.destination-option:hover:not(:disabled) {
+  background: var(--muted-gold-subtle);
+  border-color: var(--muted-gold-15);
+}
+
+.destination-option.active {
+  background: var(--sky-10);
+  border-color: var(--sky-20);
+}
+
+.destination-option.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.destination-option-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--panel-border);
+  border-radius: 4px;
+  color: var(--muted-gold);
+}
+
+.destination-option-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  text-align: left;
+}
+
+.destination-option-top {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.destination-option-label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--pearl-cream);
+}
+
+.destination-fee-hint {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 500;
+  color: var(--muted-gold);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.destination-option.disabled .destination-fee-hint {
+  color: var(--text-faint);
+}
+
+.destination-gate {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.destination-gate.met {
+  background: var(--sky-10);
+  color: var(--cryptowave-sky);
+}
+
+.destination-gate.unmet {
+  background: var(--negative-08);
+  color: var(--negative-muted-70);
+}
+
+.destination-tag--soon,
+.destination-tag--action {
+  font-family: var(--font-mono);
+  font-size: 0.45rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+/* A verdict the user cannot act on (the feature is not shipped yet). Faint on
+   purpose: nothing here rewards a click. */
+.destination-tag--soon {
+  background: var(--panel-border);
+  color: var(--text-faint);
+}
+
+/* A constraint the user CAN act on: the control is live, and clicking it
+   explains what to change. It carries the gold accent this system uses for
+   available things, so it cannot be mistaken for the faint --soon treatment
+   above. Same badge shape for two opposite meanings was the collapse this
+   codebase keeps making, where an absent input and a negative result look
+   identical. */
+.destination-tag--action {
+  background: var(--muted-gold-10);
+  color: var(--muted-gold);
+}
+
+.destination-exposure {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  white-space: normal;
+}
+
+.destination-option.disabled .destination-exposure {
+  color: var(--negative-muted-70);
+}
+
+.destination-option[data-status="upcoming"] {
+  opacity: 0.35;
+}
+
+.destination-option[data-status="upcoming"] .destination-exposure {
+  color: var(--text-faint);
+}
+
+/* ============================================================
+   Info Note
+   ============================================================ */
+
+.destination-info {
+  padding: 0.4rem 0.5rem;
+  margin-top: 0.25rem;
+  border-top: 1px solid var(--panel-border);
+}
+
+.destination-info-text {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  line-height: 1.4;
+  color: var(--text-faint);
+  white-space: normal;
+}

@@ -15,7 +15,7 @@
     "test": "npm run test:workspaces",
     "format": "npm run format:check -- --write",
     "format:check": "prettier --check \"*.{json,md}\"",
-    "build:workspaces": "npm run build -w @xochi/signer && npm run build --workspaces --if-present",
+    "build:workspaces": "npm run build -w @xochi/signer && npm run build -w @xochi/client && npm run build -w @xochi/widget-lib && npm run build --workspaces --if-present",
     "typecheck:workspaces": "npm run typecheck --workspaces --if-present",
     "test:workspaces": "npm run test --workspaces --if-present",
     "test:sdk": "npm test -w @xochi/sdk",
@@ -28,6 +28,21 @@
     "verify:deposit-vectors": "node scripts/verify-deposit-attestation-vectors.mjs",
     "verify:spec-version": "node scripts/verify-spec-version.mjs",
     "verify:openapi": "node scripts/verify-openapi.mjs"
+  },
+  "overrides": {
+    "undici": "^7.29.1",
+    "axios": "^1.18.1",
+    "hono": "^4.12.32",
+    "fast-uri": "^3.1.4",
+    "form-data": "^4.0.6",
+    "@coinbase/cdp-sdk": "^1.54.0",
+    "@walletconnect/core": "^2.24.0",
+    "@walletconnect/ethereum-provider": "^2.24.0",
+    "@walletconnect/sign-client": "^2.24.0",
+    "@walletconnect/universal-provider": "^2.24.0",
+    "@walletconnect/utils": "^2.24.0",
+    "ws": "^8.21.3",
+    "uuid": "^11.1.1"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",

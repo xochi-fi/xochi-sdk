@@ -1,0 +1,124 @@
+/* Xochi - Tap-target floor (Phase 8, trade-widget-mvp.md).
+
+   Every interactive control on /trade presents a >= 44x44 px effective
+   target, measured by scripts/a11y-evidence.mjs. Two techniques:
+
+   - A REAL box change only where the token-sheet spec names a size
+     (chain chips 44 px tall, search field 48 px).
+   - Everywhere else, an invisible ::before hit strip (absolute, negative
+     inset) grows the target without moving the layout. Hosts get
+     position: relative here so the strip anchors to them.
+
+   Neighbouring strips may overlap by a few pixels; the topmost element wins
+   the click, which matches finger-sized touch behaviour -- but a strip must
+   never reach a NON-strip neighbour (a positioned strip hit-tests over a
+   static element, so it silently steals that element's taps; see
+   .balance-max below). Single-line text entry fields are exempt by
+   measurement policy (see a11y-evidence.mjs).
+
+   Scope note: imported globally via index.css, and several hosts here are
+   shared (.settings-btn, .connect-wallet-btn), so a click anomaly anywhere in
+   the widget can originate in this file. Hosts also gain position: relative,
+   which re-anchors any absolutely positioned descendant they may grow later. */
+
+.settings-btn,
+.connect-wallet-btn,
+.swap-btn,
+.balance-display,
+.balance-max,
+.trade-explainer__toggle,
+.activity-strip__summary,
+.token-btn__token,
+.chain-badge,
+.token-search-close,
+.token-search-popular-chip {
+  position: relative;
+}
+
+.settings-btn::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+
+.connect-wallet-btn::before {
+  content: "";
+  position: absolute;
+  inset: -6px;
+}
+
+.swap-btn::before {
+  content: "";
+  position: absolute;
+  inset: -4px -12px;
+}
+
+/* Real height plus a BOUNDED strip. The max-balance control sits 8px above
+   the amount input, and a -13px downward strip hit-tested OVER the input's
+   top band (positioned beats static), so a tap there silently replaced the
+   typed amount with the full balance. The strip now stays inside both 8px
+   gaps (1px clearance each side); the rest of the 44px floor is real box
+   height (30 + 7 + 7). On the trade panel the balance itself is plain text
+   and only its Max button is the control; its host span
+   (.balance-display--with-max, trade-layout.css) has no vertical padding, so
+   it is Max's 30px, Max's bottom edge is the header's, and the strip ends 7px
+   into the 8px gap (1px clear). With the host's 0.15rem padding Max sat 2.4px
+   higher and the header grew 4.8px past the receive side's. */
+.balance-display,
+.balance-max {
+  min-height: 30px;
+}
+
+.balance-display:not(.balance-display--static)::before,
+.balance-max::before {
+  content: "";
+  position: absolute;
+  inset: -7px -6px;
+}
+
+.trade-explainer__toggle::before {
+  content: "";
+  position: absolute;
+  inset: -16px 0;
+}
+
+.activity-strip__summary::before {
+  content: "";
+  position: absolute;
+  inset: -5px 0;
+}
+
+/* The two halves of the selector pill: strips reach the 44 px floor without
+   inflating the pill. -2px horizontal keeps the halves' targets distinct. */
+.token-btn__token::before {
+  content: "";
+  position: absolute;
+  inset: -12px -2px;
+}
+
+.chain-badge::before {
+  content: "";
+  position: absolute;
+  inset: -10px -2px;
+}
+
+.token-search-close::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+
+.token-search-popular-chip::before {
+  content: "";
+  position: absolute;
+  inset: -9px -2px;
+}
+
+/* Real sizes the token-sheet spec names outright. */
+.token-search-chain-item {
+  min-height: 44px;
+}
+
+.token-search-input {
+  min-height: 48px;
+}

@@ -4,6 +4,16 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+### Added
+
+- Extract the widget-required MIT shared vocabulary: token amount formatting,
+  address maps, fee/tier helpers, aggregate-only referral schemas, agent event
+  serialization, pending claim schema, and conservative fallback metadata.
+- Own reusable capability validation, exact executable-route resolution,
+  settlement eligibility and fail-closed trust flags in the public client.
+  Launch gates and display metadata remain caller-supplied; fallback/stale
+  capability snapshots never authorize execution.
+
 ## [0.1.13] - 2026-11-09
 
 ### Fixed

@@ -1,0 +1,678 @@
+/* Xochi - Animation System
+ *
+ * Unified animation library for consistent micro-interactions.
+ * Uses Monaspace's technical aesthetic with precise, deliberate motion.
+ */
+
+/* ============================================================
+   Animation Timing Functions
+   ============================================================ */
+
+:root {
+  /* Standard easings */
+  --ease-out: cubic-bezier(0.33, 1, 0.68, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* Smooth for UI state changes */
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Durations */
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+  --duration-slower: 600ms;
+}
+
+/* ============================================================
+   Keyframe Animations
+   ============================================================ */
+
+/* Pulsing opacity animation for status indicators */
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Simple fade in */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Fade in from below */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Fade in from above */
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Scale in with bounce */
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Slide in from right */
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Rotating spinner */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Glow pulse for highlights */
+@keyframes glowPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(168, 154, 128, 0);
+  }
+  50% {
+    box-shadow: 0 0 20px 2px var(--muted-gold-30);
+  }
+}
+
+/* Success pulse */
+@keyframes successPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(88, 161, 198, 0);
+  }
+  50% {
+    box-shadow: 0 0 20px 4px rgba(88, 161, 198, 0.4);
+  }
+}
+
+/* Shake for errors */
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  10%,
+  30%,
+  50%,
+  70%,
+  90% {
+    transform: translateX(-4px);
+  }
+  20%,
+  40%,
+  60%,
+  80% {
+    transform: translateX(4px);
+  }
+}
+
+/* Counter tick animation */
+@keyframes tickUp {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  51% {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Shimmer effect for loading */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Progress bar fill */
+@keyframes progressFill {
+  from {
+    width: 0;
+  }
+}
+
+/* Staggered entry for lists */
+@keyframes staggerIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Ring progress animation */
+@keyframes ringProgress {
+  from {
+    stroke-dashoffset: var(--ring-circumference, 283);
+  }
+}
+
+/* Number count up */
+@keyframes countUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Expand from center */
+@keyframes expandIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Border glow */
+@keyframes borderGlow {
+  0%,
+  100% {
+    border-color: var(--panel-border-hover);
+  }
+  50% {
+    border-color: rgba(168, 154, 128, 0.5);
+  }
+}
+
+/* ============================================================
+   Utility Classes
+   ============================================================ */
+
+/* Apply animations */
+.animate-fadeIn {
+  animation: fadeIn var(--duration-normal) var(--ease-out) forwards;
+}
+
+.animate-fadeInUp {
+  animation: fadeInUp var(--duration-normal) var(--ease-out) forwards;
+}
+
+.animate-fadeInDown {
+  animation: fadeInDown var(--duration-normal) var(--ease-out) forwards;
+}
+
+.animate-scaleIn {
+  animation: scaleIn var(--duration-normal) var(--ease-out) forwards;
+}
+
+.animate-slideInRight {
+  animation: slideInRight var(--duration-normal) var(--ease-out) forwards;
+}
+
+.animate-pulse {
+  animation: pulse 2s var(--ease-in-out) infinite;
+}
+
+.animate-glow {
+  animation: glowPulse 2s var(--ease-in-out) infinite;
+}
+
+.animate-shake {
+  animation: shake 0.5s var(--ease-out);
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(168, 154, 128, 0.05) 0%,
+    var(--muted-gold-15) 50%,
+    rgba(168, 154, 128, 0.05) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s linear infinite;
+}
+
+/* Stagger delays for list items */
+.stagger-1 {
+  animation-delay: 50ms;
+}
+.stagger-2 {
+  animation-delay: 100ms;
+}
+.stagger-3 {
+  animation-delay: 150ms;
+}
+.stagger-4 {
+  animation-delay: 200ms;
+}
+.stagger-5 {
+  animation-delay: 250ms;
+}
+.stagger-6 {
+  animation-delay: 300ms;
+}
+
+/* ============================================================
+   Interactive Element Enhancements
+   ============================================================ */
+
+/* Button press effect */
+.btn-press {
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.btn-press:active {
+  transform: scale(0.97);
+}
+
+/* Button glow on hover */
+.btn-glow {
+  position: relative;
+  transition:
+    box-shadow var(--duration-normal) var(--ease-out),
+    border-color var(--duration-normal) var(--ease-out),
+    background var(--duration-normal) var(--ease-out);
+}
+
+.btn-glow:hover:not(:disabled) {
+  box-shadow: 0 0 20px var(--muted-gold-25);
+}
+
+.btn-glow:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* Card hover lift */
+.card-hover {
+  transition:
+    transform var(--duration-normal) var(--ease-out),
+    box-shadow var(--duration-normal) var(--ease-out),
+    border-color var(--duration-normal) var(--ease-out);
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+}
+
+/* Input focus glow */
+.input-glow {
+  transition:
+    border-color var(--duration-normal) var(--ease-out),
+    box-shadow var(--duration-normal) var(--ease-out);
+}
+
+.input-glow:focus {
+  border-color: var(--muted-gold-glow);
+  box-shadow: 0 0 0 3px var(--muted-gold-30);
+}
+
+/* Icon rotate on hover */
+.icon-rotate {
+  transition: transform var(--duration-normal) var(--ease-out);
+}
+
+.icon-rotate:hover {
+  transform: rotate(15deg);
+}
+
+/* Underline grow effect */
+.underline-grow {
+  position: relative;
+}
+
+.underline-grow::after {
+  content: "";
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 0;
+  height: 1px;
+  background: var(--muted-gold);
+  transition: width var(--duration-normal) var(--ease-out);
+}
+
+.underline-grow:hover::after,
+.underline-grow:focus::after {
+  width: 100%;
+}
+
+/* Left border accent grow */
+.border-accent {
+  position: relative;
+}
+
+.border-accent::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 0;
+  background: var(--muted-gold);
+  transition: height var(--duration-normal) var(--ease-out);
+}
+
+.border-accent:hover::before {
+  height: 60%;
+}
+
+/* ============================================================
+   Loading States
+   ============================================================ */
+
+/* Loading dots animation */
+.loading-dots::after {
+  content: "";
+  animation: loadingDots 1.5s steps(4, end) infinite;
+}
+
+@keyframes loadingDots {
+  0% {
+    content: "";
+  }
+  25% {
+    content: ".";
+  }
+  50% {
+    content: "..";
+  }
+  75% {
+    content: "...";
+  }
+  100% {
+    content: "";
+  }
+}
+
+/* Skeleton loader */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--muted-gold-subtle) 0%,
+    var(--muted-gold-15) 50%,
+    var(--muted-gold-subtle) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s linear infinite;
+  border-radius: 4px;
+}
+
+/* Spinner */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--panel-border-hover);
+  border-top-color: var(--muted-gold);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.spinner--small {
+  width: 12px;
+  height: 12px;
+  border-width: 1.5px;
+}
+
+.spinner--large {
+  width: 24px;
+  height: 24px;
+  border-width: 3px;
+}
+
+/* ============================================================
+   Success/Error States
+   ============================================================ */
+
+/* Success highlight */
+.success-highlight {
+  animation: successPulse 0.6s var(--ease-out);
+}
+
+/* Error highlight with left border */
+.error-highlight {
+  animation: shake 0.4s var(--ease-out);
+  border-left: 3px solid var(--negative-muted-70) !important;
+  background: var(--negative-08) !important;
+}
+
+/* ============================================================
+   Page Transition
+   ============================================================ */
+
+.page-enter {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.page-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity var(--duration-slow) var(--ease-out),
+    transform var(--duration-slow) var(--ease-out);
+}
+
+/* ============================================================
+   Wallet Connection Transitions
+   ============================================================ */
+
+/* Panels dim when wallet is disconnected, brighten on connect */
+.wallet-gated {
+  transition:
+    opacity var(--duration-slow) var(--ease-smooth),
+    filter var(--duration-slow) var(--ease-smooth);
+}
+
+.wallet-gated--disconnected {
+  opacity: 0.55;
+  filter: saturate(0.4);
+}
+
+.wallet-gated--connected {
+  opacity: 1;
+  filter: saturate(1);
+}
+
+/* Actions that require wallet fade in on connect */
+.wallet-action {
+  transition:
+    opacity var(--duration-slow) var(--ease-smooth),
+    transform var(--duration-slow) var(--ease-out);
+}
+
+.wallet-action--hidden {
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+}
+
+.wallet-action--visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* ============================================================
+   Focus Ring System
+   ============================================================
+   Soft glow-ring focus states for premium feel.
+   Replaces hard outline with box-shadow-based rings.
+*/
+
+:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--obsidian),
+    0 0 0 4px rgba(168, 154, 128, 0.7),
+    0 0 12px rgba(168, 154, 128, 0.2);
+}
+
+/* For elements that already have box-shadow, layer the focus ring.
+   The selector unit's wrapper (.token-btn) is no longer focusable; its two
+   inner sibling buttons carry the ring instead. */
+.submit-btn:focus-visible,
+.token-btn__token:focus-visible,
+.chain-badge:focus-visible,
+.swap-btn:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--obsidian),
+    0 0 0 4px rgba(168, 154, 128, 0.5),
+    0 0 16px rgba(168, 154, 128, 0.2);
+}
+
+/* Input focus ring - warmer for interactive fields */
+.amount-input:focus-visible,
+.email-input:focus-visible {
+  outline: none;
+  box-shadow: none; /* Handled by parent .input-row:focus-within */
+}
+
+/* ============================================================
+   Border Beam (QF donate ask)
+   ============================================================
+   Animated rainbow border for time-sensitive CTAs.
+   Inspired by github.com/Jakubantalik/border-beam, reimplemented
+   in vanilla CSS via a registered @property + conic gradient
+   masked to the host's border ring.
+
+   .border-beam - conic ring (rectangular elements w/ radius).
+
+   A .banner-beam horizontal-sweep variant used to live here for the
+   Giveth strip. It went with that banner. Do not reach for a rainbow
+   sweep on the storage notice: a compliance notice that animates reads
+   as an ad, which is the opposite of what it is there to say.
+*/
+
+@property --beam-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.border-beam {
+  position: relative;
+  isolation: isolate;
+}
+
+.border-beam::before,
+.border-beam::after {
+  content: "";
+  position: absolute;
+  inset: -1.5px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--beam-angle),
+    transparent 0deg,
+    #ff0080 30deg,
+    #ff8c00 60deg,
+    #ffe600 90deg,
+    #00ff88 120deg,
+    #00d4ff 150deg,
+    #b346ff 180deg,
+    transparent 210deg,
+    transparent 360deg
+  );
+  animation: beamSpin 4s linear infinite;
+}
+
+.border-beam::before {
+  padding: 1.5px;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.5;
+  z-index: 1;
+}
+
+.border-beam::after {
+  filter: blur(14px);
+  opacity: 0.32;
+  z-index: -1;
+}
+
+@keyframes beamSpin {
+  to {
+    --beam-angle: 360deg;
+  }
+}
+
+/* ============================================================
+   Reduced Motion Support
+   ============================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

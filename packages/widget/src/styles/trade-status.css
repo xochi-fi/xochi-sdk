@@ -1,0 +1,229 @@
+/* Trade Page - Status & Fee Components */
+
+/* Quote Status */
+.quote-status {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+}
+
+.status-row:not(:last-child) {
+  border-bottom: 1px solid var(--muted-gold-subtle);
+}
+
+.status-row.error {
+  padding: 0.75rem;
+  background: var(--negative-08);
+  border-radius: 4px;
+  margin-top: 0.5rem;
+}
+
+.status-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.status-value {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--pearl-cream);
+}
+
+.status-value.status-idle {
+  color: var(--text-muted);
+}
+.status-value.status-quoting {
+  color: var(--muted-gold);
+}
+.status-value.status-quoted {
+  color: var(--cryptowave-sky);
+}
+.status-value.status-signing {
+  color: var(--muted-gold);
+}
+.status-value.status-executing {
+  color: var(--color-warning);
+}
+.status-value.status-bridging {
+  color: var(--color-warning);
+}
+.status-value.status-settling {
+  color: var(--color-warning);
+}
+.status-value.status-completed {
+  color: var(--cryptowave-sky);
+}
+.status-value.status-failed {
+  color: var(--color-negative);
+}
+.status-value.status-expired {
+  color: var(--color-negative);
+}
+
+.status-value.expiring {
+  color: var(--color-negative);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.status-row.error .status-value {
+  color: var(--color-negative);
+  font-size: 0.75rem;
+}
+
+/* Fee Breakdown */
+.fee-breakdown {
+  display: flex;
+  flex-direction: column;
+}
+
+.fee-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.6rem 0;
+}
+
+.fee-row:not(:last-child) {
+  border-bottom: 1px solid var(--muted-gold-subtle);
+}
+
+.fee-row.highlight {
+  padding-top: 0.75rem;
+  margin-top: 0.25rem;
+  border-top: 1px solid var(--muted-gold-15);
+}
+
+.fee-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+}
+
+.fee-value {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--pearl-cream);
+}
+
+/* Tier Badge */
+.tier-badge {
+  padding: 0.25rem 0.6rem;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  background: var(--muted-gold-15);
+  color: var(--muted-gold);
+}
+
+.tier-badge[data-tier="trusted"] {
+  background: var(--sky-15);
+  color: var(--cryptowave-sky);
+}
+
+.tier-badge[data-tier="verified"] {
+  background: var(--sky-20);
+  color: var(--cryptowave-sky);
+}
+
+.tier-badge[data-tier="premium"] {
+  background: var(--panel-border-hover);
+  color: var(--muted-gold);
+}
+
+.tier-badge[data-tier="institutional"] {
+  background: linear-gradient(135deg, var(--muted-gold-25) 0%, var(--sky-25) 100%);
+  color: var(--pearl-cream);
+}
+
+/* Market Stats */
+.market-stats {
+  margin-top: 1rem;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--muted-gold-subtle);
+}
+
+.stat-row:last-child {
+  border-bottom: none;
+}
+
+.stat-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.stat-value {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--pearl-cream);
+}
+
+.stat-value.positive {
+  color: var(--cryptowave-sky);
+}
+.stat-value.negative {
+  color: var(--color-negative);
+}
+
+/* Price Feeds */
+.price-feeds {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.feed-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background: var(--inset-bg-deep);
+  border-radius: 4px;
+}
+
+.feed-source {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  min-width: 60px;
+}
+
+.feed-price {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--pearl-cream);
+  flex: 1;
+}
+
+.feed-status {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+}
+
+.feed-status.live {
+  background: var(--sky-20);
+  color: var(--cryptowave-sky);
+}

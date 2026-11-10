@@ -1,0 +1,16 @@
+/* Xochi - Trade Page Styles
+ *
+ * Main entry point that imports all trade page style modules.
+ * Each module is under 300 lines for maintainability.
+ */
+
+@import "./trade-layout.css";
+@import "./trade-selectors.css";
+@import "./trade-status.css";
+@import "./quote-details.css";
+@import "./transaction-preview.css";
+@import "./intent-timeline.css";
+@import "./solver-race.css";
+@import "./swap-flow.css";
+@import "./tier-progress.css";
+@import "./token-search.css";

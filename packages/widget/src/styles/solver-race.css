@@ -1,0 +1,123 @@
+/* Xochi - Solver Race Styles */
+
+.solver-race {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.9rem 1rem;
+  background: var(--inset-bg-deep);
+  border: 1px solid var(--muted-gold-15);
+  border-radius: 10px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.15);
+  animation: fadeInUp var(--duration-normal) var(--ease-out);
+}
+
+/* No frames streamed: one true sentence, so it should not wear the full panel
+   treatment of a live race. */
+.solver-race--quiet {
+  padding: 0.7rem 1rem;
+}
+
+.solver-race__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.solver-race__title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--pearl-cream);
+}
+
+.solver-race__clock {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.05rem;
+  color: var(--cryptowave-sky);
+}
+
+.solver-race__sealed {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.solver-race__lanes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.solver-race__lane {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--muted-gold-10);
+  border-radius: 8px;
+}
+
+.solver-race__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted-gold);
+  animation: racePulse 1s var(--ease-out) infinite;
+}
+
+.solver-race__lane--won {
+  border-color: var(--cryptowave-sky);
+}
+
+/* The winner's dot stops pulsing: the race is over, and a lane that keeps
+   animating after the fill reads as still in flight. */
+.solver-race__lane--won .solver-race__dot {
+  background: var(--cryptowave-sky);
+  animation: none;
+}
+
+.solver-race__solver {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--pearl-cream);
+  /* A relayed handle is bounded at 64 chars server-side, which still overflows
+     a ~420px column. Truncate rather than reflow the grid. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.solver-race__flag {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--cryptowave-sky);
+}
+
+/* A lane still racing carries a quiet status word, not the winner's flag. */
+.solver-race__lane:not(.solver-race__lane--won) .solver-race__flag {
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+@keyframes racePulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .solver-race {
+    animation: none;
+  }
+  .solver-race__dot {
+    animation: none;
+  }
+}

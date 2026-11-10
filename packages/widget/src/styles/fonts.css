@@ -1,0 +1,269 @@
+/* Xochi - Font Configuration
+ *
+ * Typography system using Monaspace font family throughout:
+ * - Monaspace Argon (code/numbers) - clean, neutral monospace
+ * - Monaspace Neon (body/descriptions) - classic, timeless monospace
+ * - Monaspace Xenon (headings/UI) - soft, rounded monospace
+ *
+ * Using monospace throughout creates a cohesive technical/fintech aesthetic
+ * that reinforces precision and transparency.
+ *
+ * Monaspace: https://github.com/githubnext/monaspace
+ */
+
+/* ============================================================
+   Font Face Declarations - Monaspace Argon (Code/Numbers)
+   ============================================================ */
+
+@font-face {
+  font-family: "Monaspace Argon";
+  src: url("../assets/fonts/MonaspaceArgon-Light.woff2?no-inline") format("woff2");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Monaspace Argon";
+  src: url("../assets/fonts/MonaspaceArgon-Regular.woff2?no-inline") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Monaspace Argon";
+  src: url("../assets/fonts/MonaspaceArgon-Medium.woff2?no-inline") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Monaspace Argon";
+  src: url("../assets/fonts/MonaspaceArgon-SemiBold.woff2?no-inline") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Monaspace Argon";
+  src: url("../assets/fonts/MonaspaceArgon-Bold.woff2?no-inline") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ============================================================
+   Font Face Declarations - Monaspace Neon (Body/Descriptions)
+   Classic, timeless feel - good for longer text
+   ============================================================ */
+
+@font-face {
+  font-family: "Monaspace Neon";
+  src: url("../assets/fonts/MonaspaceNeon-Light.woff2?no-inline") format("woff2");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Monaspace Neon";
+  src: url("../assets/fonts/MonaspaceNeon-Regular.woff2?no-inline") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Monaspace Neon";
+  src: url("../assets/fonts/MonaspaceNeon-Italic.woff2?no-inline") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Monaspace Neon";
+  src: url("../assets/fonts/MonaspaceNeon-Medium.woff2?no-inline") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ============================================================
+   Font Face Declarations - Monaspace Xenon (Headings/UI)
+   Soft, rounded edges - approachable for UI elements
+   ============================================================ */
+
+@font-face {
+  font-family: "Monaspace Xenon";
+  src: url("../assets/fonts/MonaspaceXenon-Regular.woff2?no-inline") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Monaspace Xenon";
+  src: url("../assets/fonts/MonaspaceXenon-Medium.woff2?no-inline") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Monaspace Xenon";
+  src: url("../assets/fonts/MonaspaceXenon-SemiBold.woff2?no-inline") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Monaspace Xenon";
+  src: url("../assets/fonts/MonaspaceXenon-Bold.woff2?no-inline") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ============================================================
+   Font Family Custom Properties
+   ============================================================ */
+
+:root {
+  /* Primary font families - all Monaspace */
+  --font-mono: "Monaspace Argon", "SF Mono", "Fira Code", "Consolas", monospace;
+  --font-sans: "Monaspace Xenon", "Monaspace Argon", system-ui, sans-serif;
+  --font-serif: "Monaspace Neon", "Monaspace Argon", Georgia, serif;
+
+  /* Semantic font assignments */
+  --font-body: var(--font-serif);
+  --font-heading: var(--font-sans);
+  --font-ui: var(--font-sans);
+  --font-code: var(--font-mono);
+  --font-numeric: var(--font-mono);
+
+  /* Font sizes - using clamp for fluid typography */
+  /* Floor 11px: the smallest size a control label stays legible at. */
+  --text-xs: clamp(0.6875rem, 0.55rem + 0.25vw, 0.7rem);
+  /* 12px: the smallest size body and hint copy is set at. */
+  --text-sm: 0.75rem;
+  --text-base: clamp(0.85rem, 0.8rem + 0.25vw, 0.95rem);
+  --text-lg: clamp(1rem, 0.9rem + 0.5vw, 1.15rem);
+  --text-xl: clamp(1.25rem, 1.1rem + 0.75vw, 1.5rem);
+  --text-2xl: clamp(1.5rem, 1.25rem + 1vw, 2rem);
+  --text-3xl: clamp(2rem, 1.5rem + 2vw, 3rem);
+
+  /* Line heights */
+  --leading-tight: 1.2;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.7;
+
+  /* Letter spacing - slightly wider for monospace readability */
+  --tracking-tight: -0.01em;
+  --tracking-normal: 0.01em;
+  --tracking-wide: 0.05em;
+  --tracking-wider: 0.1em;
+  --tracking-widest: 0.15em;
+}
+
+/* ============================================================
+   Monaspace Texture Healing
+   Enable ligatures and stylistic alternates for code
+   ============================================================ */
+
+.mono-texture,
+code,
+pre,
+.font-mono {
+  font-feature-settings:
+    "calt" 1,
+    "liga" 1,
+    "ss01" 1;
+  text-rendering: optimizeLegibility;
+}
+
+/* Disable ligatures for UI elements where they might confuse */
+.font-sans,
+.font-ui,
+button,
+input,
+select {
+  font-feature-settings:
+    "calt" 0,
+    "liga" 0;
+}
+
+/* ============================================================
+   Utility Classes
+   ============================================================ */
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+.font-sans {
+  font-family: var(--font-sans);
+}
+.font-serif {
+  font-family: var(--font-serif);
+}
+
+.font-body {
+  font-family: var(--font-body);
+}
+.font-heading {
+  font-family: var(--font-heading);
+}
+.font-ui {
+  font-family: var(--font-ui);
+}
+.font-code {
+  font-family: var(--font-code);
+}
+.font-numeric {
+  font-family: var(--font-numeric);
+}
+
+/* Tabular numbers for aligned columns (amounts, prices) */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Oldstyle figures for body text */
+.oldstyle-nums {
+  font-variant-numeric: oldstyle-nums;
+}
+
+/* ============================================================
+   Global Typography Adjustments
+   ============================================================ */
+
+/* Slightly increase line-height for monospace body text */
+body {
+  letter-spacing: var(--tracking-normal);
+  line-height: var(--leading-relaxed);
+}
+
+/* Tighter line-height for headings */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  letter-spacing: var(--tracking-wide);
+  line-height: var(--leading-tight);
+}
+
+/* Numeric values should use tabular figures */
+.amount,
+.price,
+.balance,
+.fee,
+[data-numeric] {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}

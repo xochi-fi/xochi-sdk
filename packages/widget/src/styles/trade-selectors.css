@@ -1,0 +1,439 @@
+/* Trade Page - Selector Components */
+
+/* Chain & Token Icons */
+.chain-icon,
+.token-icon {
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.chain-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.token-icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* No filter needed - SVGs use actual brand colors now */
+
+.dropdown-option-left {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 90px;
+  flex-shrink: 0;
+}
+
+.dropdown-option-left .token-symbol {
+  min-width: 42px;
+}
+
+/* Token Selector (with chain badge) */
+.token-selector {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.token-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  font-weight: 600;
+  background: rgba(168, 154, 128, 0.08);
+  backdrop-filter: blur(4px);
+  border: 1px solid var(--panel-border-hover);
+  border-radius: 8px;
+  color: var(--pearl-cream);
+  cursor: pointer;
+  transition:
+    background var(--duration-normal) var(--ease-smooth),
+    border-color var(--duration-normal) var(--ease-smooth),
+    box-shadow var(--duration-normal) var(--ease-smooth),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.token-btn:hover {
+  background: rgba(168, 154, 128, 0.12);
+  border-color: var(--muted-gold-25);
+}
+
+.token-btn:active {
+  transform: scale(0.97);
+  box-shadow: none;
+}
+
+/* The token half of the one-unit selector. The wrapper (.token-btn, now a
+   span) carries the pill chrome; this inner REAL button is stripped to zero
+   so the two halves stay sibling controls -- a button may not contain a
+   focusable descendant, so the unit cannot be one big button. */
+.token-btn__token {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+/* The named-chain segment of the one-unit selector ("USDC on Base"). It is a
+   real phrase, not an icon chip: the design brief forbids making users infer
+   which network a side settles on from an unlabeled glyph. */
+.chain-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  padding: 0.2rem 0.45rem;
+  background: var(--sky-12);
+  border: 1px solid var(--sky-15);
+  border-radius: 4px;
+  color: var(--cryptowave-sky);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background var(--duration-fast) var(--ease-smooth),
+    border-color var(--duration-fast) var(--ease-smooth),
+    box-shadow var(--duration-fast) var(--ease-smooth);
+}
+
+.chain-badge__on {
+  font-weight: 400;
+  color: var(--text-faint);
+}
+
+/* A host-locked half (xochi-widget#39) is a value, not a control: the same
+   look as the control at rest, with no pointer, no chevron and no hover. */
+.token-btn__token--locked,
+.chain-badge--locked {
+  cursor: default;
+}
+
+.token-btn--locked {
+  cursor: default;
+  box-shadow: none;
+}
+
+.chain-badge__name {
+  font-weight: 600;
+}
+
+/* 320px-class screens: the amount input and the selector share one row, so the
+   badge gives up the "on" filler and long chain names truncate before the row
+   can overflow. The icon + name keep the context unambiguous. */
+@media (max-width: 360px) {
+  .chain-badge__on {
+    display: none;
+  }
+
+  .chain-badge__name {
+    max-width: 4.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.chain-badge:hover {
+  background: var(--sky-15);
+  border-color: var(--sky-30);
+  box-shadow: 0 0 8px var(--sky-10);
+}
+
+.token-symbol {
+  font-weight: 600;
+}
+
+.dropdown-arrow {
+  color: var(--text-faint);
+  font-size: 0.7rem;
+  margin-left: 0.25rem;
+}
+
+/* Token dropdown (legacy inline menu). */
+.token-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 220px;
+  max-width: calc(100vw - 2rem);
+  background: var(--panel-bg-elevated);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--panel-border-hover);
+  border-radius: 10px;
+  max-height: min(20rem, 60vh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  z-index: 100;
+  box-shadow: var(--shadow-lg);
+  animation: dropdownIn var(--duration-normal) var(--ease-out);
+  transform-origin: top right;
+}
+
+/* The network menu is contained by the iframe viewport rather than painted
+   outside the field. Mobile uses a bottom sheet; desktop centers the same
+   focused dialog. */
+.chain-picker-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: max(0.5rem, env(safe-area-inset-top)) 0.5rem max(0.5rem, env(safe-area-inset-bottom));
+  background: var(--overlay-end);
+  backdrop-filter: blur(12px);
+}
+
+.chain-dropdown {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 32rem);
+  max-height: min(32rem, calc(100dvh - 1rem));
+  min-height: 0;
+  overflow: hidden;
+  background: var(--panel-bg-elevated);
+  border: 1px solid var(--panel-border-hover);
+  border-radius: var(--radius-xl) var(--radius-xl) var(--radius-md) var(--radius-md);
+  box-shadow: var(--shadow-xl);
+  animation: dropdownIn var(--duration-normal) var(--ease-out);
+}
+
+.chain-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 3.5rem;
+  padding: 0.5rem 0.75rem 0.5rem 1rem;
+  border-bottom: 1px solid var(--panel-border);
+  color: var(--pearl-cream);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.chain-picker-close {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+
+.chain-picker-close:hover,
+.chain-picker-close:focus-visible {
+  color: var(--pearl-cream);
+  border-color: var(--panel-border-hover);
+}
+
+.chain-picker-close svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 1.5;
+}
+
+.chain-picker-options {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.35rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--panel-border-hover) transparent;
+}
+
+@media (min-width: 601px) {
+  .chain-picker-modal {
+    align-items: center;
+    padding: 1rem;
+  }
+
+  .chain-dropdown {
+    width: min(24rem, calc(100vw - 2rem));
+    max-height: min(34rem, calc(100dvh - 2rem));
+    border-radius: var(--radius-xl);
+  }
+}
+
+@keyframes dropdownIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.dropdown-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  background: transparent;
+  border: none;
+  border-left: 2px solid transparent;
+  color: var(--pearl-cream);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-smooth),
+    border-color var(--duration-fast) var(--ease-smooth);
+  text-align: left;
+}
+
+.dropdown-option:hover {
+  background: var(--muted-gold-10);
+  border-left-color: var(--muted-gold-25);
+}
+
+.dropdown-option.selected {
+  background: var(--sky-12);
+  border-left-color: var(--cryptowave-sky);
+  color: var(--cryptowave-sky);
+}
+
+/* A listed chain that cannot be chosen, with its reason under the name.
+   Only the configurator passes reasons (xochi-widget#46); the card never
+   renders this state. */
+.dropdown-option--blocked {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 0.25rem 0.5rem;
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.dropdown-option--blocked:hover {
+  background: transparent;
+  border-left-color: transparent;
+}
+
+.dropdown-option__reason {
+  flex-basis: 100%;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+  color: var(--text-faint);
+}
+
+.dropdown-option .token-name {
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* Slippage Selector (compact) */
+.slippage-options {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.slippage-btn {
+  padding: 0.35rem 0.55rem;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  background: transparent;
+  border: 1px solid var(--line-subtle);
+  border-radius: 5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-smooth),
+    color var(--duration-fast) var(--ease-smooth),
+    background var(--duration-fast) var(--ease-smooth),
+    box-shadow var(--duration-fast) var(--ease-smooth);
+}
+
+.slippage-btn:hover {
+  border-color: var(--muted-gold-30);
+  color: var(--pearl-cream);
+}
+
+.slippage-btn.active {
+  background: var(--muted-gold-15);
+  border-color: rgba(168, 154, 128, 0.4);
+  color: var(--muted-gold);
+  box-shadow: 0 0 8px rgba(168, 154, 128, 0.08);
+}
+
+/* Legacy chain selector (for backwards compatibility) */
+.chain-selector-group {
+  margin-bottom: 1rem;
+  position: relative;
+}
+
+.selector-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.chain-selector {
+  position: relative;
+}
+
+.selector-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 500;
+  background: var(--inset-bg-heavy);
+  border: 1px solid var(--panel-border-hover);
+  border-radius: 6px;
+  color: var(--pearl-cream);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.selector-btn:hover {
+  border-color: var(--muted-gold-glow);
+}
+
+.selector-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--panel-bg-elevated);
+  border: 1px solid var(--muted-gold-30);
+  border-radius: 6px;
+  max-height: min(20rem, 60vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  z-index: 100;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}

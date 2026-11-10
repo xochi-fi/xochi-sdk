@@ -45,13 +45,13 @@ export interface SolverPinConfig {
    * with distinct on-chain authority, so mixing them would let one impersonate the
    * other.
    */
-  erc3009Allowlist: string[];
+  erc3009Allowlist: readonly string[];
   /**
    * Lowercased addresses valid as a Permit2 `spender` (the verified
    * XochiPullPermit2 contract, PULL2). Distinct from the ERC-3009
    * class above so a solver EOA can never stand in as the Permit2 spender.
    */
-  permit2Allowlist: string[];
+  permit2Allowlist: readonly string[];
   /** When true, ERC-3009 also requires a pin (Permit2 always does). */
   requirePin: boolean;
 }
@@ -281,7 +281,7 @@ function checkRecipient(
   field: "pull_to" | "pull_spender",
   recipient: unknown,
   method: "erc3009" | "permit2",
-  allowlist: string[],
+  allowlist: readonly string[],
   config: SolverPinConfig,
 ): SolverPinResult {
   const addr = typeof recipient === "string" ? recipient.toLowerCase() : null;

@@ -1,0 +1,287 @@
+/* Xochi - Assets Page: Order History Styles */
+
+/* ============================================================
+   Skeleton Loading
+   ============================================================ */
+
+.activity-row.skeleton {
+  pointer-events: none;
+}
+
+.skeleton-icon {
+  background: linear-gradient(
+    90deg,
+    var(--muted-gold-10) 25%,
+    var(--muted-gold-15) 50%,
+    var(--muted-gold-10) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 6px;
+}
+
+.skeleton-line {
+  height: 10px;
+  background: linear-gradient(
+    90deg,
+    var(--muted-gold-10) 25%,
+    var(--muted-gold-15) 50%,
+    var(--muted-gold-10) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 3px;
+  margin-bottom: 0.35rem;
+}
+
+.skeleton-line--short {
+  width: 40%;
+}
+
+.skeleton-line--medium {
+  width: 70%;
+}
+
+.skeleton-line--long {
+  width: 90%;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ============================================================
+   Chain Routes & Tokens
+   ============================================================ */
+
+.activity-chain-route {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+.chain-arrow,
+.swap-arrow {
+  color: rgba(168, 154, 128, 0.5);
+}
+
+.activity-tokens {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  margin: 0.2rem 0;
+}
+
+.from-token {
+  color: var(--pearl-cream);
+}
+
+.to-token {
+  color: var(--cryptowave-sky);
+}
+
+/* ============================================================
+   Status Badges
+   ============================================================ */
+
+.activity-status-badge {
+  padding: 0.15rem 0.45rem;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-radius: 3px;
+  background: var(--muted-gold-15);
+  color: var(--text-secondary);
+}
+
+.activity-status-badge.status-completed {
+  background: var(--sky-20);
+  color: var(--cryptowave-sky);
+}
+
+.activity-status-badge.status-executing,
+.activity-status-badge.status-bridging,
+.activity-status-badge.status-settling {
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--color-warning);
+}
+
+.activity-status-badge.status-failed,
+.activity-status-badge.status-expired {
+  background: var(--negative-15);
+  color: var(--color-negative);
+}
+
+.activity-status-badge.status-quoting,
+.activity-status-badge.status-signing,
+.activity-status-badge.status-quoted {
+  background: var(--panel-border-hover);
+  color: var(--muted-gold);
+}
+
+/* Activity icon variants based on status */
+.activity-icon-wrap.completed {
+  background: var(--sky-15);
+  color: var(--cryptowave-sky);
+}
+
+.activity-icon-wrap.executing,
+.activity-icon-wrap.bridging,
+.activity-icon-wrap.settling {
+  background: rgba(251, 191, 36, 0.12);
+  color: var(--color-warning);
+}
+
+.activity-icon-wrap.failed,
+.activity-icon-wrap.expired {
+  background: var(--negative-15);
+  color: var(--color-negative);
+}
+
+.activity-icon-wrap.pending,
+.activity-icon-wrap.quoting,
+.activity-icon-wrap.signing,
+.activity-icon-wrap.quoted,
+.activity-icon-wrap.idle {
+  background: var(--panel-border);
+  color: var(--muted-gold);
+}
+
+/* ============================================================
+   Time & Links
+   ============================================================ */
+
+.activity-time {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-faint);
+}
+
+.activity-tx-link {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: rgba(88, 161, 198, 0.7);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.activity-tx-link:hover {
+  color: var(--cryptowave-sky);
+  text-decoration: underline;
+}
+
+/* ============================================================
+   Actions
+   ============================================================ */
+
+.refresh-btn {
+  padding: 0.25rem 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  background: var(--muted-gold-10);
+  border-color: var(--panel-border-hover);
+  color: var(--pearl-cream);
+}
+
+.refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.load-more-btn {
+  width: 100%;
+  padding: 0.6rem;
+  margin-top: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: var(--inset-bg-deep);
+  border: 1px solid var(--muted-gold-15);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.load-more-btn:hover:not(:disabled) {
+  background: var(--muted-gold-10);
+  border-color: var(--muted-gold-25);
+  color: var(--pearl-cream);
+}
+
+.load-more-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ============================================================
+   Empty & Error States
+   ============================================================ */
+
+.error-text {
+  color: var(--color-negative);
+  margin-bottom: 0.75rem;
+}
+
+.retry-btn {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: var(--negative-08);
+  border: 1px solid var(--negative-25);
+  border-radius: 4px;
+  color: var(--color-negative);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.retry-btn:hover {
+  background: var(--negative-20);
+  border-color: var(--negative-30);
+}
+
+.trade-link {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  margin-top: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-decoration: none;
+  background: linear-gradient(135deg, var(--sky-20) 0%, var(--sky-10) 100%);
+  border: 1px solid var(--sky-30);
+  border-radius: 4px;
+  color: var(--cryptowave-sky);
+  transition: all 0.2s ease;
+}
+
+.trade-link:hover {
+  background: linear-gradient(135deg, var(--sky-30) 0%, var(--sky-20) 100%);
+  border-color: var(--sky-40);
+}

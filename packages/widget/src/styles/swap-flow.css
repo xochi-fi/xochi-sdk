@@ -1,0 +1,487 @@
+/* Xochi - Swap Flow Modal (confirm -> progress -> result) */
+
+.swap-flow-modal {
+  max-width: 420px;
+}
+
+.swap-flow-body {
+  padding: 1.25rem 1.5rem 1.5rem;
+}
+
+/* The signed payout, held on screen for the whole fill (Phase 5). */
+.swap-flow-payout {
+  margin: 0 0 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.swap-flow-payout strong {
+  font-weight: 600;
+  color: var(--pearl-cream);
+}
+
+/* Under the timeline: closing the tab loses nothing. */
+.swap-flow-safenote {
+  margin: 1rem 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* Contextual "open in your wallet's browser" hint, shown in the awaiting-wallet
+   phase on a relay-bound mobile browser. */
+.swap-flow-inapp-hint {
+  margin: 0.75rem 1.5rem 0;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.swap-flow-inapp-hint a {
+  color: var(--muted-gold);
+  text-decoration: underline;
+}
+
+/* Two-step signing: the explicit "Sign 2 of 2" step for deep-link (mobile) wallets. */
+.sign-step2 {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: stretch;
+  text-align: center;
+}
+
+.sign-step2__label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-gold);
+}
+
+.sign-step2__desc {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.sign-step2__error {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  line-height: 1.45;
+  color: var(--color-warning);
+}
+
+/* Confirm-phase soft notice (signature cancelled / quote expired) */
+.swap-flow-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0 1.5rem 0.75rem;
+  padding: 0.5rem 0.6rem;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--color-warning);
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  border-radius: 6px;
+}
+
+/* ============================================================
+   Result views (success / failed / pending)
+   ============================================================ */
+
+.swap-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.5rem;
+}
+
+.swap-result__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.25rem;
+}
+
+.swap-result__icon--success {
+  color: var(--color-success);
+}
+
+.swap-result__icon--failed {
+  color: var(--color-error);
+}
+
+.swap-result__icon--pending {
+  color: var(--color-warning);
+}
+
+.swap-result__icon--refunded {
+  color: var(--muted-gold);
+}
+
+.swap-result__title {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--pearl-cream);
+}
+
+.swap-result__amount {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-success);
+}
+
+/* Fill-time stamp: the measured submit->filled speed, the receipt's proof
+   point. Deliberately smaller than the payout above it, which is the thing the
+   user actually came for. */
+.swap-result__fill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  margin-top: 0.25rem;
+  padding: 0.55rem 1rem;
+  border: 1px solid var(--muted-gold-15);
+  border-radius: 10px;
+  background: var(--inset-bg-deep);
+  animation: fadeInUp var(--duration-normal) var(--ease-out);
+}
+
+.swap-result__fill-label {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.swap-result__fill-time {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.6rem;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--cryptowave-sky);
+}
+
+.swap-result__fill-sub {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-muted);
+}
+
+/* The slow path: stated, not celebrated. */
+.swap-result__settled {
+  margin: 0.15rem 0 0;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .swap-result__fill {
+    animation: none;
+  }
+}
+
+.swap-result__desc {
+  margin: 0;
+  max-width: 36ch;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* Stealth claim step on the completion screen: a titled next step, then the
+   note. */
+.swap-result__claim-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.swap-result__claim-title {
+  margin: 0.5rem 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-gold);
+}
+
+/* Stealth claim hand-off note on the completion/pending screen. */
+.swap-result__claim-note {
+  margin: 0.25rem 0 0;
+  max-width: 36ch;
+  padding: 0.6rem 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  background: var(--muted-gold-subtle);
+  border: 1px solid var(--muted-gold-15);
+  border-radius: 8px;
+}
+
+.swap-result__claim-note strong {
+  color: var(--muted-gold);
+}
+
+.swap-result__links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  margin: 0.25rem 0;
+}
+
+.swap-result__txlink {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--muted-gold);
+  text-decoration: none;
+  transition: color var(--duration-fast) var(--ease-smooth);
+}
+
+.swap-result__txlink:hover {
+  color: var(--pearl-cream);
+}
+
+/* Failure reference block (copyable / reportable) */
+.swap-result__ref {
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.6rem;
+  text-align: left;
+  background: var(--inset-bg-deep);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+}
+
+.swap-result__ref-line {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  line-height: 1.5;
+  color: var(--text-faint);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.swap-result__ref-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.swap-result__actions {
+  display: flex;
+  gap: var(--space-md);
+  width: 100%;
+  margin-top: 0.75rem;
+}
+
+.swap-result__actions .modal-btn {
+  flex: 1;
+}
+
+.swap-result__primary {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+/* ============================================================
+   Deposit instructions (Tron-origin deposit route)
+   ============================================================ */
+
+.deposit-instructions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.deposit-instructions__lead {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--pearl-cream);
+  margin: 0;
+}
+
+.deposit-instructions__lead strong {
+  color: var(--muted-gold);
+}
+
+/* Scan-to-pay QR of the deposit address. Dark-on-light for scanner contrast,
+   sourced from the brand anchors so it stays high-contrast on the dark panel. */
+.deposit-instructions__qr {
+  --qr-bg: var(--crypto-frost);
+  --qr-fg: var(--obsidian);
+  align-self: center;
+  padding: 0.7rem;
+  background: var(--qr-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  line-height: 0;
+}
+
+.deposit-instructions__qr-svg {
+  display: block;
+  width: 160px;
+  height: 160px;
+}
+
+.deposit-instructions__address-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--inset-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 0.7rem 0.85rem;
+}
+
+.deposit-instructions__address {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--pearl-cream);
+  word-break: break-all;
+}
+
+.deposit-instructions__copy {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted-gold);
+  background: var(--muted-gold-subtle);
+  border: 1px solid var(--muted-gold-25);
+  border-radius: 8px;
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-smooth),
+    background var(--duration-fast) var(--ease-smooth);
+}
+
+.deposit-instructions__copy:hover {
+  color: var(--crypto-frost);
+  background: var(--muted-gold-15);
+}
+
+.deposit-instructions__warn {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--color-warning);
+  margin: 0;
+}
+
+.deposit-instructions__payout {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.deposit-instructions__waiting {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
+
+/* The only action on the closed-window view: reset and quote again. */
+.deposit-instructions__start-over {
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.9rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--pearl-cream);
+  background: var(--muted-gold-10);
+  border: 1px solid var(--muted-gold-25);
+  border-radius: 2px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.deposit-instructions__start-over:hover {
+  background: var(--muted-gold-15);
+  border-color: var(--muted-gold-30);
+}
+
+/* The poll has stopped. Same slot as __waiting, no spinner: the absence of
+   motion is the point, so the two states cannot be confused at a glance. */
+.deposit-instructions__stopped {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+  line-height: 1.5;
+}
+
+.deposit-instructions__deadline {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  margin: 0;
+}
+
+/* Refund echo. Same weight as the payout line it sits under: both answer "where
+   does the money end up", one on each outcome. */
+.deposit-instructions__refund {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+/* Closed window. The address and its QR are gone by this point (the component
+   returns a different tree), so the lead carries the warning colour instead of
+   sitting above a live Copy button in the usual muted grey. */
+.deposit-instructions--expired .deposit-instructions__lead {
+  color: var(--color-warning);
+}
+
+/* No provable address to show. Same treatment as a closed window: no address, no
+   QR, no Copy button, and a lead that reads as a warning rather than as an
+   instruction. This is the view the deposit phase falls back to, so it must not
+   look like an empty or half-loaded screen. */
+.deposit-instructions--unavailable .deposit-instructions__lead {
+  color: var(--color-warning);
+}
+
+.deposit-instructions__closed-note {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
