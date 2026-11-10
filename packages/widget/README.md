@@ -33,6 +33,10 @@ This mode packs only the local widget. All prerequisites resolve anonymously fro
 
 The current default wallet dependency chain (`wagmi@2.19.5` → WalletConnect/Reown → `valtio` → `use-sync-external-store@1.2.0`) declares a transitive React peer range that excludes React 19. The anonymous production build succeeds, but `npm ls react react-dom` reports that conflict. Rehearsal records it explicitly; published-dependencies verification refuses it. Resolving the public dependency compatibility is a release prerequisite, not permission to add hidden consumer overrides or upgrade the wallet stack during extraction. Current RainbowKit `2.2.11` supports Wagmi 2, not the current Wagmi 3 release.
 
+An upstream bump is also a licensing decision: provider `2.21.9`, the first stable `2.21.x` release selecting the Valtio 2 graph, changed from Apache-2.0 to the WalletConnect Community License. Wagmi documents this constraint in its connector. Do not treat a newer provider or the workspace's development overrides as an approved, permissively licensed public dependency closure.
+
+The [Apache-compatible backport request](https://github.com/WalletConnect/walletconnect-monorepo/issues/7393) includes a local candidate selecting Apache-licensed AppKit `1.7.13`. Its anonymous, override-free React 19 peer check and wallet production bundle passed, but strict provider declarations failed on `Core.relayUrl` and `SignClient.signConfig`; wallet/session behavior was not exercised. This is upstream investigation, not a qualified widget artifact or permission to install modified tarballs in a production host. Wait for a reviewed, published upstream release, retain existing security constraints, then repeat the complete packed-widget and host qualification.
+
 ## Rendering
 
 Configure once, before rendering either lazy entry point. One document owns one widget runtime; change settings by reloading, not by changing signing authority in an active trading session.
