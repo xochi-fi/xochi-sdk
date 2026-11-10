@@ -20,6 +20,7 @@ export * from "./capabilities.js";
 export * from "./routeModel.js";
 export * from "./settlementEligibility.js";
 export * from "./trustFeatures.js";
+export * from "./ramp.js";
 export type { MethodPin, PinnedPullRecipients, PreparedClaim } from "@xochi/signer";
 export {
   advertisedConversionPairs,

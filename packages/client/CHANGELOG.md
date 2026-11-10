@@ -20,6 +20,14 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
   excessive-slippage decisions. This is an extraction prerequisite, not
   publication approval; #98's producer and claim-chain prerequisites and
   separate registry approval remain gates.
+- Add canonical snake_case `ramp/1` schemas and inferred TypeScript bindings,
+  exact atomic-unit parsing, sanitized boundary validation, independently derived
+  leg outcomes, revision/idempotency command preflight, and shared JSON conformance
+  fixtures. In-doubt operations never permit execute-again. No provider executor,
+  durable replay store, wallet signer or new bridge is included.
+- Export packed JSON Schema/conformance artifacts for other runtimes. Add a
+  separately pinned Peer compatibility example; package compatibility and a
+  fail-closed readiness result do not establish live execution or publication.
 
 ### Fixed
 
