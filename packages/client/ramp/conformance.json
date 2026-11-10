@@ -2353,6 +2353,24 @@
         "accepted_disclosure_codes": ["base_settlement"]
       },
       "valid": true
+    },
+    {
+      "id": "completed_prerequisite_peer_skipped",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "8",
+        "direction": "offramp",
+        "leg_order": ["xochi", "peer"],
+        "peer": { "name": "peer", "state": "skipped", "recoverable": false },
+        "xochi": { "name": "xochi", "state": "completed", "recoverable": false },
+        "allowed_actions": [],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": true
+      },
+      "valid": true,
+      "expected_outcome": "partial_success"
     }
   ],
   "atomic_cases": [

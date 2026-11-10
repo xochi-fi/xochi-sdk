@@ -260,8 +260,8 @@ export function rampOutcome(snapshot: Pick<RampSnapshot, "peer" | "xochi">): {
   if (states.includes("in_doubt")) return { terminal: false, state: "in_doubt" };
   if (!terminal) return { terminal: false, state: "pending" };
   if (
-    states.every((state) => state === "completed" || state === "skipped") &&
-    states.includes("completed")
+    snapshot.peer.state === "completed" &&
+    states.every((state) => state === "completed" || state === "skipped")
   ) {
     return { terminal: true, state: "completed" };
   }
