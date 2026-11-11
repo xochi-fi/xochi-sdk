@@ -416,6 +416,7 @@ export class XochiApi {
         network: corridor.network,
         expected: {
           nonce: challenge.nonce,
+          challengeExpiry: String(challenge.expires_at),
           termsDigest: challenge.receipt.terms_digest,
           operationId: challenge.receipt.operation_id,
           txHash: hex("a7"),
@@ -423,7 +424,8 @@ export class XochiApi {
           amount: challenge.receipt.amount,
         },
         now: NOW,
-        consumeReplayKey: async () => true,
+        lookupAcceptance: async () => null,
+        commitAcceptance: async () => ({ status: "committed", result: undefined }),
       },
     );
     return verified.digest;

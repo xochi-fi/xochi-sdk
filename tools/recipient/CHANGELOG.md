@@ -31,6 +31,10 @@ All releases are private test artifacts; see the README CAUTION for what they do
 
 ### Changed
 
+- `@xochi/signer` 0.7.0 -> 0.8.0 (exact pin; `npm-shrinkwrap.json` and `package-lock.json`
+  refreshed).
+- `--api-url` accepts `https://api.xochi.fi` (default), `https://api-stg.xochi.fi` and
+  `https://api-es.xochi.fi`, and still refuses any other origin before the JWT is sent.
 - Backups now carry `journals.receipts`, `bindingId` and `bindingDigest` under the same format
   name. Builds before this release refuse to open them (strict schema); keep the release that
   wrote a backup, or a newer one, for restore. This release still opens older backups.

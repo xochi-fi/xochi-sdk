@@ -1,13 +1,13 @@
 import { keccak256, toHex } from "viem";
 import { describe, expect, it } from "vitest";
 
-import { BACKUP_FORMAT_V1_ID } from "@xochi/signer";
-
 import {
   BACKUP_FORMAT_PASSKEY_V1_ID,
+  BACKUP_FORMAT_V1_ID,
   PASSKEY_BACKUP_COMMITMENT_TAG,
-  backupAcknowledgement,
-} from "../src/backup-mode.js";
+} from "@xochi/signer";
+
+import { backupAcknowledgement } from "../src/backup-mode.js";
 
 // Contract B (claim contracts v1) vectors.
 const CREDENTIAL_ID_HASH = keccak256(toHex("TEST ONLY credential id"));

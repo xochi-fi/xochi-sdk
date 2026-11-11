@@ -4,16 +4,20 @@ All notable changes to `@xochi/recipient-core` are documented here. Format follo
 
 ## [Unreleased]
 
+## [0.1.0] - unreleased
+
 ### Added
 
 - `DuplicateOperationIdError` identifies a caller-provided operation journal id collision before
   submission and passes unchanged through live spend and exit, so callers can rotate the id without
   mistaking an older terminal record for the new operation.
-
-## [0.1.0] - 2026-11-08
-
-### Added
-
+- `HttpEnrollmentApi` sends the source wallet's SIWE bearer only to `XOCHI_API_ORIGINS`
+  (`https://api.xochi.fi`, `https://api-stg.xochi.fi`, `https://api-es.xochi.fi`) and refuses any
+  other origin, path, query or fragment at construction.
+- `deploy` holds the `deployLockName(address)` lease, refuses while another session holds it, and
+  sends nothing once that lease is lost. `LockLease.lost` (an `AbortSignal`) reports a lock taken
+  away while held (`WebLocksManager`: another context's `steal`); a spend or exit whose journal
+  holder lease was lost is refused before its submission decision.
 - The first 0.1.0 publish is manual from the reviewed `recipient-core-v0.1.0` tag after a
   package-local install and every package gate, because npm cannot attach a trusted publisher
   before the package exists. Attach the protected `npm-publish` trusted publisher immediately
@@ -31,7 +35,7 @@ All notable changes to `@xochi/recipient-core` are documented here. Format follo
 - **0.1.0: the recipient core** (xochi-sdk#156, epic xochi#833), extracted from `tools/recipient` behind platform ports (`src/ports.ts`: `KeyValueStore`, `LockManager`, `KeystoreCrypto`, `ArtifactLoader`, `AttestationVerifier`, `RecipientKeySource`, `Clock`, `HttpFetch`, `Log`; `WalletStorage` in `src/wallet-storage.ts`). No `node:*`, no builtin module and no `process` anywhere in `src/` (`test/platform-neutral.test.ts`, including an esbuild `platform: "browser"` bundle of both entry points); the vendored Oxide subset still reads the global `Buffer` (README "Ports").
   - Journals over the ports, with the CLI's records byte for byte: `OperationJournal`, `ReceiptJournal`, `ExitJournal`, `StateStore`. A record naming a transaction hash is durable before the transaction is broadcast (`recordBroadcastBeforeSend`).
   - The facade `openRecipientCore(deps)`: `sync`, `balance`, `payouts`, `accountState`, `signReceipt` / `submitReceipt` (the CLI's `receipt` split at the POST), `deploy`, `enrollStart` / `enrollSubmit` / `enrollStatus`, `send`, `exit`, `close`; `importCliBackup` and `restoreJournals(core, backup, sealed)`.
-  - `BackupMode`: the sealed backup file or the passkey (`backup-mode.ts`, claim contracts section B). `enrollSubmit` refuses the passkey mode unless `deps.keys.kind === "passkey"`, and while `@xochi/signer` is older than 0.8.0.
+  - `BackupMode`: the sealed backup file or the passkey (`backup-mode.ts`, claim contracts section B; the passkey constants and commitment are `@xochi/signer` 0.8.0's). `enrollSubmit` refuses the passkey mode unless `deps.keys.kind === "passkey"` and the mode's `credentialIdHash` is the key source's (`PasskeyKeySource.credentialIdHash`, the credential that derived the keys).
   - Browser adapters under `src/browser/**` (subpath `./browser`) and the WebCrypto Nitro verifier under `src/attestation/` (subpath `./attestation`).
 - Intent ids are `^[a-z0-9_][a-z0-9_-]{0,63}$` (`INTENT_ID_GRAMMAR`; covers the Worker's route grammar); anything else is refused with a message naming the grammar.
 - Every `state.json` read-modify-write in the facade runs under the exclusive `…:operations:state` lease (`stateLockName`).

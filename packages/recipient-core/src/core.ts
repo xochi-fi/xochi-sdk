@@ -14,12 +14,7 @@ import { z } from "zod4";
 import { deriveRecipientAccount, type RecipientAccount } from "./account.js";
 import { EnrollmentApiError, HttpEnrollmentApi, type BindingProjection } from "./api.js";
 import { ExitJournal, SignedAckSchema, openBackup, type BackupContents } from "./backup.js";
-import {
-  BACKUP_FORMAT_PASSKEY_V1_ID,
-  backupAcknowledgement,
-  signerSignsPasskeyBackup,
-  type BackupMode,
-} from "./backup-mode.js";
+import { backupAcknowledgement, type BackupMode } from "./backup-mode.js";
 import { validateBroadcasterArtifact } from "./broadcaster-artifact.js";
 import {
   LiveAztec,
@@ -212,8 +207,8 @@ export interface RecipientCore {
   enrollStart(sourceWallet: string): Promise<PendingEnrollment>;
   /**
    * Refuses `{ mode: "passkey" }` unless `deps.keys.kind` is `"passkey"` (keystore and imported
-   * recipients acknowledge their sealed backup file), and while the resolved @xochi/signer cannot
-   * sign the passkey format (< 0.8.0); both before any request. The signed request is kept
+   * recipients acknowledge their sealed backup file) and its `credentialIdHash` is the one the
+   * keys were derived from; both before any request. The signed request is kept
    * (`enrollment-request.json`) before the POST and resent byte for byte on a retry with the same
    * signature and backup; a retry with others is refused, naming the challenge expiry, until that
    * expiry. A kept request for an expired challenge is resent once first: the binding it enrolled
@@ -639,15 +634,17 @@ class Core implements RecipientCore {
     backup: BackupMode,
   ): Promise<BindingProjection> {
     if (backup.mode === "passkey") {
-      const { kind } = this.#deps.keys;
-      if (kind !== "passkey") {
+      const keys = this.#deps.keys;
+      if (keys.kind !== "passkey") {
         throw new Error(
-          `the passkey backup mode is only for a passkey recipient; this recipient's keys are ${kind}: acknowledge its sealed backup file`,
+          `the passkey backup mode is only for a passkey recipient; this recipient's keys are ${keys.kind}: acknowledge its sealed backup file`,
         );
       }
-      if (!signerSignsPasskeyBackup()) {
+      // Only the credential that derived these keys recovers the account: an ack naming another
+      // would enroll a backup that cannot restore it, and the Worker cannot tell.
+      if (backup.credentialIdHash !== keys.credentialIdHash) {
         throw new Error(
-          `the passkey backup mode requires @xochi/signer >= 0.8.0 (it signs format ${BACKUP_FORMAT_PASSKEY_V1_ID})`,
+          `the passkey backup names credential ${backup.credentialIdHash}, but this recipient's keys derive from credential ${keys.credentialIdHash}`,
         );
       }
     }

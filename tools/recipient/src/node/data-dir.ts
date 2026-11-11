@@ -10,7 +10,12 @@ import { ExitJournal } from "../core/backup.js";
 import { hex32 } from "../core/corridor.js";
 import { parseJsonBytes } from "../core/json.js";
 import { OperationJournal, operationsLockName } from "../core/operation-journal.js";
-import type { AccountSecrets, Clock, KeystoreCrypto, RecipientKeySource } from "../core/ports.js";
+import type {
+  AccountSecrets,
+  Clock,
+  KeystoreCrypto,
+  StoredSecretsKeySource,
+} from "../core/ports.js";
 import { ReceiptJournal } from "../core/receipt.js";
 import { StateStore } from "../core/state.js";
 import { NodeKeyValueStore } from "./kv.js";
@@ -61,7 +66,7 @@ export function openNodeJournals(
 const SecretsSchema = z.object({ secret: hex32, salt: hex32 }).strict();
 
 /** `keystore.sealed` opened with the operator's passphrase (asked only when the secrets are). */
-export class SealedKeystoreKeySource implements RecipientKeySource {
+export class SealedKeystoreKeySource implements StoredSecretsKeySource {
   readonly kind = "keystore";
 
   constructor(

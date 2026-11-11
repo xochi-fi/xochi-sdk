@@ -12,7 +12,6 @@ import { keccak256, toHex } from "viem";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { deriveRecipientAccount, type RecipientAccount } from "../src/account.js";
-import { BACKUP_FORMAT_PASSKEY_V1_ID } from "../src/backup-mode.js";
 import { ExitJournal, backupContents, sealBackup, type BackupContents } from "../src/backup.js";
 import { LiveAztec, recordBroadcastBeforeSend } from "../src/chain.js";
 import { OXDAI_MAINNET_REV2, type Corridor } from "../src/corridor.js";
@@ -66,9 +65,10 @@ import {
 const SEALED = { mode: "sealed_file", commitment: hex("bc") } as const satisfies BackupMode;
 /** When the test challenge expires: a kept request for it can be replaced after then. */
 const EXPIRY = new Date(ENROLLMENT_CHALLENGE.expires_at * 1000).toISOString();
+const PASSKEY_CREDENTIAL = keccak256(toHex("TEST ONLY credential id"));
 const PASSKEY: BackupMode = {
   mode: "passkey",
-  credentialIdHash: keccak256(toHex("TEST ONLY credential id")),
+  credentialIdHash: PASSKEY_CREDENTIAL,
   rpId: "xochi.fi",
   derivationVersion: 1,
 };
@@ -504,16 +504,46 @@ describe("enrollment", () => {
     await core.close();
   });
 
-  // The core pins @xochi/signer 0.7.0, whose hashRecipientAck refuses the passkey format id.
-  it("refuses the passkey backup mode under @xochi/signer 0.7.0, before any POST", async () => {
-    const h = harness({ kind: "passkey", accountSecrets });
+  it("submits a passkey binding for the credential that derived the keys", async () => {
+    const h = harness({ kind: "passkey", credentialIdHash: PASSKEY_CREDENTIAL, accountSecrets });
+    const core = await h.open();
+    const pending = await core.enrollStart(SOURCE.address);
+    const signature = await SOURCE.signTypedData(pending.typedData);
+
+    const projection = await core.enrollSubmit(pending, signature, PASSKEY);
+
+    expect(projection).toMatchObject({ binding_id: BINDING_ID, state: "pending" });
+    expect(await stateOf(h.kv)).toMatchObject({ bindingId: BINDING_ID });
+    const request = h.xochi.calls.find((call) => call.path === "/api/shielded/recipients")!;
+    const body = request.body as {
+      backup_passkey: unknown;
+      acknowledgements: { primary_type: string; message: Record<string, unknown> }[];
+    };
+    expect(body.backup_passkey).toEqual({
+      credential_id_hash: PASSKEY_CREDENTIAL,
+      rp_id: "xochi.fi",
+      derivation_version: 1,
+    });
+    const backupAck = body.acknowledgements.find(
+      (ack) => ack.primary_type === "BackupPersistenceAck",
+    );
+    expect(backupAck?.message).toMatchObject({
+      backupCommitment: "0x1eb1bdb8239f3781e41bcc837832336ad05b52229f01c6074e8dcf6da92c4887",
+      backupFormatId: "0xfc8e02b9741f099f45fc73cf480359a580e322ceae9ca66d3964a987ad4517f2",
+    });
+    await core.close();
+  });
+
+  it("refuses a passkey backup naming another credential than the keys', before any POST", async () => {
+    const other = keccak256(toHex("TEST ONLY other credential id"));
+    const h = harness({ kind: "passkey", credentialIdHash: other, accountSecrets });
     const core = await h.open();
     const pending = await core.enrollStart(SOURCE.address);
     const signature = await SOURCE.signTypedData(pending.typedData);
     const before = h.xochi.posts();
 
     await expect(core.enrollSubmit(pending, signature, PASSKEY)).rejects.toThrow(
-      `the passkey backup mode requires @xochi/signer >= 0.8.0 (it signs format ${BACKUP_FORMAT_PASSKEY_V1_ID})`,
+      `the passkey backup names credential ${PASSKEY_CREDENTIAL}, but this recipient's keys derive from credential ${other}`,
     );
     expect(h.xochi.posts()).toEqual(before);
     await core.close();

@@ -88,8 +88,13 @@ exact operation record id before any build or broadcast. Invalid or existing ids
 submission; omission keeps generated ids. This lets an app correlate its own durable state with the
 fund-movement journal without weakening the journal-before-broadcast boundary.
 `enrollSubmit` takes the sealed-file or passkey backup mode (`backup-mode.ts`); it refuses the
-passkey mode unless `deps.keys.kind` is `"passkey"`, and while the resolved `@xochi/signer` is
-older than 0.8.0 (0.7.0 cannot sign the passkey format), both before any request.
+passkey mode unless `deps.keys.kind` is `"passkey"` and the mode's `credentialIdHash` is the key
+source's `credentialIdHash` (the credential that derived the keys), both before any request.
+
+`HttpEnrollmentApi` (enrollment, projection, receipts) sends the source wallet's SIWE bearer only to
+`XOCHI_API_ORIGINS`: `https://api.xochi.fi`, `https://api-stg.xochi.fi` and the fallback ingress
+`https://api-es.xochi.fi`. Any other origin, and any path, query or fragment, is refused when it is
+constructed.
 
 `enrollSubmit` keeps the exact signed request in `enrollment-request.json` before the POST, with
 the source signature and backup acknowledgement it was built from, and resends it byte for byte on

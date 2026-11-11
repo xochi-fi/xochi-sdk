@@ -90,10 +90,11 @@ async function verifyAll(
         network: OXDAI_MAINNET_REV2.network,
         expected: expected[ack.primary_type] as never,
         now: CHALLENGE.expires_at - 60,
-        consumeReplayKey: async (key) => {
-          if (consumed.has(key)) return false;
-          consumed.add(key);
-          return true;
+        lookupAcceptance: async () => null,
+        commitAcceptance: async ({ replayKey }) => {
+          if (consumed.has(replayKey)) throw new Error(`TEST ONLY replay ${replayKey}`);
+          consumed.add(replayKey);
+          return { status: "committed", result: undefined };
         },
       },
     );

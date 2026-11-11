@@ -139,11 +139,24 @@ export interface AccountSecrets {
   salt: string;
 }
 
-/** Node: keystore.sealed + passphrase. Browser: the passkey derivation or a PKW1 unwrap. */
-export interface RecipientKeySource {
+/** Keys from stored secrets: Node's keystore.sealed + passphrase, or a browser PKW1 unwrap. */
+export interface StoredSecretsKeySource {
   /** Where the secrets come from: the passkey backup mode is open only to `"passkey"`. */
-  readonly kind: "keystore" | "passkey" | "imported";
+  readonly kind: "keystore" | "imported";
   accountSecrets(): Promise<AccountSecrets>;
 }
+
+/** Keys a passkey's PRF derives (browser). */
+export interface PasskeyKeySource {
+  readonly kind: "passkey";
+  /**
+   * keccak256 of the raw id of the credential whose PRF derived these secrets (0x-prefixed
+   * lowercase bytes32). A passkey backup ack must name exactly this credential.
+   */
+  readonly credentialIdHash: string;
+  accountSecrets(): Promise<AccountSecrets>;
+}
+
+export type RecipientKeySource = StoredSecretsKeySource | PasskeyKeySource;
 
 export type Log = (line: string) => void;
