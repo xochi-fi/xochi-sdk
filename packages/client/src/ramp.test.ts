@@ -10,7 +10,7 @@ import {
   checkRampCommand,
   parseRamp,
   rampOutcome,
-  RampCommandSchema,
+  type RampCommand,
   RampSnapshotSchema,
   RampWireSchema,
 } from "./ramp.js";
@@ -84,14 +84,15 @@ describe("ramp/1 cross-runtime conformance", () => {
     expect(() => atomic(-1n)).toThrow("Invalid atomic amount");
   });
 
+  // Commands and receipts go in unparsed: checkRampCommand must classify malformed ones itself.
   it.each(fixtures.command_cases)("command: $id", ({ snapshot, command, receipt, expected }) => {
     expect(
       checkRampCommand(
         RampSnapshotSchema.parse(snapshot),
-        RampCommandSchema.parse(command),
+        command as RampCommand,
         receipt
           ? {
-              command: RampCommandSchema.parse(receipt.command),
+              command: receipt.command as RampCommand,
               snapshot: RampSnapshotSchema.parse(receipt.snapshot),
             }
           : undefined,
@@ -106,8 +107,9 @@ describe("ramp/1 cross-runtime conformance", () => {
   });
 
   it("bounds unknown fields before discarding them", () => {
-    const input = fixtures.wire_cases.find((row) => row.id === "intent_exact_large_amount")!
+    const input = fixtures.wire_cases.find((row) => row.id === "availability_available")!
       .input as object;
+    expect(parseRamp(input).ok).toBe(true);
     expect(parseRamp({ ...input, future: "x".repeat(2049) })).toEqual({
       ok: false,
       code: "invalid_request",
@@ -122,8 +124,10 @@ describe("ramp/1 cross-runtime conformance", () => {
   });
 });
 
+// Provider data (an offer) discards bounded unknown fields, so these exercise the snapshot boundary
+// rather than strict-key rejection.
 describe("untrusted ramp objects", () => {
-  const input = fixtures.wire_cases.find((row) => row.id === "intent_exact_large_amount")!
+  const input = fixtures.wire_cases.find((row) => row.id === "availability_available")!
     .input as object;
 
   it("rejects own accessors without invoking them, even in discarded fields", () => {

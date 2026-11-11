@@ -9,16 +9,27 @@ synthetic, runtime-neutral inputs and expected semantic outcomes. Neither contai
 live offers, provider credentials, or executable transactions. TypeScript bindings
 are inferred from the runtime schemas and checked against the JSON Schema with the
 same vectors. Regenerate the structural artifact with `npm run generate:ramp -w
-@xochi/client`. Raxol can consume these JSON artifacts directly; its Elixir binding
-and cross-runtime execution remain cross-repository gates, not an SDK harness.
+@xochi/client`; CI fails when the committed schema differs from the generated one.
+Raxol can consume these JSON artifacts directly; its Elixir binding and
+cross-runtime execution remain cross-repository gates, not an SDK harness.
+
+Schema `pattern` values use the ECMA-262 dialect that JSON Schema specifies, limited
+to constructs RE2 also accepts (no lookaround or backreferences). `$` means end of
+input, as in ECMA-262, RE2 and Rust. PCRE and Python treat `$` as also matching
+before a final newline: compile with `dollar_endonly` (Erlang/Elixir) or use
+`fullmatch` (Python). The trailing-newline vectors in `conformance.json` catch a
+binding that gets this wrong.
 
 ## Messages
 
 Every message has `contract_version: "ramp/1"` and a required `kind`:
 `offer`, `intent`, `preview`, `snapshot`, `command`, or `error`. Every JSON field is
 snake_case. TypeScript uses the same wire names; there is no second camelCase wire
-schema. Unknown required discriminants fail closed. Bounded unknown optional
-fields are discarded, never forwarded. `parseRamp(unknown)` is the public boundary:
+schema. Unknown required discriminants fail closed. Caller-authored messages
+(`intent`, `command`) reject unknown keys at every level, so a misspelt optional
+field fails instead of being dropped. Provider data (`offer`, `preview`,
+`snapshot`, `error`) discards bounded unknown fields and never forwards them.
+`parseRamp(unknown)` is the public boundary:
 it snapshots bounded own data descriptors before structural and semantic checks,
 rejects accessors without invoking them (including discarded fields), and returns
 sanitized data or only `invalid_request` / `unsupported_version`. Reflection failures,
@@ -34,6 +45,19 @@ and decimals, and crypto chain/contract/decimals, must be validated against live
 provider configuration. A symbol is never asset identity. Phase 1 settlement is
 Base USDC; the contract itself is provider-neutral vocabulary, not a capability
 allowlist. Bounds must use their stated asset and satisfy minimum <= maximum.
+
+Cross-field rules, checked by `parseRamp` after the shape:
+
+- A CAIP-19 `asset_id` (`eip155:<chain>/erc20:<address>`) must name the asset's own
+  `chain_id`. Asset identity is chain plus address; address case and the CAIP
+  prefix are notation.
+- Intent: `exact.money` uses the asset of its `side`. With a `route`, the Peer-side
+  asset must be `crypto` (`route.from` on onramp, `route.to` on offramp) and
+  `route.recipient` must equal `recipient`.
+- Preview: one of `pay`/`receive` is fiat and the other crypto; a two-leg
+  `leg_order` fixes the direction (Peer first pays fiat, Xochi first pays crypto);
+  every fee is in the pay or receive asset.
+- Command: `approve` and `execute_route` must carry `quote_id`.
 
 Availability states: `available` (with `valid_until`), `setup_required`
 (`requirement_codes`), `temporarily_unavailable` (`reason_code`, optional
@@ -66,10 +90,12 @@ only through a reviewed contract change; recovery codes do not grant resubmissio
 
 Commands carry `operation_id`, target `leg`, bounded `action`, and
 `context: { expected_revision, idempotency_key }`, plus optional quote/disclosure
-bindings. `checkRampCommand` is a pure preflight, **not an executor or durable
-idempotency store**. An exact command replay with its retained receipt is
-recognized before stale revision checking; reuse of a key for different content,
-wrong operation, or stale revision conflicts. New actions require current
+bindings; `approve` and `execute_route` require `quote_id`. `checkRampCommand` is a
+pure preflight, **not an executor or durable idempotency store**. It returns
+`invalid_command` for a command that fails the contract and `invalid_receipt` for
+a malformed retained receipt instead of throwing. An exact command replay with its
+retained receipt is recognized before stale revision checking; reuse of a key for
+different content, wrong operation, or stale revision conflicts. New actions require current
 revision, an existing leg, and an allowed action. A recoverable failed leg accepts
 only its own `recover_peer` or `recover_route` action, or `check_status`; it cannot
 execute again through ordinary approval/execution actions. Recovery actions cannot

@@ -14,11 +14,11 @@
         },
         "offer_id": {
           "type": "string",
-          "pattern": "^[A-Za-z0-9_-]{1,96}(?![\\s\\S])"
+          "pattern": "^[A-Za-z0-9_-]{1,96}$"
         },
         "capability_revision": {
           "type": "string",
-          "pattern": "^[A-Za-z0-9_-]{1,96}(?![\\s\\S])"
+          "pattern": "^[A-Za-z0-9_-]{1,96}$"
         },
         "provider_id": {
           "type": "string",
@@ -40,7 +40,7 @@
             },
             "currency": {
               "type": "string",
-              "pattern": "^[A-Z]{3}(?![\\s\\S])"
+              "pattern": "^[A-Z]{3}$"
             },
             "decimals": {
               "type": "integer",
@@ -63,15 +63,15 @@
             },
             "chain_id": {
               "type": "string",
-              "pattern": "^eip155:[1-9][0-9]*(?![\\s\\S])"
+              "pattern": "^eip155:[1-9][0-9]*$"
             },
             "asset_id": {
               "type": "string",
-              "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}(?![\\s\\S])"
+              "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}$"
             },
             "symbol": {
               "type": "string",
-              "pattern": "^[A-Za-z0-9._-]{1,16}(?![\\s\\S])"
+              "pattern": "^[A-Za-z0-9._-]{1,16}$"
             },
             "decimals": {
               "type": "integer",
@@ -92,7 +92,7 @@
           "properties": {
             "id": {
               "type": "string",
-              "pattern": "^[a-z][a-z0-9_]{0,63}(?![\\s\\S])"
+              "pattern": "^[a-z][a-z0-9_]{0,63}$"
             },
             "label": {
               "type": "string",
@@ -129,7 +129,7 @@
                         },
                         "currency": {
                           "type": "string",
-                          "pattern": "^[A-Z]{3}(?![\\s\\S])"
+                          "pattern": "^[A-Z]{3}$"
                         },
                         "decimals": {
                           "type": "integer",
@@ -152,15 +152,15 @@
                         },
                         "chain_id": {
                           "type": "string",
-                          "pattern": "^eip155:[1-9][0-9]*(?![\\s\\S])"
+                          "pattern": "^eip155:[1-9][0-9]*$"
                         },
                         "asset_id": {
                           "type": "string",
-                          "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}(?![\\s\\S])"
+                          "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}$"
                         },
                         "symbol": {
                           "type": "string",
-                          "pattern": "^[A-Za-z0-9._-]{1,16}(?![\\s\\S])"
+                          "pattern": "^[A-Za-z0-9._-]{1,16}$"
                         },
                         "decimals": {
                           "type": "integer",
@@ -180,7 +180,7 @@
                 },
                 "atomic": {
                   "type": "string",
-                  "pattern": "^(0|[1-9][0-9]*)(?![\\s\\S])"
+                  "pattern": "^(0|[1-9][0-9]*)$"
                 }
               },
               "required": [
@@ -202,7 +202,7 @@
                         },
                         "currency": {
                           "type": "string",
-                          "pattern": "^[A-Z]{3}(?![\\s\\S])"
+                          "pattern": "^[A-Z]{3}$"
                         },
                         "decimals": {
                           "type": "integer",
@@ -225,15 +225,15 @@
                         },
                         "chain_id": {
                           "type": "string",
-                          "pattern": "^eip155:[1-9][0-9]*(?![\\s\\S])"
+                          "pattern": "^eip155:[1-9][0-9]*$"
                         },
                         "asset_id": {
                           "type": "string",
-                          "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}(?![\\s\\S])"
+                          "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}$"
                         },
                         "symbol": {
                           "type": "string",
-                          "pattern": "^[A-Za-z0-9._-]{1,16}(?![\\s\\S])"
+                          "pattern": "^[A-Za-z0-9._-]{1,16}$"
                         },
                         "decimals": {
                           "type": "integer",
@@ -253,7 +253,7 @@
                 },
                 "atomic": {
                   "type": "string",
-                  "pattern": "^(0|[1-9][0-9]*)(?![\\s\\S])"
+                  "pattern": "^(0|[1-9][0-9]*)$"
                 }
               },
               "required": [
@@ -285,7 +285,7 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "pattern": "^[a-z][a-z0-9_]{0,63}(?![\\s\\S])"
+                "pattern": "^[a-z][a-z0-9_]{0,63}$"
               }
             }
           },
@@ -326,7 +326,7 @@
                   "type": "array",
                   "items": {
                     "type": "string",
-                    "pattern": "^[a-z][a-z0-9_]{0,63}(?![\\s\\S])"
+                    "pattern": "^[a-z][a-z0-9_]{0,63}$"
                   }
                 }
               },
@@ -344,7 +344,7 @@
                 },
                 "reason_code": {
                   "type": "string",
-                  "pattern": "^[a-z][a-z0-9_]{0,63}(?![\\s\\S])"
+                  "pattern": "^[a-z][a-z0-9_]{0,63}$"
                 },
                 "retry_after": {
                   "type": "string",
@@ -366,7 +366,7 @@
                 },
                 "reason_code": {
                   "type": "string",
-                  "pattern": "^[a-z][a-z0-9_]{0,63}(?![\\s\\S])"
+                  "pattern": "^[a-z][a-z0-9_]{0,63}$"
                 }
               },
               "required": [
@@ -383,7 +383,7 @@
                 },
                 "reason_code": {
                   "type": "string",
-                  "pattern": "^[a-z][a-z0-9_]{0,63}(?![\\s\\S])"
+                  "pattern": "^[a-z][a-z0-9_]{0,63}$"
                 }
               },
               "required": [
@@ -401,7 +401,7 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "pattern": "^[a-z][a-z0-9_]{0,63}(?![\\s\\S])"
+                "pattern": "^[a-z][a-z0-9_]{0,63}$"
               }
             },
             "identity_visible_to": {
@@ -409,7 +409,7 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "pattern": "^[a-z][a-z0-9_]{0,63}(?![\\s\\S])"
+                "pattern": "^[a-z][a-z0-9_]{0,63}$"
               }
             },
             "liveness_dependencies": {
@@ -417,7 +417,7 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "pattern": "^[a-z][a-z0-9_]{0,63}(?![\\s\\S])"
+                "pattern": "^[a-z][a-z0-9_]{0,63}$"
               }
             }
           },
@@ -492,7 +492,7 @@
                         },
                         "currency": {
                           "type": "string",
-                          "pattern": "^[A-Z]{3}(?![\\s\\S])"
+                          "pattern": "^[A-Z]{3}$"
                         },
                         "decimals": {
                           "type": "integer",
@@ -504,7 +504,8 @@
                         "kind",
                         "currency",
                         "decimals"
-                      ]
+                      ],
+                      "additionalProperties": false
                     },
                     {
                       "type": "object",
@@ -515,15 +516,15 @@
                         },
                         "chain_id": {
                           "type": "string",
-                          "pattern": "^eip155:[1-9][0-9]*(?![\\s\\S])"
+                          "pattern": "^eip155:[1-9][0-9]*$"
                         },
                         "asset_id": {
                           "type": "string",
-                          "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}(?![\\s\\S])"
+                          "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}$"
                         },
                         "symbol": {
                           "type": "string",
-                          "pattern": "^[A-Za-z0-9._-]{1,16}(?![\\s\\S])"
+                          "pattern": "^[A-Za-z0-9._-]{1,16}$"
                         },
                         "decimals": {
                           "type": "integer",
@@ -537,25 +538,28 @@
                         "asset_id",
                         "symbol",
                         "decimals"
-                      ]
+                      ],
+                      "additionalProperties": false
                     }
                   ]
                 },
                 "atomic": {
                   "type": "string",
-                  "pattern": "^(0|[1-9][0-9]*)(?![\\s\\S])"
+                  "pattern": "^(0|[1-9][0-9]*)$"
                 }
               },
               "required": [
                 "asset",
                 "atomic"
-              ]
+              ],
+              "additionalProperties": false
             }
           },
           "required": [
             "side",
             "money"
-          ]
+          ],
+          "additionalProperties": false
         },
         "fiat": {
           "type": "object",
@@ -566,7 +570,7 @@
             },
             "currency": {
               "type": "string",
-              "pattern": "^[A-Z]{3}(?![\\s\\S])"
+              "pattern": "^[A-Z]{3}$"
             },
             "decimals": {
               "type": "integer",
@@ -578,7 +582,8 @@
             "kind",
             "currency",
             "decimals"
-          ]
+          ],
+          "additionalProperties": false
         },
         "crypto": {
           "type": "object",
@@ -589,15 +594,15 @@
             },
             "chain_id": {
               "type": "string",
-              "pattern": "^eip155:[1-9][0-9]*(?![\\s\\S])"
+              "pattern": "^eip155:[1-9][0-9]*$"
             },
             "asset_id": {
               "type": "string",
-              "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}(?![\\s\\S])"
+              "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}$"
             },
             "symbol": {
               "type": "string",
-              "pattern": "^[A-Za-z0-9._-]{1,16}(?![\\s\\S])"
+              "pattern": "^[A-Za-z0-9._-]{1,16}$"
             },
             "decimals": {
               "type": "integer",
@@ -611,15 +616,16 @@
             "asset_id",
             "symbol",
             "decimals"
-          ]
+          ],
+          "additionalProperties": false
         },
         "recipient": {
           "type": "string",
-          "pattern": "^0x[0-9a-fA-F]{40}(?![\\s\\S])"
+          "pattern": "^0x[0-9a-fA-F]{40}$"
         },
         "region": {
           "type": "string",
-          "pattern": "^[A-Z]{2}(?![\\s\\S])"
+          "pattern": "^[A-Z]{2}$"
         },
         "route": {
           "type": "object",
@@ -633,15 +639,15 @@
                 },
                 "chain_id": {
                   "type": "string",
-                  "pattern": "^eip155:[1-9][0-9]*(?![\\s\\S])"
+                  "pattern": "^eip155:[1-9][0-9]*$"
                 },
                 "asset_id": {
                   "type": "string",
-                  "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}(?![\\s\\S])"
+                  "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}$"
                 },
                 "symbol": {
                   "type": "string",
-                  "pattern": "^[A-Za-z0-9._-]{1,16}(?![\\s\\S])"
+                  "pattern": "^[A-Za-z0-9._-]{1,16}$"
                 },
                 "decimals": {
                   "type": "integer",
@@ -655,7 +661,8 @@
                 "asset_id",
                 "symbol",
                 "decimals"
-              ]
+              ],
+              "additionalProperties": false
             },
             "to": {
               "type": "object",
@@ -666,15 +673,15 @@
                 },
                 "chain_id": {
                   "type": "string",
-                  "pattern": "^eip155:[1-9][0-9]*(?![\\s\\S])"
+                  "pattern": "^eip155:[1-9][0-9]*$"
                 },
                 "asset_id": {
                   "type": "string",
-                  "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}(?![\\s\\S])"
+                  "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}$"
                 },
                 "symbol": {
                   "type": "string",
-                  "pattern": "^[A-Za-z0-9._-]{1,16}(?![\\s\\S])"
+                  "pattern": "^[A-Za-z0-9._-]{1,16}$"
                 },
                 "decimals": {
                   "type": "integer",
@@ -688,11 +695,12 @@
                 "asset_id",
                 "symbol",
                 "decimals"
-              ]
+              ],
+              "additionalProperties": false
             },
             "recipient": {
               "type": "string",
-              "pattern": "^0x[0-9a-fA-F]{40}(?![\\s\\S])"
+              "pattern": "^0x[0-9a-fA-F]{40}$"
             },
             "settlement": {
               "type": "string",
@@ -707,7 +715,8 @@
             "to",
             "recipient",
             "settlement"
-          ]
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -718,7 +727,8 @@
         "fiat",
         "crypto",
         "recipient"
-      ]
+      ],
+      "additionalProperties": false
     },
     {
       "type": "object",
@@ -733,23 +743,23 @@
         },
         "operation_id": {
           "type": "string",
-          "pattern": "^[A-Za-z0-9_-]{1,96}(?![\\s\\S])"
+          "pattern": "^[A-Za-z0-9_-]{1,96}$"
         },
         "quote_id": {
           "type": "string",
-          "pattern": "^[A-Za-z0-9_-]{1,96}(?![\\s\\S])"
+          "pattern": "^[A-Za-z0-9_-]{1,96}$"
         },
         "offer_id": {
           "type": "string",
-          "pattern": "^[A-Za-z0-9_-]{1,96}(?![\\s\\S])"
+          "pattern": "^[A-Za-z0-9_-]{1,96}$"
         },
         "capability_revision": {
           "type": "string",
-          "pattern": "^[A-Za-z0-9_-]{1,96}(?![\\s\\S])"
+          "pattern": "^[A-Za-z0-9_-]{1,96}$"
         },
         "request_digest": {
           "type": "string",
-          "pattern": "^0x[0-9a-f]{64}(?![\\s\\S])"
+          "pattern": "^0x[0-9a-f]{64}$"
         },
         "pay": {
           "type": "object",
@@ -765,7 +775,7 @@
                     },
                     "currency": {
                       "type": "string",
-                      "pattern": "^[A-Z]{3}(?![\\s\\S])"
+                      "pattern": "^[A-Z]{3}$"
                     },
                     "decimals": {
                       "type": "integer",
@@ -788,15 +798,15 @@
                     },
                     "chain_id": {
                       "type": "string",
-                      "pattern": "^eip155:[1-9][0-9]*(?![\\s\\S])"
+                      "pattern": "^eip155:[1-9][0-9]*$"
                     },
                     "asset_id": {
                       "type": "string",
-                      "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}(?![\\s\\S])"
+                      "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}$"
                     },
                     "symbol": {
                       "type": "string",
-                      "pattern": "^[A-Za-z0-9._-]{1,16}(?![\\s\\S])"
+                      "pattern": "^[A-Za-z0-9._-]{1,16}$"
                     },
                     "decimals": {
                       "type": "integer",
@@ -816,7 +826,7 @@
             },
             "atomic": {
               "type": "string",
-              "pattern": "^(0|[1-9][0-9]*)(?![\\s\\S])"
+              "pattern": "^(0|[1-9][0-9]*)$"
             }
           },
           "required": [
@@ -838,7 +848,7 @@
                     },
                     "currency": {
                       "type": "string",
-                      "pattern": "^[A-Z]{3}(?![\\s\\S])"
+                      "pattern": "^[A-Z]{3}$"
                     },
                     "decimals": {
                       "type": "integer",
@@ -861,15 +871,15 @@
                     },
                     "chain_id": {
                       "type": "string",
-                      "pattern": "^eip155:[1-9][0-9]*(?![\\s\\S])"
+                      "pattern": "^eip155:[1-9][0-9]*$"
                     },
                     "asset_id": {
                       "type": "string",
-                      "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}(?![\\s\\S])"
+                      "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}$"
                     },
                     "symbol": {
                       "type": "string",
-                      "pattern": "^[A-Za-z0-9._-]{1,16}(?![\\s\\S])"
+                      "pattern": "^[A-Za-z0-9._-]{1,16}$"
                     },
                     "decimals": {
                       "type": "integer",
@@ -889,7 +899,7 @@
             },
             "atomic": {
               "type": "string",
-              "pattern": "^(0|[1-9][0-9]*)(?![\\s\\S])"
+              "pattern": "^(0|[1-9][0-9]*)$"
             }
           },
           "required": [
@@ -905,7 +915,7 @@
             "properties": {
               "code": {
                 "type": "string",
-                "pattern": "^[a-z][a-z0-9_]{0,63}(?![\\s\\S])"
+                "pattern": "^[a-z][a-z0-9_]{0,63}$"
               },
               "money": {
                 "type": "object",
@@ -921,7 +931,7 @@
                           },
                           "currency": {
                             "type": "string",
-                            "pattern": "^[A-Z]{3}(?![\\s\\S])"
+                            "pattern": "^[A-Z]{3}$"
                           },
                           "decimals": {
                             "type": "integer",
@@ -944,15 +954,15 @@
                           },
                           "chain_id": {
                             "type": "string",
-                            "pattern": "^eip155:[1-9][0-9]*(?![\\s\\S])"
+                            "pattern": "^eip155:[1-9][0-9]*$"
                           },
                           "asset_id": {
                             "type": "string",
-                            "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}(?![\\s\\S])"
+                            "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}$"
                           },
                           "symbol": {
                             "type": "string",
-                            "pattern": "^[A-Za-z0-9._-]{1,16}(?![\\s\\S])"
+                            "pattern": "^[A-Za-z0-9._-]{1,16}$"
                           },
                           "decimals": {
                             "type": "integer",
@@ -972,7 +982,7 @@
                   },
                   "atomic": {
                     "type": "string",
-                    "pattern": "^(0|[1-9][0-9]*)(?![\\s\\S])"
+                    "pattern": "^(0|[1-9][0-9]*)$"
                   }
                 },
                 "required": [
@@ -1048,7 +1058,7 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "pattern": "^[a-z][a-z0-9_]{0,63}(?![\\s\\S])"
+                "pattern": "^[a-z][a-z0-9_]{0,63}$"
               }
             },
             "identity_visible_to": {
@@ -1056,7 +1066,7 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "pattern": "^[a-z][a-z0-9_]{0,63}(?![\\s\\S])"
+                "pattern": "^[a-z][a-z0-9_]{0,63}$"
               }
             },
             "liveness_dependencies": {
@@ -1064,7 +1074,7 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "pattern": "^[a-z][a-z0-9_]{0,63}(?![\\s\\S])"
+                "pattern": "^[a-z][a-z0-9_]{0,63}$"
               }
             }
           },
@@ -1104,11 +1114,11 @@
         },
         "operation_id": {
           "type": "string",
-          "pattern": "^[A-Za-z0-9_-]{1,96}(?![\\s\\S])"
+          "pattern": "^[A-Za-z0-9_-]{1,96}$"
         },
         "revision": {
           "type": "string",
-          "pattern": "^(0|[1-9][0-9]*)(?![\\s\\S])"
+          "pattern": "^(0|[1-9][0-9]*)$"
         },
         "direction": {
           "type": "string",
@@ -1212,7 +1222,7 @@
             },
             "transaction_hash": {
               "type": "string",
-              "pattern": "^0x[0-9a-fA-F]{64}(?![\\s\\S])"
+              "pattern": "^0x[0-9a-fA-F]{64}$"
             }
           },
           "required": [
@@ -1268,7 +1278,7 @@
             },
             "transaction_hash": {
               "type": "string",
-              "pattern": "^0x[0-9a-fA-F]{64}(?![\\s\\S])"
+              "pattern": "^0x[0-9a-fA-F]{64}$"
             }
           },
           "required": [
@@ -1330,7 +1340,7 @@
         },
         "operation_id": {
           "type": "string",
-          "pattern": "^[A-Za-z0-9_-]{1,96}(?![\\s\\S])"
+          "pattern": "^[A-Za-z0-9_-]{1,96}$"
         },
         "leg": {
           "type": "string",
@@ -1358,28 +1368,29 @@
           "properties": {
             "expected_revision": {
               "type": "string",
-              "pattern": "^(0|[1-9][0-9]*)(?![\\s\\S])"
+              "pattern": "^(0|[1-9][0-9]*)$"
             },
             "idempotency_key": {
               "type": "string",
-              "pattern": "^[A-Za-z0-9_-]{1,96}(?![\\s\\S])"
+              "pattern": "^[A-Za-z0-9_-]{1,96}$"
             }
           },
           "required": [
             "expected_revision",
             "idempotency_key"
-          ]
+          ],
+          "additionalProperties": false
         },
         "quote_id": {
           "type": "string",
-          "pattern": "^[A-Za-z0-9_-]{1,96}(?![\\s\\S])"
+          "pattern": "^[A-Za-z0-9_-]{1,96}$"
         },
         "accepted_disclosure_codes": {
           "maxItems": 32,
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^[a-z][a-z0-9_]{0,63}(?![\\s\\S])"
+            "pattern": "^[a-z][a-z0-9_]{0,63}$"
           }
         }
       },
@@ -1390,7 +1401,8 @@
         "leg",
         "action",
         "context"
-      ]
+      ],
+      "additionalProperties": false
     },
     {
       "type": "object",

@@ -47,6 +47,12 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 - Snapshot bounded data descriptors at the `parseRamp` boundary; reject accessors
   without invoking them and contain throwing or revoked Proxies as `invalid_request`.
   Never log or retain escaped provider errors.
+- Reject unknown keys in `ramp/1` intents and commands; provider data still drops
+  bounded unknown fields. `parseRamp` now checks route assets and recipient against
+  the intent, preview pay/receive/fee assets against the leg order, and CAIP-19
+  `asset_id` chains. `approve` and `execute_route` require `quote_id`.
+  `checkRampCommand` returns `invalid_command` / `invalid_receipt` instead of throwing.
+  Schema patterns drop lookahead so RE2 validators accept them.
 
 ### Fixed
 

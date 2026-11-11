@@ -439,21 +439,21 @@
         "request_digest": "0x1111111111111111111111111111111111111111111111111111111111111111",
         "pay": {
           "asset": {
-            "kind": "fiat",
-            "currency": "USD",
-            "decimals": 2
-          },
-          "atomic": "10000"
-        },
-        "receive": {
-          "asset": {
             "kind": "crypto",
             "chain_id": "eip155:8453",
             "asset_id": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "symbol": "USDC",
             "decimals": 6
           },
-          "atomic": "99000000"
+          "atomic": "100000000"
+        },
+        "receive": {
+          "asset": {
+            "kind": "fiat",
+            "currency": "USD",
+            "decimals": 2
+          },
+          "atomic": "9900"
         },
         "fees": [
           {
@@ -1016,6 +1016,110 @@
         "observed_at": "2026-11-10T00:00:00Z",
         "future_extension": {
           "enabled": true
+        }
+      },
+      "valid": true
+    },
+    {
+      "id": "intent_onramp_route",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "intent",
+        "direction": "onramp",
+        "exact": {
+          "side": "fiat",
+          "money": {
+            "asset": {
+              "kind": "fiat",
+              "currency": "USD",
+              "decimals": 2
+            },
+            "atomic": "900719925474099300"
+          }
+        },
+        "fiat": {
+          "kind": "fiat",
+          "currency": "USD",
+          "decimals": 2
+        },
+        "crypto": {
+          "kind": "crypto",
+          "chain_id": "eip155:8453",
+          "asset_id": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "symbol": "USDC",
+          "decimals": 6
+        },
+        "recipient": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+        "route": {
+          "from": {
+            "kind": "crypto",
+            "chain_id": "eip155:8453",
+            "asset_id": "eip155:8453/erc20:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "symbol": "USDC",
+            "decimals": 6
+          },
+          "to": {
+            "kind": "crypto",
+            "chain_id": "eip155:1",
+            "asset_id": "eip155:1/erc20:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+            "symbol": "USDC",
+            "decimals": 6
+          },
+          "recipient": "0xABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
+          "settlement": "stealth"
+        }
+      },
+      "valid": true
+    },
+    {
+      "id": "intent_offramp_route",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "intent",
+        "direction": "offramp",
+        "exact": {
+          "side": "crypto",
+          "money": {
+            "asset": {
+              "kind": "crypto",
+              "chain_id": "eip155:8453",
+              "asset_id": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+              "symbol": "USDC",
+              "decimals": 6
+            },
+            "atomic": "1000000"
+          }
+        },
+        "fiat": {
+          "kind": "fiat",
+          "currency": "USD",
+          "decimals": 2
+        },
+        "crypto": {
+          "kind": "crypto",
+          "chain_id": "eip155:8453",
+          "asset_id": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "symbol": "USDC",
+          "decimals": 6
+        },
+        "recipient": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+        "route": {
+          "from": {
+            "kind": "crypto",
+            "chain_id": "eip155:1",
+            "asset_id": "eip155:1/erc20:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+            "symbol": "USDC",
+            "decimals": 6
+          },
+          "to": {
+            "kind": "crypto",
+            "chain_id": "eip155:8453",
+            "asset_id": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "symbol": "USDC",
+            "decimals": 6
+          },
+          "recipient": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+          "settlement": "public"
         }
       },
       "valid": true
@@ -2252,7 +2356,7 @@
               "currency": "USD",
               "decimals": 2
             },
-            "atomic": "\uff11"
+            "atomic": "１"
           }
         },
         "fiat": {
@@ -2363,8 +2467,16 @@
         "revision": "8",
         "direction": "offramp",
         "leg_order": ["xochi", "peer"],
-        "peer": { "name": "peer", "state": "skipped", "recoverable": false },
-        "xochi": { "name": "xochi", "state": "completed", "recoverable": false },
+        "peer": {
+          "name": "peer",
+          "state": "skipped",
+          "recoverable": false
+        },
+        "xochi": {
+          "name": "xochi",
+          "state": "completed",
+          "recoverable": false
+        },
         "allowed_actions": [],
         "updated_at": "2026-11-10T00:00:00Z",
         "terminal": true
@@ -2464,6 +2576,698 @@
         "terminal": true
       },
       "valid": false
+    },
+    {
+      "id": "intent_unknown_key_rejected",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "intent",
+        "direction": "onramp",
+        "exact": {
+          "side": "fiat",
+          "money": {
+            "asset": {
+              "kind": "fiat",
+              "currency": "USD",
+              "decimals": 2
+            },
+            "atomic": "900719925474099300"
+          }
+        },
+        "fiat": {
+          "kind": "fiat",
+          "currency": "USD",
+          "decimals": 2
+        },
+        "crypto": {
+          "kind": "crypto",
+          "chain_id": "eip155:8453",
+          "asset_id": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "symbol": "USDC",
+          "decimals": 6
+        },
+        "recipient": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+        "rout": {
+          "from": {
+            "kind": "crypto",
+            "chain_id": "eip155:8453",
+            "asset_id": "eip155:8453/erc20:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "symbol": "USDC",
+            "decimals": 6
+          },
+          "to": {
+            "kind": "crypto",
+            "chain_id": "eip155:1",
+            "asset_id": "eip155:1/erc20:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+            "symbol": "USDC",
+            "decimals": 6
+          },
+          "recipient": "0xABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
+          "settlement": "stealth"
+        }
+      },
+      "valid": false
+    },
+    {
+      "id": "intent_route_unknown_key_rejected",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "intent",
+        "direction": "onramp",
+        "exact": {
+          "side": "fiat",
+          "money": {
+            "asset": {
+              "kind": "fiat",
+              "currency": "USD",
+              "decimals": 2
+            },
+            "atomic": "900719925474099300"
+          }
+        },
+        "fiat": {
+          "kind": "fiat",
+          "currency": "USD",
+          "decimals": 2
+        },
+        "crypto": {
+          "kind": "crypto",
+          "chain_id": "eip155:8453",
+          "asset_id": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "symbol": "USDC",
+          "decimals": 6
+        },
+        "recipient": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+        "route": {
+          "from": {
+            "kind": "crypto",
+            "chain_id": "eip155:8453",
+            "asset_id": "eip155:8453/erc20:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "symbol": "USDC",
+            "decimals": 6
+          },
+          "to": {
+            "kind": "crypto",
+            "chain_id": "eip155:1",
+            "asset_id": "eip155:1/erc20:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+            "symbol": "USDC",
+            "decimals": 6
+          },
+          "recipient": "0xABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
+          "settlement": "stealth",
+          "memo": "x"
+        }
+      },
+      "valid": false
+    },
+    {
+      "id": "intent_asset_unknown_key_rejected",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "intent",
+        "direction": "onramp",
+        "exact": {
+          "side": "fiat",
+          "money": {
+            "asset": {
+              "kind": "fiat",
+              "currency": "USD",
+              "decimals": 2
+            },
+            "atomic": "900719925474099300"
+          }
+        },
+        "fiat": {
+          "kind": "fiat",
+          "currency": "USD",
+          "decimals": 2
+        },
+        "crypto": {
+          "kind": "crypto",
+          "chain_id": "eip155:8453",
+          "asset_id": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "symbol": "USDC",
+          "decimals": 6,
+          "note": "x"
+        },
+        "recipient": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+        "route": {
+          "from": {
+            "kind": "crypto",
+            "chain_id": "eip155:8453",
+            "asset_id": "eip155:8453/erc20:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "symbol": "USDC",
+            "decimals": 6
+          },
+          "to": {
+            "kind": "crypto",
+            "chain_id": "eip155:1",
+            "asset_id": "eip155:1/erc20:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+            "symbol": "USDC",
+            "decimals": 6
+          },
+          "recipient": "0xABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
+          "settlement": "stealth"
+        }
+      },
+      "valid": false
+    },
+    {
+      "id": "intent_onramp_route_from_not_peer_asset",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "intent",
+        "direction": "onramp",
+        "exact": {
+          "side": "fiat",
+          "money": {
+            "asset": {
+              "kind": "fiat",
+              "currency": "USD",
+              "decimals": 2
+            },
+            "atomic": "900719925474099300"
+          }
+        },
+        "fiat": {
+          "kind": "fiat",
+          "currency": "USD",
+          "decimals": 2
+        },
+        "crypto": {
+          "kind": "crypto",
+          "chain_id": "eip155:8453",
+          "asset_id": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "symbol": "USDC",
+          "decimals": 6
+        },
+        "recipient": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+        "route": {
+          "from": {
+            "kind": "crypto",
+            "chain_id": "eip155:1",
+            "asset_id": "eip155:1/erc20:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+            "symbol": "USDC",
+            "decimals": 6
+          },
+          "to": {
+            "kind": "crypto",
+            "chain_id": "eip155:1",
+            "asset_id": "eip155:1/erc20:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+            "symbol": "USDC",
+            "decimals": 6
+          },
+          "recipient": "0xABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
+          "settlement": "stealth"
+        }
+      },
+      "valid": false
+    },
+    {
+      "id": "intent_offramp_route_to_not_peer_asset",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "intent",
+        "direction": "offramp",
+        "exact": {
+          "side": "crypto",
+          "money": {
+            "asset": {
+              "kind": "crypto",
+              "chain_id": "eip155:8453",
+              "asset_id": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+              "symbol": "USDC",
+              "decimals": 6
+            },
+            "atomic": "1000000"
+          }
+        },
+        "fiat": {
+          "kind": "fiat",
+          "currency": "USD",
+          "decimals": 2
+        },
+        "crypto": {
+          "kind": "crypto",
+          "chain_id": "eip155:8453",
+          "asset_id": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "symbol": "USDC",
+          "decimals": 6
+        },
+        "recipient": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+        "route": {
+          "from": {
+            "kind": "crypto",
+            "chain_id": "eip155:1",
+            "asset_id": "eip155:1/erc20:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+            "symbol": "USDC",
+            "decimals": 6
+          },
+          "to": {
+            "kind": "crypto",
+            "chain_id": "eip155:1",
+            "asset_id": "eip155:1/erc20:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+            "symbol": "USDC",
+            "decimals": 6
+          },
+          "recipient": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+          "settlement": "public"
+        }
+      },
+      "valid": false
+    },
+    {
+      "id": "intent_route_recipient_mismatch",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "intent",
+        "direction": "onramp",
+        "exact": {
+          "side": "fiat",
+          "money": {
+            "asset": {
+              "kind": "fiat",
+              "currency": "USD",
+              "decimals": 2
+            },
+            "atomic": "900719925474099300"
+          }
+        },
+        "fiat": {
+          "kind": "fiat",
+          "currency": "USD",
+          "decimals": 2
+        },
+        "crypto": {
+          "kind": "crypto",
+          "chain_id": "eip155:8453",
+          "asset_id": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "symbol": "USDC",
+          "decimals": 6
+        },
+        "recipient": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+        "route": {
+          "from": {
+            "kind": "crypto",
+            "chain_id": "eip155:8453",
+            "asset_id": "eip155:8453/erc20:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "symbol": "USDC",
+            "decimals": 6
+          },
+          "to": {
+            "kind": "crypto",
+            "chain_id": "eip155:1",
+            "asset_id": "eip155:1/erc20:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+            "symbol": "USDC",
+            "decimals": 6
+          },
+          "recipient": "0x2222222222222222222222222222222222222222",
+          "settlement": "stealth"
+        }
+      },
+      "valid": false
+    },
+    {
+      "id": "intent_asset_id_chain_mismatch",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "intent",
+        "direction": "onramp",
+        "exact": {
+          "side": "fiat",
+          "money": {
+            "asset": {
+              "kind": "fiat",
+              "currency": "USD",
+              "decimals": 2
+            },
+            "atomic": "900719925474099300"
+          }
+        },
+        "fiat": {
+          "kind": "fiat",
+          "currency": "USD",
+          "decimals": 2
+        },
+        "crypto": {
+          "kind": "crypto",
+          "chain_id": "eip155:8453",
+          "asset_id": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "symbol": "USDC",
+          "decimals": 6
+        },
+        "recipient": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+        "route": {
+          "from": {
+            "kind": "crypto",
+            "chain_id": "eip155:8453",
+            "asset_id": "eip155:8453/erc20:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "symbol": "USDC",
+            "decimals": 6
+          },
+          "to": {
+            "kind": "crypto",
+            "chain_id": "eip155:10",
+            "asset_id": "eip155:1/erc20:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+            "symbol": "USDC",
+            "decimals": 6
+          },
+          "recipient": "0xABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
+          "settlement": "stealth"
+        }
+      },
+      "valid": false
+    },
+    {
+      "id": "offer_asset_id_chain_mismatch",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "offer",
+        "offer_id": "offer_fixture",
+        "capability_revision": "cap_fixture",
+        "provider_id": "peer",
+        "direction": "onramp",
+        "fiat": {
+          "kind": "fiat",
+          "currency": "USD",
+          "decimals": 2
+        },
+        "crypto": {
+          "kind": "crypto",
+          "chain_id": "eip155:8453",
+          "asset_id": "eip155:1/erc20:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "symbol": "USDC",
+          "decimals": 6
+        },
+        "rail": {
+          "id": "fixture_rail",
+          "label": "Synthetic fixture rail"
+        },
+        "bounds": {
+          "measured_in": "fiat",
+          "minimum": {
+            "asset": {
+              "kind": "fiat",
+              "currency": "USD",
+              "decimals": 2
+            },
+            "atomic": "100"
+          },
+          "maximum": {
+            "asset": {
+              "kind": "fiat",
+              "currency": "USD",
+              "decimals": 2
+            },
+            "atomic": "100000"
+          }
+        },
+        "interaction": {
+          "presentation": "popup",
+          "requirement_codes": ["peer_extension"]
+        },
+        "availability": {
+          "state": "available",
+          "valid_until": "2026-11-10T00:01:00Z"
+        },
+        "disclosures": {
+          "public_state": ["base_settlement"],
+          "identity_visible_to": ["fiat_counterparty", "peer"],
+          "liveness_dependencies": ["peer_gate", "peer_tee"]
+        },
+        "observed_at": "2026-11-10T00:00:00Z"
+      },
+      "valid": false
+    },
+    {
+      "id": "preview_asset_id_chain_mismatch",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "preview",
+        "operation_id": "op_fixture",
+        "quote_id": "quote_fixture",
+        "offer_id": "offer_fixture",
+        "capability_revision": "cap_fixture",
+        "request_digest": "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "pay": {
+          "asset": {
+            "kind": "fiat",
+            "currency": "USD",
+            "decimals": 2
+          },
+          "atomic": "10000"
+        },
+        "receive": {
+          "asset": {
+            "kind": "crypto",
+            "chain_id": "eip155:8453",
+            "asset_id": "eip155:1/erc20:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+            "symbol": "USDC",
+            "decimals": 6
+          },
+          "atomic": "99000000"
+        },
+        "fees": [
+          {
+            "code": "provider_fee",
+            "money": {
+              "asset": {
+                "kind": "fiat",
+                "currency": "USD",
+                "decimals": 2
+              },
+              "atomic": "100"
+            }
+          }
+        ],
+        "expires_at": "2026-11-10T00:01:00Z",
+        "leg_order": ["peer", "xochi"],
+        "disclosures": {
+          "public_state": ["base_settlement"],
+          "identity_visible_to": ["fiat_counterparty", "peer"],
+          "liveness_dependencies": ["peer_gate", "peer_tee"]
+        }
+      },
+      "valid": false
+    },
+    {
+      "id": "preview_pay_receive_same_kind",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "preview",
+        "operation_id": "op_fixture",
+        "quote_id": "quote_fixture",
+        "offer_id": "offer_fixture",
+        "capability_revision": "cap_fixture",
+        "request_digest": "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "pay": {
+          "asset": {
+            "kind": "fiat",
+            "currency": "USD",
+            "decimals": 2
+          },
+          "atomic": "10000"
+        },
+        "receive": {
+          "asset": {
+            "kind": "fiat",
+            "currency": "USD",
+            "decimals": 2
+          },
+          "atomic": "9900"
+        },
+        "fees": [
+          {
+            "code": "provider_fee",
+            "money": {
+              "asset": {
+                "kind": "fiat",
+                "currency": "USD",
+                "decimals": 2
+              },
+              "atomic": "100"
+            }
+          }
+        ],
+        "expires_at": "2026-11-10T00:01:00Z",
+        "leg_order": ["peer"],
+        "disclosures": {
+          "public_state": ["base_settlement"],
+          "identity_visible_to": ["fiat_counterparty", "peer"],
+          "liveness_dependencies": ["peer_gate", "peer_tee"]
+        }
+      },
+      "valid": false
+    },
+    {
+      "id": "preview_order_contradicts_direction",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "preview",
+        "operation_id": "op_fixture",
+        "quote_id": "quote_fixture",
+        "offer_id": "offer_fixture",
+        "capability_revision": "cap_fixture",
+        "request_digest": "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "pay": {
+          "asset": {
+            "kind": "crypto",
+            "chain_id": "eip155:8453",
+            "asset_id": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "symbol": "USDC",
+            "decimals": 6
+          },
+          "atomic": "99000000"
+        },
+        "receive": {
+          "asset": {
+            "kind": "fiat",
+            "currency": "USD",
+            "decimals": 2
+          },
+          "atomic": "10000"
+        },
+        "fees": [
+          {
+            "code": "provider_fee",
+            "money": {
+              "asset": {
+                "kind": "fiat",
+                "currency": "USD",
+                "decimals": 2
+              },
+              "atomic": "100"
+            }
+          }
+        ],
+        "expires_at": "2026-11-10T00:01:00Z",
+        "leg_order": ["peer", "xochi"],
+        "disclosures": {
+          "public_state": ["base_settlement"],
+          "identity_visible_to": ["fiat_counterparty", "peer"],
+          "liveness_dependencies": ["peer_gate", "peer_tee"]
+        }
+      },
+      "valid": false
+    },
+    {
+      "id": "preview_fee_in_unrelated_asset",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "preview",
+        "operation_id": "op_fixture",
+        "quote_id": "quote_fixture",
+        "offer_id": "offer_fixture",
+        "capability_revision": "cap_fixture",
+        "request_digest": "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "pay": {
+          "asset": {
+            "kind": "fiat",
+            "currency": "USD",
+            "decimals": 2
+          },
+          "atomic": "10000"
+        },
+        "receive": {
+          "asset": {
+            "kind": "crypto",
+            "chain_id": "eip155:8453",
+            "asset_id": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "symbol": "USDC",
+            "decimals": 6
+          },
+          "atomic": "99000000"
+        },
+        "fees": [
+          {
+            "code": "provider_fee",
+            "money": {
+              "asset": {
+                "kind": "fiat",
+                "currency": "EUR",
+                "decimals": 2
+              },
+              "atomic": "100"
+            }
+          }
+        ],
+        "expires_at": "2026-11-10T00:01:00Z",
+        "leg_order": ["peer"],
+        "disclosures": {
+          "public_state": ["base_settlement"],
+          "identity_visible_to": ["fiat_counterparty", "peer"],
+          "liveness_dependencies": ["peer_gate", "peer_tee"]
+        }
+      },
+      "valid": false
+    },
+    {
+      "id": "command_unknown_key_rejected",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "command",
+        "operation_id": "op_fixture",
+        "leg": "peer",
+        "action": "approve",
+        "context": {
+          "expected_revision": "7",
+          "idempotency_key": "command_fixture"
+        },
+        "quote_id": "quote_fixture",
+        "accepted_disclosure_codes": ["base_settlement"],
+        "idempotency_key": "misplaced"
+      },
+      "valid": false
+    },
+    {
+      "id": "command_context_unknown_key_rejected",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "command",
+        "operation_id": "op_fixture",
+        "leg": "peer",
+        "action": "approve",
+        "context": {
+          "expected_revision": "7",
+          "idempotency_key": "command_fixture",
+          "retry": true
+        },
+        "quote_id": "quote_fixture",
+        "accepted_disclosure_codes": ["base_settlement"]
+      },
+      "valid": false
+    },
+    {
+      "id": "command_approve_without_quote",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "command",
+        "operation_id": "op_fixture",
+        "leg": "peer",
+        "action": "approve",
+        "context": {
+          "expected_revision": "7",
+          "idempotency_key": "command_fixture"
+        },
+        "accepted_disclosure_codes": ["base_settlement"]
+      },
+      "valid": false
+    },
+    {
+      "id": "command_execute_route_without_quote",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "command",
+        "operation_id": "op_fixture",
+        "leg": "xochi",
+        "action": "execute_route",
+        "context": {
+          "expected_revision": "7",
+          "idempotency_key": "command_fixture"
+        },
+        "accepted_disclosure_codes": ["base_settlement"]
+      },
+      "valid": false
     }
   ],
   "atomic_cases": [
@@ -2528,7 +3332,7 @@
       "valid": false
     },
     {
-      "value": "\uff11",
+      "value": "１",
       "valid": false
     },
     {
@@ -3115,7 +3919,8 @@
         "context": {
           "expected_revision": "7",
           "idempotency_key": "recovery_fixture"
-        }
+        },
+        "quote_id": "quote_fixture"
       },
       "expected": "action_not_allowed"
     },
@@ -3296,8 +4101,16 @@
         "revision": "7",
         "direction": "onramp",
         "leg_order": ["peer", "xochi"],
-        "peer": { "name": "peer", "state": "completed", "recoverable": false },
-        "xochi": { "name": "xochi", "state": "processing", "recoverable": true },
+        "peer": {
+          "name": "peer",
+          "state": "completed",
+          "recoverable": false
+        },
+        "xochi": {
+          "name": "xochi",
+          "state": "processing",
+          "recoverable": true
+        },
         "allowed_actions": ["recover_route"],
         "updated_at": "2026-11-10T00:00:00Z",
         "terminal": false
@@ -3308,9 +4121,169 @@
         "operation_id": "op_fixture",
         "leg": "xochi",
         "action": "recover_route",
-        "context": { "expected_revision": "7", "idempotency_key": "recovery_fixture" }
+        "context": {
+          "expected_revision": "7",
+          "idempotency_key": "recovery_fixture"
+        }
       },
       "expected": "action_not_allowed"
+    },
+    {
+      "id": "approve_requires_quote_binding",
+      "snapshot": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "onramp",
+        "leg_order": ["peer"],
+        "peer": {
+          "name": "peer",
+          "state": "approval_required",
+          "recoverable": false
+        },
+        "allowed_actions": ["approve"],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": false
+      },
+      "command": {
+        "contract_version": "ramp/1",
+        "kind": "command",
+        "operation_id": "op_fixture",
+        "leg": "peer",
+        "action": "approve",
+        "context": {
+          "expected_revision": "7",
+          "idempotency_key": "command_fixture"
+        },
+        "accepted_disclosure_codes": ["base_settlement"]
+      },
+      "expected": "invalid_command"
+    },
+    {
+      "id": "execute_route_requires_quote_binding",
+      "snapshot": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "onramp",
+        "leg_order": ["peer", "xochi"],
+        "peer": {
+          "name": "peer",
+          "state": "completed",
+          "recoverable": false
+        },
+        "allowed_actions": ["execute_route"],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": false,
+        "xochi": {
+          "name": "xochi",
+          "state": "approval_required",
+          "recoverable": false
+        }
+      },
+      "command": {
+        "contract_version": "ramp/1",
+        "kind": "command",
+        "operation_id": "op_fixture",
+        "leg": "xochi",
+        "action": "execute_route",
+        "context": {
+          "expected_revision": "7",
+          "idempotency_key": "route_fixture"
+        }
+      },
+      "expected": "invalid_command"
+    },
+    {
+      "id": "command_with_unknown_key",
+      "snapshot": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "onramp",
+        "leg_order": ["peer"],
+        "peer": {
+          "name": "peer",
+          "state": "approval_required",
+          "recoverable": false
+        },
+        "allowed_actions": ["approve"],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": false
+      },
+      "command": {
+        "contract_version": "ramp/1",
+        "kind": "command",
+        "operation_id": "op_fixture",
+        "leg": "peer",
+        "action": "approve",
+        "context": {
+          "expected_revision": "7",
+          "idempotency_key": "command_fixture"
+        },
+        "quote_id": "quote_fixture",
+        "accepted_disclosure_codes": ["base_settlement"],
+        "retry": true
+      },
+      "expected": "invalid_command"
+    },
+    {
+      "id": "malformed_receipt_command",
+      "snapshot": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "8",
+        "direction": "onramp",
+        "leg_order": ["peer"],
+        "peer": {
+          "name": "peer",
+          "state": "processing",
+          "recoverable": false
+        },
+        "allowed_actions": [],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": false
+      },
+      "command": {
+        "contract_version": "ramp/1",
+        "kind": "command",
+        "operation_id": "op_fixture",
+        "leg": "peer",
+        "action": "approve",
+        "context": {
+          "expected_revision": "7",
+          "idempotency_key": "command_fixture"
+        },
+        "quote_id": "quote_fixture",
+        "accepted_disclosure_codes": ["base_settlement"]
+      },
+      "expected": "invalid_receipt",
+      "receipt": {
+        "command": {
+          "contract_version": "ramp/1",
+          "kind": "command"
+        },
+        "snapshot": {
+          "contract_version": "ramp/1",
+          "kind": "snapshot",
+          "operation_id": "op_fixture",
+          "revision": "8",
+          "direction": "onramp",
+          "leg_order": ["peer"],
+          "peer": {
+            "name": "peer",
+            "state": "processing",
+            "recoverable": false
+          },
+          "allowed_actions": [],
+          "updated_at": "2026-11-10T00:00:00Z",
+          "terminal": false
+        }
+      }
     }
   ]
 }

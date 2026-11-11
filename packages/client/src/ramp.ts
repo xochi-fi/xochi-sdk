@@ -7,7 +7,7 @@ export const RAMP_CONTRACT_VERSION = "ramp/1" as const;
 
 export const AtomicAmountSchema = z
   .string()
-  .regex(/^(0|[1-9][0-9]*)(?![\s\S])/)
+  .regex(/^(0|[1-9][0-9]*)$/)
   .brand<"AtomicAmount">();
 export type AtomicAmount = z.infer<typeof AtomicAmountSchema>;
 
@@ -18,10 +18,10 @@ export function atomic(value: string | bigint): AtomicAmount {
   return result.data;
 }
 
-const reference = z.string().regex(/^[A-Za-z0-9_-]{1,96}(?![\s\S])/);
-const code = z.string().regex(/^[a-z][a-z0-9_]{0,63}(?![\s\S])/);
+const reference = z.string().regex(/^[A-Za-z0-9_-]{1,96}$/);
+const code = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/);
 const timestamp = z.iso.datetime();
-const revision = z.string().regex(/^(0|[1-9][0-9]*)(?![\s\S])/);
+const revision = z.string().regex(/^(0|[1-9][0-9]*)$/);
 const codes = z.array(code).max(32);
 const base = { contract_version: z.literal(RAMP_CONTRACT_VERSION) };
 
@@ -88,20 +88,29 @@ export type RampAvailability = z.infer<typeof RampAvailabilitySchema>;
 
 const fiatAsset = z.object({
   kind: z.literal("fiat"),
-  currency: z.string().regex(/^[A-Z]{3}(?![\s\S])/),
+  currency: z.string().regex(/^[A-Z]{3}$/),
   decimals: z.number().int().min(0).max(18),
 });
 const cryptoAsset = z.object({
   kind: z.literal("crypto"),
-  chain_id: z.string().regex(/^eip155:[1-9][0-9]*(?![\s\S])/),
-  asset_id: z.string().regex(/^(eip155:[1-9][0-9]*\/erc20:)?0x[0-9a-fA-F]{40}(?![\s\S])/),
-  symbol: z.string().regex(/^[A-Za-z0-9._-]{1,16}(?![\s\S])/),
+  chain_id: z.string().regex(/^eip155:[1-9][0-9]*$/),
+  asset_id: z.string().regex(/^(eip155:[1-9][0-9]*\/erc20:)?0x[0-9a-fA-F]{40}$/),
+  symbol: z.string().regex(/^[A-Za-z0-9._-]{1,16}$/),
   decimals: z.number().int().min(0).max(255),
 });
 export const RampAssetSchema = z.discriminatedUnion("kind", [fiatAsset, cryptoAsset]);
 export type RampAsset = z.infer<typeof RampAssetSchema>;
 export const RampMoneySchema = z.object({ asset: RampAssetSchema, atomic: AtomicAmountSchema });
 export type RampMoney = z.infer<typeof RampMoneySchema>;
+// Caller-authored messages (intent, command) reject unknown keys at every level, so a misspelt
+// optional field such as `rout` fails instead of silently dropping the route. Provider data
+// (offer, preview, snapshot, error) keeps discarding bounded unknown fields.
+const strictFiatAsset = z.strictObject(fiatAsset.shape);
+const strictCryptoAsset = z.strictObject(cryptoAsset.shape);
+const strictMoney = z.strictObject({
+  asset: z.discriminatedUnion("kind", [strictFiatAsset, strictCryptoAsset]),
+  atomic: AtomicAmountSchema,
+});
 export const RampDisclosureFactsSchema = z.object({
   public_state: codes,
   identity_visible_to: codes,
@@ -134,23 +143,23 @@ export const RampOfferSchema = z.object({
 });
 export type RampOffer = z.infer<typeof RampOfferSchema>;
 
-export const RampIntentSchema = z.object({
+export const RampIntentSchema = z.strictObject({
   ...base,
   kind: z.literal("intent"),
   direction: RampDirectionSchema,
-  exact: z.object({ side: z.enum(["fiat", "crypto"]), money: RampMoneySchema }),
-  fiat: fiatAsset,
-  crypto: cryptoAsset,
-  recipient: z.string().regex(/^0x[0-9a-fA-F]{40}(?![\s\S])/),
+  exact: z.strictObject({ side: z.enum(["fiat", "crypto"]), money: strictMoney }),
+  fiat: strictFiatAsset,
+  crypto: strictCryptoAsset,
+  recipient: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
   region: z
     .string()
-    .regex(/^[A-Z]{2}(?![\s\S])/)
+    .regex(/^[A-Z]{2}$/)
     .optional(),
   route: z
-    .object({
-      from: cryptoAsset,
-      to: cryptoAsset,
-      recipient: z.string().regex(/^0x[0-9a-fA-F]{40}(?![\s\S])/),
+    .strictObject({
+      from: strictCryptoAsset,
+      to: strictCryptoAsset,
+      recipient: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
       settlement: z.enum(["public", "stealth"]),
     })
     .optional(),
@@ -169,7 +178,7 @@ export const RampPreviewSchema = z.object({
   quote_id: reference,
   offer_id: reference,
   capability_revision: reference,
-  request_digest: z.string().regex(/^0x[0-9a-f]{64}(?![\s\S])/),
+  request_digest: z.string().regex(/^0x[0-9a-f]{64}$/),
   pay: RampMoneySchema,
   receive: RampMoneySchema,
   fees: z.array(z.object({ code, money: RampMoneySchema })).max(32),
@@ -186,7 +195,7 @@ export const RampLegSnapshotSchema = z.object({
   recoverable: z.boolean(),
   transaction_hash: z
     .string()
-    .regex(/^0x[0-9a-fA-F]{64}(?![\s\S])/)
+    .regex(/^0x[0-9a-fA-F]{64}$/)
     .optional(),
 });
 export type RampLegSnapshot = z.infer<typeof RampLegSnapshotSchema>;
@@ -205,12 +214,12 @@ export const RampSnapshotSchema = z.object({
 });
 export type RampSnapshot = z.infer<typeof RampSnapshotSchema>;
 
-export const RampCommandContextSchema = z.object({
+export const RampCommandContextSchema = z.strictObject({
   expected_revision: revision,
   idempotency_key: reference,
 });
 export type RampCommandContext = z.infer<typeof RampCommandContextSchema>;
-export const RampCommandSchema = z.object({
+export const RampCommandSchema = z.strictObject({
   ...base,
   kind: z.literal("command"),
   operation_id: reference,
@@ -284,6 +293,11 @@ export function rampOutcome(snapshot: Pick<RampSnapshot, "peer" | "xochi">): {
   };
 }
 
+/** Identity is chain plus contract address. `asset_id` casing and CAIP prefix are notation. */
+function assetAddress(asset: Extract<RampAsset, { kind: "crypto" }>): string {
+  return asset.asset_id.slice(asset.asset_id.lastIndexOf(":") + 1).toLowerCase();
+}
+
 function sameAsset(left: RampAsset, right: RampAsset): boolean {
   if (left.kind === "fiat")
     return (
@@ -292,56 +306,144 @@ function sameAsset(left: RampAsset, right: RampAsset): boolean {
   return (
     right.kind === "crypto" &&
     left.chain_id === right.chain_id &&
-    left.asset_id === right.asset_id &&
+    assetAddress(left) === assetAddress(right) &&
     left.decimals === right.decimals &&
     left.symbol === right.symbol
   );
 }
 
-function coherent(value: RampWire): boolean {
-  if (value.kind === "offer") {
-    const asset = value.bounds.measured_in === "fiat" ? value.fiat : value.crypto;
-    return (
-      sameAsset(asset, value.bounds.minimum.asset) &&
-      sameAsset(asset, value.bounds.maximum.asset) &&
-      BigInt(value.bounds.minimum.atomic) <= BigInt(value.bounds.maximum.atomic) &&
-      (value.availability.state !== "available" ||
-        Date.parse(value.availability.valid_until) > Date.parse(value.observed_at))
-    );
+/** A CAIP-19 `asset_id` names its own chain, which must be the asset's `chain_id`. */
+function onItsChain(asset: RampAsset): boolean {
+  if (asset.kind === "fiat") return true;
+  const separator = asset.asset_id.indexOf("/");
+  return separator === -1 || asset.asset_id.slice(0, separator) === asset.chain_id;
+}
+
+function assetsOf(value: RampWire): RampAsset[] {
+  switch (value.kind) {
+    case "offer":
+      return [value.fiat, value.crypto, value.bounds.minimum.asset, value.bounds.maximum.asset];
+    case "intent":
+      return [
+        value.fiat,
+        value.crypto,
+        value.exact.money.asset,
+        ...(value.route ? [value.route.from, value.route.to] : []),
+      ];
+    case "preview":
+      return [value.pay.asset, value.receive.asset, ...value.fees.map((fee) => fee.money.asset)];
+    default:
+      return [];
   }
-  if (value.kind === "intent")
-    return sameAsset(
-      value.exact.money.asset,
-      value.exact.side === "fiat" ? value.fiat : value.crypto,
-    );
-  if (value.kind !== "snapshot") return true;
-  const expectedOrder = value.xochi
-    ? value.direction === "onramp"
+}
+
+const quoteBoundActions: Readonly<Partial<Record<RampAction, true>>> = {
+  approve: true,
+  execute_route: true,
+};
+
+/** Approval and route execution commit funds, so they must name the quote they accept. */
+function quoteBound(command: RampCommand): boolean {
+  return quoteBoundActions[command.action] !== true || command.quote_id !== undefined;
+}
+
+function offerCoherent(offer: RampOffer): boolean {
+  const asset = offer.bounds.measured_in === "fiat" ? offer.fiat : offer.crypto;
+  return (
+    sameAsset(asset, offer.bounds.minimum.asset) &&
+    sameAsset(asset, offer.bounds.maximum.asset) &&
+    BigInt(offer.bounds.minimum.atomic) <= BigInt(offer.bounds.maximum.atomic) &&
+    (offer.availability.state !== "available" ||
+      Date.parse(offer.availability.valid_until) > Date.parse(offer.observed_at))
+  );
+}
+
+function intentCoherent(intent: RampIntent): boolean {
+  const exactAsset = intent.exact.side === "fiat" ? intent.fiat : intent.crypto;
+  if (!sameAsset(intent.exact.money.asset, exactAsset)) return false;
+  const { route } = intent;
+  if (!route) return true;
+  // Onramp: Peer delivers `crypto`, then the route spends it. Offramp: the route produces
+  // `crypto` for Peer to sell. Either way one beneficiary is named, once.
+  const peerAsset = intent.direction === "onramp" ? route.from : route.to;
+  return (
+    sameAsset(peerAsset, intent.crypto) &&
+    route.recipient.toLowerCase() === intent.recipient.toLowerCase()
+  );
+}
+
+function previewCoherent(preview: RampPreview): boolean {
+  const { pay, receive } = preview;
+  // One side is fiat (the Peer leg), the other crypto.
+  if (pay.asset.kind === receive.asset.kind) return false;
+  // A two-leg order fixes the direction: onramp (Peer first) pays fiat, offramp pays crypto.
+  if (
+    preview.leg_order.length === 2 &&
+    (preview.leg_order[0] === "peer") !== (pay.asset.kind === "fiat")
+  )
+    return false;
+  return preview.fees.every(
+    (fee) => sameAsset(fee.money.asset, pay.asset) || sameAsset(fee.money.asset, receive.asset),
+  );
+}
+
+function snapshotCoherent(snapshot: RampSnapshot): boolean {
+  const expectedOrder = snapshot.xochi
+    ? snapshot.direction === "onramp"
       ? ["peer", "xochi"]
       : ["xochi", "peer"]
     : ["peer"];
-  if (JSON.stringify(value.leg_order) !== JSON.stringify(expectedOrder)) return false;
-  if (value.terminal !== rampOutcome(value).terminal) return false;
-  if (value.allowed_actions.length !== new Set(value.allowed_actions).size) return false;
-  if (!value.xochi && value.allowed_actions.some((action) => action.endsWith("route")))
+  if (JSON.stringify(snapshot.leg_order) !== JSON.stringify(expectedOrder)) return false;
+  if (snapshot.terminal !== rampOutcome(snapshot).terminal) return false;
+  if (snapshot.allowed_actions.length !== new Set(snapshot.allowed_actions).size) return false;
+  if (!snapshot.xochi && snapshot.allowed_actions.some((action) => action.endsWith("route")))
     return false;
-  if ([value.peer.state, value.xochi?.state].includes("in_doubt")) {
-    return value.allowed_actions.every((action) => action === "check_status");
+  if ([snapshot.peer.state, snapshot.xochi?.state].includes("in_doubt")) {
+    return snapshot.allowed_actions.every((action) => action === "check_status");
   }
-  return !value.terminal || value.allowed_actions.length === 0;
+  return !snapshot.terminal || snapshot.allowed_actions.length === 0;
+}
+
+function coherent(value: RampWire): boolean {
+  if (!assetsOf(value).every(onItsChain)) return false;
+  switch (value.kind) {
+    case "offer":
+      return offerCoherent(value);
+    case "intent":
+      return intentCoherent(value);
+    case "preview":
+      return previewCoherent(value);
+    case "snapshot":
+      return snapshotCoherent(value);
+    case "command":
+      return quoteBound(value);
+    case "error":
+      return true;
+  }
 }
 
 type JsonData = null | boolean | string | number | JsonData[] | { [key: string]: JsonData };
+
+// parseRamp input ceilings. The largest valid ramp/1 message has a few hundred values, nests
+// five deep (preview.fees[i].money.asset.kind), caps arrays at 32 items and strings at 96
+// characters. The margins admit bounded unknown fields on provider data while capping the work
+// a hostile payload can cause; anything over a ceiling is rejected, never truncated.
+const MAX_JSON_VALUES = 2048;
+const MAX_JSON_DEPTH = 16;
+const MAX_STRING_LENGTH = 2048;
+const MAX_OBJECT_KEYS = 64;
+const MAX_KEY_LENGTH = 64;
+const MAX_ARRAY_LENGTH = 128;
 
 // Snapshot descriptors once so bounds and schema validation never read untrusted properties.
 function boundedJsonSnapshot(
   value: unknown,
   depth = 0,
-  budget = { remaining: 2048 },
+  budget = { remaining: MAX_JSON_VALUES },
 ): JsonData | undefined {
-  if (--budget.remaining < 0 || depth > 16) return undefined;
+  if (--budget.remaining < 0 || depth > MAX_JSON_DEPTH) return undefined;
   if (value === null || typeof value === "boolean") return value;
-  if (typeof value === "string") return value.length <= 2048 ? value : undefined;
+  if (typeof value === "string") return value.length <= MAX_STRING_LENGTH ? value : undefined;
   if (typeof value === "number") return Number.isSafeInteger(value) ? value : undefined;
   if (typeof value !== "object") return undefined;
   const array = Array.isArray(value);
@@ -350,18 +452,20 @@ function boundedJsonSnapshot(
     if (prototype !== Object.prototype && prototype !== null) return undefined;
   }
   const keys = Reflect.ownKeys(value);
-  if (keys.length > (array ? 129 : 64)) return undefined;
+  // An array's own keys are its indices plus `length`.
+  if (keys.length > (array ? MAX_ARRAY_LENGTH + 1 : MAX_OBJECT_KEYS)) return undefined;
   const snapshot: JsonData[] | { [key: string]: JsonData } = array ? [] : Object.create(null);
   for (const key of keys) {
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (!descriptor || !("value" in descriptor)) return undefined;
     if (array && key === "length") {
-      if (!Number.isSafeInteger(descriptor.value) || descriptor.value > 128) return undefined;
+      if (!Number.isSafeInteger(descriptor.value) || descriptor.value > MAX_ARRAY_LENGTH)
+        return undefined;
       Object.defineProperty(snapshot, key, { value: descriptor.value });
       continue;
     }
     if (typeof key !== "string" || !descriptor.enumerable) continue;
-    if (key.length > 64) return undefined;
+    if (key.length > MAX_KEY_LENGTH) return undefined;
     const item = boundedJsonSnapshot(descriptor.value, depth + 1, budget);
     if (item === undefined) return undefined;
     Object.defineProperty(snapshot, key, {
@@ -371,7 +475,7 @@ function boundedJsonSnapshot(
       writable: true,
     });
   }
-  return Array.isArray(snapshot) && snapshot.length > 128 ? undefined : snapshot;
+  return Array.isArray(snapshot) && snapshot.length > MAX_ARRAY_LENGTH ? undefined : snapshot;
 }
 
 /** Returns only sanitized contract data or a bounded error code; never a provider payload/error. */
@@ -398,7 +502,13 @@ export function parseRamp(
   }
 }
 
-export type RampCommandCheck = "accepted" | "replayed" | "session_conflict" | "action_not_allowed";
+export type RampCommandCheck =
+  | "accepted"
+  | "replayed"
+  | "session_conflict"
+  | "action_not_allowed"
+  | "invalid_command"
+  | "invalid_receipt";
 export interface RampCommandReceipt {
   readonly command: RampCommand;
   readonly snapshot: RampSnapshot;
@@ -410,11 +520,19 @@ export function checkRampCommand(
   command: RampCommand,
   receipt?: RampCommandReceipt,
 ): RampCommandCheck {
-  if (snapshot.operation_id !== command.operation_id) return "session_conflict";
-  if (receipt?.command.context.idempotency_key === command.context.idempotency_key) {
-    const previous = RampCommandSchema.parse(receipt.command);
-    const current = RampCommandSchema.parse(command);
-    return JSON.stringify(previous) === JSON.stringify(current) ? "replayed" : "session_conflict";
+  const current = RampCommandSchema.safeParse(command);
+  if (!current.success || !quoteBound(current.data)) return "invalid_command";
+  let previous: RampCommand | undefined;
+  if (receipt) {
+    const parsed = RampCommandSchema.safeParse(receipt.command);
+    if (!parsed.success) return "invalid_receipt";
+    previous = parsed.data;
+  }
+  if (snapshot.operation_id !== current.data.operation_id) return "session_conflict";
+  if (previous?.context.idempotency_key === current.data.context.idempotency_key) {
+    return JSON.stringify(previous) === JSON.stringify(current.data)
+      ? "replayed"
+      : "session_conflict";
   }
   if (snapshot.revision !== command.context.expected_revision) return "session_conflict";
   const leg = command.leg === "peer" ? snapshot.peer : snapshot.xochi;
