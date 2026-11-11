@@ -1,0 +1,126 @@
+{
+  "$schema": "./capability-routes.schema.json",
+  "version": 1,
+  "routes": [
+    {
+      "origin": { "chain_id": 8453, "token": "USDC" },
+      "destination": { "kind": "chain", "chain_id": 1, "token": "USDC" },
+      "privacy_modes": ["public", "stealth"]
+    },
+    {
+      "origin": { "chain_id": 8453, "token": "USDC" },
+      "destination": { "kind": "chain", "chain_id": 42161, "token": "USDC" },
+      "privacy_modes": ["public"]
+    },
+    {
+      "origin": { "chain_id": 8453, "token": "USDC" },
+      "destination": { "kind": "chain", "chain_id": 10, "token": "USDC" },
+      "privacy_modes": ["public"]
+    },
+    {
+      "origin": { "chain_id": 8453, "token": "USDC" },
+      "destination": { "kind": "chain", "chain_id": 137, "token": "USDC" },
+      "privacy_modes": ["public"]
+    },
+    {
+      "origin": { "chain_id": 1, "token": "USDC" },
+      "destination": { "kind": "chain", "chain_id": 8453, "token": "USDC" },
+      "privacy_modes": ["public", "stealth"]
+    },
+    {
+      "origin": { "chain_id": 1, "token": "USDC" },
+      "destination": { "kind": "chain", "chain_id": 42161, "token": "USDC" },
+      "privacy_modes": ["public"]
+    },
+    {
+      "origin": { "chain_id": 1, "token": "USDC" },
+      "destination": { "kind": "chain", "chain_id": 10, "token": "USDC" },
+      "privacy_modes": ["public"]
+    },
+    {
+      "origin": { "chain_id": 1, "token": "USDC" },
+      "destination": { "kind": "chain", "chain_id": 137, "token": "USDC" },
+      "privacy_modes": ["public"]
+    },
+    {
+      "origin": { "chain_id": 42161, "token": "USDC" },
+      "destination": { "kind": "chain", "chain_id": 8453, "token": "USDC" },
+      "privacy_modes": ["public", "stealth"]
+    },
+    {
+      "origin": { "chain_id": 42161, "token": "USDC" },
+      "destination": { "kind": "chain", "chain_id": 1, "token": "USDC" },
+      "privacy_modes": ["public", "stealth"]
+    },
+    {
+      "origin": { "chain_id": 42161, "token": "USDC" },
+      "destination": { "kind": "chain", "chain_id": 10, "token": "USDC" },
+      "privacy_modes": ["public"]
+    },
+    {
+      "origin": { "chain_id": 42161, "token": "USDC" },
+      "destination": { "kind": "chain", "chain_id": 137, "token": "USDC" },
+      "privacy_modes": ["public"]
+    },
+    {
+      "origin": { "chain_id": 10, "token": "USDC" },
+      "destination": { "kind": "chain", "chain_id": 8453, "token": "USDC" },
+      "privacy_modes": ["public", "stealth"]
+    },
+    {
+      "origin": { "chain_id": 10, "token": "USDC" },
+      "destination": { "kind": "chain", "chain_id": 1, "token": "USDC" },
+      "privacy_modes": ["public", "stealth"]
+    },
+    {
+      "origin": { "chain_id": 10, "token": "USDC" },
+      "destination": { "kind": "chain", "chain_id": 42161, "token": "USDC" },
+      "privacy_modes": ["public"]
+    },
+    {
+      "origin": { "chain_id": 10, "token": "USDC" },
+      "destination": { "kind": "chain", "chain_id": 137, "token": "USDC" },
+      "privacy_modes": ["public"]
+    },
+    {
+      "origin": { "chain_id": 137, "token": "USDC" },
+      "destination": { "kind": "chain", "chain_id": 8453, "token": "USDC" },
+      "privacy_modes": ["public", "stealth"]
+    },
+    {
+      "origin": { "chain_id": 137, "token": "USDC" },
+      "destination": { "kind": "chain", "chain_id": 1, "token": "USDC" },
+      "privacy_modes": ["public", "stealth"]
+    },
+    {
+      "origin": { "chain_id": 137, "token": "USDC" },
+      "destination": { "kind": "chain", "chain_id": 42161, "token": "USDC" },
+      "privacy_modes": ["public"]
+    },
+    {
+      "origin": { "chain_id": 137, "token": "USDC" },
+      "destination": { "kind": "chain", "chain_id": 10, "token": "USDC" },
+      "privacy_modes": ["public"]
+    },
+    {
+      "origin": { "chain_id": 8453, "token": "USDC" },
+      "destination": { "kind": "chain", "chain_id": 8453, "token": "DAI" },
+      "privacy_modes": ["public", "stealth"]
+    },
+    {
+      "origin": { "chain_id": 1, "token": "USDC" },
+      "destination": { "kind": "chain", "chain_id": 1, "token": "DAI" },
+      "privacy_modes": ["public", "stealth"]
+    },
+    {
+      "origin": { "chain_id": 42161, "token": "USDC" },
+      "destination": { "kind": "chain", "chain_id": 42161, "token": "DAI" },
+      "privacy_modes": ["public"]
+    },
+    {
+      "origin": { "chain_id": 10, "token": "USDC" },
+      "destination": { "kind": "chain", "chain_id": 10, "token": "DAI" },
+      "privacy_modes": ["public"]
+    }
+  ]
+}

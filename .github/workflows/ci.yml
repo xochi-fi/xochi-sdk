@@ -69,6 +69,27 @@ jobs:
       - name: Verify package contents
         run: npm pack --dry-run -w @xochi/${{ matrix.ws }}
 
+  widget:
+    name: Complete widget and isolated consumer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-workspace
+      - name: Build public prerequisites
+        run: |
+          npm run build -w @xochi/signer
+          npm run build -w @xochi/client
+          npm run build -w @xochi/widget-lib
+      - name: Check complete widget
+        run: |
+          npm run format:check -w @xochi/widget
+          npm run typecheck -w @xochi/widget
+          npm run check:redistribution -w @xochi/widget
+          npm test -w @xochi/widget
+          npm run build -w @xochi/widget
+      - name: Rehearse packed public consumer
+        run: node scripts/verify-widget-consumer.mjs
+
   # The protocol packages (packages/{signer,spec,solver-sdk,reference}).
   # @xochi/signer builds first: every other workspace consumes its .d.ts. The
   # vector check is the gate that matters; a regenerated vector is a wire change
@@ -156,7 +177,6 @@ jobs:
 
       - name: Pin recipient npm
         run: npm install --global npm@10.9.9
-
 
       - name: OXDAI recipient tool and installable test artifact
         working-directory: tools/recipient

@@ -1,0 +1,217 @@
+/* Xochi - Transaction Preview Styles
+ *
+ * Extends shared modal system from components.css.
+ * Only defines transaction-preview-specific content styling.
+ */
+
+/* Body */
+.tx-preview-body {
+  padding: 1.25rem;
+}
+
+.tx-preview-transfer,
+.tx-preview-summary {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Widen the confirm modal a little on desktop so each transfer row (icon +
+   amount on the left, description + USD on the right) sits on one line. */
+@media (min-width: 560px) {
+  .swap-flow-modal--confirm {
+    max-width: 500px;
+  }
+}
+
+/* Transaction rows: a single horizontal line -- direction icon, then the
+   amount, then the description and USD pushed to the right. Compact height,
+   full width, so the token logo always sits inline with the amount. */
+.tx-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0.85rem;
+  background: var(--inset-bg-deep);
+  border-radius: var(--radius-md);
+  transition: background var(--duration-fast) var(--ease-smooth);
+}
+
+.tx-preview-row--out {
+  border: 1px solid rgba(219, 150, 150, 0.2);
+  background: linear-gradient(135deg, rgba(219, 150, 150, 0.04) 0%, var(--inset-bg-deep) 100%);
+  animation: fadeInUp var(--duration-normal) var(--ease-out);
+}
+
+.tx-preview-row--out .tx-preview-icon {
+  color: var(--color-negative-emphasis);
+  text-shadow: 0 0 8px rgba(219, 150, 150, 0.3);
+}
+
+.tx-preview-row--in {
+  border: 1px solid var(--sky-20);
+  background: linear-gradient(135deg, rgba(88, 161, 198, 0.04) 0%, var(--inset-bg-deep) 100%);
+  animation: fadeInUp var(--duration-normal) var(--ease-out) 100ms both;
+}
+
+.tx-preview-row--in .tx-preview-icon {
+  color: var(--cryptowave-sky);
+  text-shadow: 0 0 8px var(--sky-30);
+}
+
+.tx-preview-icon {
+  font-family: var(--font-mono);
+  font-size: 1.1rem;
+  font-weight: 600;
+  line-height: 1;
+  width: 20px;
+  text-align: center;
+}
+
+.tx-preview-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.6rem;
+  row-gap: 0.15rem;
+  flex-wrap: wrap;
+}
+
+.tx-preview-amount {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--pearl-cream);
+  flex-shrink: 0;
+}
+
+/* Number + symbol are one unit and never split across lines. */
+.tx-preview-amount-num {
+  white-space: nowrap;
+}
+
+/* Description takes the middle; USD is pushed to the right edge. */
+.tx-preview-detail {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.tx-preview-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  margin-left: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  background: var(--sky-20);
+  border-radius: 3px;
+  color: var(--cryptowave-sky);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.tx-preview-usd {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-faint);
+}
+
+/* Arrow */
+.tx-preview-arrow {
+  display: flex;
+  justify-content: center;
+  padding: 0.5rem 0;
+}
+
+.tx-preview-arrow-icon {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  color: var(--text-ghost);
+}
+
+/* Fees */
+.tx-preview-fees {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.75rem 0;
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--muted-gold-10);
+}
+
+.tx-preview-fee-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+.tx-preview-fee-row > span:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Stealth claim info: one compact block (value + short note). */
+.tx-preview-claim-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.5rem;
+  background: var(--muted-gold-subtle);
+  border-radius: 6px;
+  border: 1px solid var(--muted-gold-10);
+}
+
+.tx-preview-claim-value {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--color-success);
+}
+
+.tx-preview-claim-note {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* Payment method row */
+.tx-preview-payment {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.5rem;
+  border-top: 1px solid var(--muted-gold-10);
+}
+
+.tx-preview-payment-label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-faint);
+}
+
+.tx-preview-payment-value {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: color 0.3s ease;
+}
+
+.tx-preview-payment-value.gasless {
+  color: var(--color-success);
+}

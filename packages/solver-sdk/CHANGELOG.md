@@ -66,7 +66,7 @@ Package version and RFC version are separate axes: the protocol version is `SOLV
 
 ### Changed
 
-- `@xochi/signer` dependency range is `^0.7.0` (was `^0.5.1`).
+- `@xochi/signer` dependency range is `^0.8.0` (was `^0.5.1`): `parseUint` first ships in signer 0.8.0.
 - Award, lock, attestation and bond checks (`verifyAward`, `verifyAttestation`, `checkAwardBond`) parse uint fields with `@xochi/signer`'s `parseUint`: `""`, `"0x.."`, padded strings, negatives and unsafe numbers throw an `Error` naming the field instead of being coerced by `BigInt`. Leading-zero digit strings, which the feed schema admits, still compare by value.
 - `zod` dependency range is `^4.6.7`; the top-level `types` field points at `dist/index.d.cts`, matching `main` (the `exports` conditions are unchanged).
 - **BREAKING: the `apiKey` option is removed** from `SolverClient` and

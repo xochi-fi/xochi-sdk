@@ -1,0 +1,369 @@
+/* Assets - Stealth Address Card */
+
+.stealth-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.stealth-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stealth-icon {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted-gold);
+}
+
+.stealth-title {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--pearl-cream);
+}
+
+/* Setup state */
+.stealth-hint {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.stealth-init-btn,
+.stealth-register-btn {
+  width: 100%;
+  padding: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  background: var(--muted-gold-15);
+  border: 1px solid var(--muted-gold-25);
+  border-radius: 6px;
+  color: var(--pearl-cream);
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.stealth-init-btn:hover:not(:disabled),
+.stealth-register-btn:hover:not(:disabled) {
+  background: var(--muted-gold-25);
+  border-color: var(--muted-gold-glow);
+}
+
+.stealth-init-btn:disabled,
+.stealth-register-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Active state */
+.stealth-active {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.stealth-status-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+}
+
+.status-dot--warning {
+  background: var(--color-warning);
+}
+
+/* Meta-address display */
+.stealth-address {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  background: var(--inset-bg);
+  border-radius: 4px;
+}
+
+.stealth-address-text {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.stealth-copy-btn {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.2rem 0.4rem;
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.stealth-copy-btn:hover {
+  color: var(--pearl-cream);
+  border-color: var(--panel-border-hover);
+}
+
+/* Scanner */
+.stealth-scanner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.stealth-scanner-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.stealth-scanner-label {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-faint);
+}
+
+.stealth-scan-btn {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 500;
+  padding: 0.2rem 0.5rem;
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.stealth-scan-btn:hover:not(:disabled) {
+  color: var(--pearl-cream);
+  border-color: var(--panel-border-hover);
+}
+
+.stealth-scan-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Payment list */
+.stealth-payments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.stealth-payment-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.35rem 0.5rem;
+  background: var(--inset-bg);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+}
+
+.stealth-payment-addr {
+  color: var(--text-muted);
+}
+
+.stealth-payment-amount {
+  color: var(--pearl-cream);
+  font-weight: 500;
+}
+
+.stealth-payment-status {
+  color: var(--color-success);
+  font-size: 0.6rem;
+  font-weight: 500;
+}
+
+.stealth-error {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--color-error);
+  margin: 0;
+}
+
+/* Stealth Claims section */
+.stealth-claims {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm, 8px);
+}
+
+/* Waiting state: value is sitting at a one-time address and the user has to act
+   to take custody. Lifts the panel out of the page instead of leaving it a quiet
+   section below the fold (#352). */
+.stealth-claims--waiting {
+  border-color: var(--muted-gold-30);
+  background: var(--panel-bg-elevated);
+}
+
+.stealth-claims .section-header .btn {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.stealth-claims-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  margin-left: 0.4rem;
+  padding: 0 0.3rem;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--obsidian);
+  background: var(--muted-gold);
+  border-radius: 999px;
+}
+
+.stealth-claims-waiting {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  line-height: 1.5;
+  color: var(--pearl-cream);
+  padding: 0.4rem 0.5rem;
+  background: var(--muted-gold-10);
+  border: 1px solid var(--muted-gold-25);
+  border-radius: 4px;
+}
+
+.stealth-claims-error {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--color-error);
+  padding: 0.3rem 0.5rem;
+  background: rgba(248, 113, 113, 0.08);
+  border-radius: 4px;
+}
+
+.stealth-claims-empty {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-faint);
+  text-align: center;
+  padding: 0.5rem;
+}
+
+.stealth-claims-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.stealth-claim-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.5rem;
+  background: var(--inset-bg, rgba(10, 10, 12, 0.4));
+  border-radius: 4px;
+}
+
+.stealth-claim-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.stealth-claim-addr {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-muted);
+}
+
+.stealth-claim-block {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-faint);
+}
+
+.stealth-claim-amount {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--pearl-cream);
+  font-weight: 500;
+}
+
+.stealth-claim-action {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.stealth-claim-done {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--color-success);
+  font-weight: 500;
+}
+
+.stealth-claim-err {
+  color: var(--color-error);
+  font-weight: 700;
+  font-size: 0.7rem;
+  cursor: help;
+}
+
+/* A sent claim still waiting to be mined. Deliberately not the error colour:
+   the op is in flight and nothing needs doing. */
+.stealth-claim-pending {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--color-warning);
+  max-width: 14rem;
+  text-align: right;
+}
+
+.stealth-claim-all {
+  margin-top: 0.25rem;
+}
+
+.shield-progress {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-secondary);
+  padding: 0.3rem 0.5rem;
+  background: var(--muted-gold-subtle);
+  border-radius: 4px;
+}
+
+.shield-tx-hash {
+  display: block;
+  font-size: 0.6rem;
+  color: var(--text-faint);
+  margin-top: 0.15rem;
+}

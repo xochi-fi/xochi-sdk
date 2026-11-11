@@ -1,0 +1,933 @@
+/* Xochi - Activity Feed Styles */
+
+/* ============================================================
+   Filter Tabs
+   ============================================================ */
+
+.activity-filters {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--muted-gold-10);
+}
+
+.activity-filter-btn {
+  padding: 0.35rem 0.6rem;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.activity-filter-btn:hover {
+  color: var(--pearl-cream);
+  background: var(--muted-gold-subtle);
+}
+
+.activity-filter-btn.active {
+  color: var(--pearl-cream);
+  background: var(--muted-gold-15);
+  border-color: var(--muted-gold-25);
+}
+
+/* ============================================================
+   Activity Row Wrapper (for expansion)
+   ============================================================ */
+
+.activity-row-wrapper {
+  border-bottom: 1px solid var(--muted-gold-subtle);
+  transition: background 0.2s ease;
+}
+
+.activity-row-wrapper:hover {
+  background: rgba(168, 154, 128, 0.03);
+}
+
+.activity-row-wrapper.expanded {
+  background: rgba(168, 154, 128, 0.05);
+  border-bottom-color: var(--muted-gold-15);
+}
+
+/* ============================================================
+   Activity Row (clickable button)
+   ============================================================ */
+
+.activity-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.75rem;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.activity-row:focus-visible {
+  outline: none;
+  background: rgba(168, 154, 128, 0.05);
+  box-shadow:
+    0 0 0 2px var(--obsidian),
+    0 0 0 4px rgba(168, 154, 128, 0.5);
+}
+
+/* Chevron indicator */
+.activity-chevron {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-dim);
+  margin-left: auto;
+  padding: 0.25rem;
+  transition: color 0.15s ease;
+}
+
+.activity-row:hover .activity-chevron {
+  color: var(--text-secondary);
+}
+
+.activity-row-wrapper.expanded .activity-chevron {
+  color: var(--muted-gold);
+}
+
+/* ============================================================
+   Activity Type Icons
+   ============================================================ */
+
+.activity-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-radius: 6px;
+}
+
+/* Swap icon - demoted to a low-weight type marker so it no longer competes as
+   the row anchor. Status now lives in the glyph-led badge, not the icon block. */
+.activity-icon--swap {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--panel-border);
+}
+
+/* Payment icon - gold */
+.activity-icon--payment {
+  background: var(--muted-gold-15);
+  color: var(--muted-gold);
+}
+
+.activity-icon--payment.completed {
+  background: var(--panel-border-hover);
+  color: var(--muted-gold);
+}
+
+/* Permit icon - purple */
+.activity-icon--permit {
+  background: rgba(166, 134, 176, 0.12);
+  color: var(--color-muted-purple);
+}
+
+.activity-icon--permit.active {
+  background: rgba(166, 134, 176, 0.18);
+  color: var(--color-muted-purple);
+}
+
+.activity-icon--permit.expired {
+  background: var(--negative-15);
+  color: var(--color-negative);
+}
+
+/* ============================================================
+   Activity Details (collapsed)
+   ============================================================ */
+
+.activity-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.activity-main {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.15rem;
+}
+
+.activity-action {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--pearl-cream);
+}
+
+.activity-chain-route {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
+
+.chain-arrow {
+  color: var(--text-dim);
+}
+
+/* Inline destination tags */
+.destination-tag-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 0.25rem;
+  margin-left: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  border-radius: 3px;
+}
+
+.destination-tag-inline.aztec {
+  background: var(--sky-20);
+  color: var(--cryptowave-sky);
+}
+
+.activity-tokens {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  margin: 0.2rem 0;
+}
+
+.from-token {
+  color: var(--text-strong);
+}
+
+.swap-arrow {
+  color: rgba(168, 154, 128, 0.5);
+}
+
+.to-token {
+  color: var(--cryptowave-sky);
+}
+
+.activity-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.25rem;
+}
+
+.activity-status-badge {
+  padding: 0.15rem 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-radius: 3px;
+}
+
+/* Glyph-led status token: a leading ASCII glyph gives status a pre-attentive,
+   colorblind-safe cue that survives a glance (redundant with color + label).
+   Each status class sets --badge-glyph; this one rule renders it. */
+.activity-status-badge::before {
+  content: var(--badge-glyph, "");
+  margin-right: 0.3em;
+  font-weight: 700;
+  opacity: 0.85;
+}
+
+/* In-flight: "~" flowing/working, amber. */
+.activity-status-badge.status-pending {
+  --badge-glyph: "~";
+  background: var(--muted-gold-15);
+  color: var(--muted-gold);
+}
+
+/* Done: "=" settled, green (semantic grammar: success is green, not blue). */
+.activity-status-badge.status-completed {
+  --badge-glyph: "=";
+  background: var(--positive-15);
+  color: var(--color-success);
+}
+
+/* Failed: "x", red. */
+.activity-status-badge.status-failed {
+  --badge-glyph: "x";
+  background: var(--negative-15);
+  color: var(--color-negative);
+}
+
+.activity-status-badge.status-active {
+  --badge-glyph: "*";
+  background: rgba(166, 134, 176, 0.15);
+  color: var(--color-muted-purple);
+}
+
+/* Expired: "-" lapsed, neutral. */
+.activity-status-badge.status-expired {
+  --badge-glyph: "-";
+  background: var(--line-subtle);
+  color: var(--text-muted);
+}
+
+/* Refunded: "<" returned, sky -- its own colour, distinct from pending amber. */
+.activity-status-badge.status-refunded {
+  --badge-glyph: "<";
+  background: var(--sky-15);
+  color: var(--cryptowave-sky);
+}
+
+.activity-status-badge.status-awaiting,
+.activity-status-badge.status-processing {
+  --badge-glyph: "~";
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--color-warning);
+}
+
+.activity-dot {
+  color: var(--text-ghost);
+  font-size: 0.6rem;
+}
+
+.activity-time {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-faint);
+}
+
+.activity-tx-link {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: rgba(88, 161, 198, 0.8);
+  text-decoration: none;
+}
+
+.activity-tx-link:hover {
+  color: var(--cryptowave-sky);
+  text-decoration: underline;
+}
+
+/* ============================================================
+   Payment Row Styles
+   ============================================================ */
+
+.activity-payment-info {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  margin: 0.2rem 0;
+}
+
+.payment-amount {
+  color: var(--muted-gold);
+  font-weight: 500;
+}
+
+.payment-separator {
+  color: var(--muted-gold-glow);
+}
+
+.payment-description {
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: min(160px, 40vw);
+}
+
+.activity-network {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-faint);
+  text-transform: capitalize;
+}
+
+/* Payment status badge */
+.activity-status-badge--payment.status-completed {
+  background: var(--panel-border-hover);
+  color: var(--muted-gold);
+}
+
+/* ============================================================
+   Permit Row Styles
+   ============================================================ */
+
+.activity-permit-info {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  margin: 0.2rem 0;
+}
+
+.permit-token {
+  color: var(--color-muted-purple);
+  font-weight: 500;
+}
+
+.permit-separator {
+  color: rgba(166, 134, 176, 0.4);
+}
+
+.permit-type {
+  color: var(--text-secondary);
+}
+
+/* Permit status badge */
+.activity-status-badge--permit.status-active {
+  background: rgba(166, 134, 176, 0.2);
+  color: var(--color-muted-purple);
+}
+
+.activity-status-badge--permit.status-completed {
+  background: rgba(166, 134, 176, 0.15);
+  color: var(--color-muted-purple);
+}
+
+/* ============================================================
+   Expanded Details Section
+   ============================================================ */
+
+.activity-expanded {
+  padding: 0 0.75rem 1rem;
+  padding-left: calc(0.75rem + 28px + 0.75rem); /* Align with details */
+  animation: expandDown 0.2s ease;
+}
+
+@keyframes expandDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Human-readable state banner at the top of an expanded swap: keeps a
+   fund-moving order from reading as a blank spinner. Tone is carried by a faint
+   full-surface wash + a colour-matched glyph, not a left-border accent stripe
+   (that Bootstrap-alert pattern reads as generic boilerplate). Refund is
+   deliberately its own colour, not success and not error. */
+.expanded-status {
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.7rem;
+  background: var(--status-wash, var(--inset-bg-deep));
+  border: 1px solid var(--status-edge, var(--panel-border));
+  border-radius: 6px;
+}
+
+.expanded-status__headline {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--pearl-cream);
+}
+
+/* Tone glyph before the headline: redundant with the left-border colour so the
+   banner's meaning survives a glance and colour-vision deficiency. */
+.expanded-status__headline::before {
+  content: var(--status-glyph, "");
+  margin-right: 0.4em;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--status-glyph-color, var(--text-muted));
+}
+
+.expanded-status__detail {
+  margin: 0.2rem 0 0;
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+}
+
+.expanded-status--progress {
+  --status-wash: rgba(168, 154, 128, 0.06);
+  --status-edge: rgba(168, 154, 128, 0.22);
+  --status-glyph: "~";
+  --status-glyph-color: var(--muted-gold);
+}
+.expanded-status--success {
+  --status-wash: rgba(74, 222, 128, 0.06);
+  --status-edge: rgba(74, 222, 128, 0.22);
+  --status-glyph: "=";
+  --status-glyph-color: var(--color-success);
+}
+.expanded-status--refund {
+  --status-wash: rgba(88, 161, 198, 0.06);
+  --status-edge: rgba(88, 161, 198, 0.22);
+  --status-glyph: "<";
+  --status-glyph-color: var(--cryptowave-sky);
+}
+.expanded-status--error {
+  --status-wash: rgba(248, 113, 113, 0.07);
+  --status-edge: rgba(248, 113, 113, 0.25);
+  --status-glyph: "x";
+  --status-glyph-color: var(--color-error);
+}
+.expanded-status--neutral {
+  --status-wash: var(--inset-bg-deep);
+  --status-edge: var(--panel-border);
+  --status-glyph: "-";
+  --status-glyph-color: var(--text-muted);
+}
+
+.expanded-receipt {
+  margin-bottom: 0.75rem;
+}
+
+.expanded-receipt__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.expanded-receipt__text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+}
+
+.expanded-receipt__text code {
+  font-family: var(--font-mono);
+  color: var(--pearl-cream);
+  overflow-wrap: anywhere;
+}
+
+.expanded-section {
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.6rem;
+  background: var(--inset-bg-deep);
+  border: 1px solid var(--muted-gold-subtle);
+  border-radius: 6px;
+}
+
+.expanded-section:last-of-type {
+  margin-bottom: 0.5rem;
+}
+
+.expanded-section-title {
+  margin: 0 0 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.expanded-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.2rem 0;
+}
+
+.expanded-detail-label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+.expanded-detail-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--pearl-cream);
+}
+
+.expanded-detail-value.mono {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+}
+
+.expanded-detail-link {
+  color: rgba(88, 161, 198, 0.9);
+  text-decoration: none;
+}
+
+.expanded-detail-link:hover {
+  color: var(--cryptowave-sky);
+  text-decoration: underline;
+}
+
+/* Expanded note */
+.expanded-note {
+  padding: 0.5rem 0.6rem;
+  margin-top: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-style: italic;
+  line-height: 1.4;
+  color: var(--text-faint);
+  background: rgba(168, 154, 128, 0.05);
+  border-radius: 4px;
+}
+
+/* Expanded actions */
+.expanded-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.expanded-action-btn {
+  padding: 0.4rem 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  text-decoration: none;
+  background: var(--sky-10);
+  border: 1px solid var(--sky-25);
+  border-radius: 4px;
+  color: var(--cryptowave-sky);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.expanded-action-btn:hover {
+  background: var(--sky-15);
+  border-color: var(--sky-40);
+}
+
+/* Report action: muted, secondary to the retry/explorer actions. */
+.expanded-action-btn--report {
+  background: var(--muted-gold-10);
+  border-color: var(--muted-gold-25);
+  color: var(--muted-gold);
+}
+
+.expanded-action-btn--report:hover {
+  background: var(--muted-gold-15);
+  border-color: var(--muted-gold-30);
+}
+
+.expanded-action-btn--report:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Type-specific expanded styles */
+.activity-expanded--payment .expanded-section {
+  border-color: var(--panel-border);
+}
+
+.activity-expanded--payment .expanded-section-title {
+  color: rgba(168, 154, 128, 0.6);
+}
+
+.activity-expanded--permit .expanded-section {
+  border-color: rgba(166, 134, 176, 0.12);
+}
+
+.activity-expanded--permit .expanded-section-title {
+  color: rgba(166, 134, 176, 0.6);
+}
+
+/* ============================================================
+   Empty & Loading States
+   ============================================================ */
+
+.activity-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 2rem 1rem;
+  text-align: center;
+}
+
+.activity-empty p {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-style: italic;
+  color: var(--text-faint);
+}
+
+.activity-empty .error-text {
+  color: var(--color-negative);
+}
+
+/* Explicit sign-in-with-wallet affordance (no auto prompt on connect). */
+.activity-signin {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 1.75rem 1rem;
+  text-align: center;
+}
+
+.activity-signin--compact {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.activity-signin__text {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.activity-signin__note {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+
+.trade-link,
+.retry-btn {
+  padding: 0.5rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-decoration: none;
+  background: var(--muted-gold-10);
+  border: 1px solid var(--muted-gold-25);
+  border-radius: 4px;
+  color: var(--pearl-cream);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.trade-link:hover,
+.retry-btn:hover {
+  background: var(--panel-border-hover);
+  border-color: var(--muted-gold-glow);
+}
+
+/* Skeleton */
+.activity-row.skeleton {
+  cursor: default;
+}
+
+.skeleton-icon {
+  width: 28px;
+  height: 28px;
+  background: var(--muted-gold-subtle);
+  border-radius: 6px;
+  animation: pulse 1.5s ease infinite;
+}
+
+.skeleton-line {
+  height: 0.6rem;
+  background: var(--muted-gold-subtle);
+  border-radius: 3px;
+  margin: 0.3rem 0;
+  animation: pulse 1.5s ease infinite;
+}
+
+.skeleton-line--short {
+  width: 40%;
+}
+.skeleton-line--medium {
+  width: 60%;
+}
+.skeleton-line--long {
+  width: 80%;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+/* Load more */
+.load-more-btn {
+  display: block;
+  width: 100%;
+  padding: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--muted-gold-10);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.load-more-btn:hover:not(:disabled) {
+  background: rgba(168, 154, 128, 0.05);
+  color: var(--pearl-cream);
+}
+
+.load-more-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* ============================================================
+   Responsive Adjustments
+   ============================================================ */
+
+@media (max-width: 600px) {
+  .activity-filters {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .activity-filters::-webkit-scrollbar {
+    display: none;
+  }
+
+  .activity-filter-btn {
+    flex-shrink: 0;
+  }
+
+  .payment-description {
+    max-width: 100px;
+  }
+
+  .activity-expanded {
+    padding-left: 0.75rem;
+  }
+
+  .expanded-detail-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.1rem;
+  }
+
+  .expanded-detail-value {
+    text-align: left;
+  }
+}
+
+/* Refresh button icon: spins while a refresh is in flight */
+.activity-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.activity-refresh-icon {
+  transform-origin: center;
+}
+
+.activity-refresh-icon--spinning {
+  animation: spin 0.8s linear infinite;
+}
+
+/* Value line: USD in -> out + estimated fee */
+.activity-usd {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  margin-top: 0.15rem;
+}
+
+.activity-usd__fee {
+  color: var(--text-muted);
+}
+
+/* Live section: pinned in-flight swaps with a phase progress line */
+.activity-live {
+  border: 1px solid var(--muted-gold-15);
+  border-radius: 8px;
+  padding: 0.35rem 0.5rem 0.15rem;
+  margin-bottom: 0.5rem;
+  background: var(--muted-gold-subtle);
+}
+
+.activity-live__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted-gold);
+}
+
+.activity-live__label::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-success);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.activity-phase {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.2rem;
+}
+
+.phase-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--panel-border);
+  transition: background var(--duration-fast) ease;
+}
+
+.phase-dot.done {
+  background: var(--muted-gold);
+}
+
+.phase-dot.current {
+  background: var(--color-success);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+/* Agent-initiated row marker */
+.activity-via {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted-gold);
+  border: 1px solid var(--muted-gold-25);
+  border-radius: 5px;
+  padding: 0.05rem 0.3rem;
+  margin-left: 0.4rem;
+}

@@ -4,6 +4,61 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+### Added
+
+- Extract the widget-required MIT shared vocabulary: address maps, fee/tier
+  helpers, aggregate-only referral schemas, agent event serialization, pending
+  claim schema, and caller-supplied decline guidance.
+- Own reusable capability validation, exact executable-route resolution,
+  settlement eligibility and fail-closed trust flags in the public client.
+  Launch gates and display metadata remain caller-supplied; fallback/stale
+  capability snapshots never authorize execution.
+- Keep token-amount formatting/parsing, address truncation, supported-token list
+  formatting, popular-token ordering, offline token lists and fallback prices
+  in the widget. Decline guidance without caller-supplied symbols no longer
+  claims a static token set. Display fallbacks never authorize routes or
+  excessive-slippage decisions. This is an extraction prerequisite, not
+  publication approval; #98's producer and claim-chain prerequisites and
+  separate registry approval remain gates.
+
+### Fixed
+
+- Preserve a Tron allocation key across identical amount/context retries and
+  invalidate it immediately when canonical tag, refund, owner, chain, asset,
+  settlement or amount changes. Stale authentication replies cannot allocate
+  the edited trade.
+
+- Optional `getAuthGeneration` prevents stale authenticated error responses from
+  expiring a replacement session, including same-token logout/re-authentication.
+  The widget supplies its local wallet-session generation; no credentials enter
+  the client state machine.
+
+### Fixed
+
+- Ignore late credential-expiry notifications after bearer replacement or a
+  caller-supplied `getAuthGeneration` change, including same-token re-authentication.
+- Preserve the host's origin-only bridged-USDC rule in executable route discovery,
+  even when a reverse payout is advertised.
+
+## [0.1.13] - 2026-11-09
+
+### Fixed
+
+- Preserve `errorCategory` on API and machine errors. Make `tag_resolution_unavailable` manual-retry only.
+- Do not cache tag-derived addresses. Invalidate payable quotes after lookup failures or `tag_unresolved`, including silent refreshes.
+
+## [0.1.12] - 2026-11-09
+
+### Added
+
+- Re-export `parseCapabilities`, the typed route model, `advertisedRoute`, `advertisedConversionPairs`, `ConversionPair`, `routeSupportsPrivacyMode`, and `stealthFactoryFor` from `@xochi/signer`. Hosts can consume authoritative exact `routes[]`, typed legacy conversion fallback, and advertised Stealth factories without a second SDK dependency; absent routes are `null`, while a present malformed value or empty list fails closed to no routes.
+- Add public token metadata vocabulary: `TokenInfo`, the per-chain `TOKENS` registry and address/decimal lookups (including verified DAI metadata on Ethereum, Optimism, Arbitrum and Base, plus EURe on Ethereum), Tron-aware resolution, and case-sensitive dollar-stablecoin classification. Chain-aware lookup returns metadata only for a deployment registered on that exact chain; unknown metadata is never fabricated. Registry presence is metadata only and does not advertise a route.
+- Add `effectiveStealthChains` for quote-time intersection of solver-advertised destinations and per-chain factories with the local trust anchor, and `trustedStealthChains` for historical scan/claim coverage. Missing or untrusted advertised factories fail closed.
+
+### Changed
+
+- `@xochi/signer` dependency range is `^0.8.0`, so the client resolves the passkey-recipient signer release without installing a second signer line.
+
 ## [0.1.11] - 2026-11-08
 
 ### Added
@@ -12,7 +67,7 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ### Changed
 
-- `@xochi/signer` dependency range is `^0.7.0` (was `^0.6.0`); `viem` is `^2.57.7` (was `^2.21.0`).
+- `@xochi/signer` dependency range is `^0.7.0` (was `^0.6.0`). The client calls no XSP API. `viem` is `^2.57.7` (was `^2.21.0`).
 
 ## [0.1.10] - 2026-11-03
 

@@ -6,6 +6,7 @@
 #   client-v<version>         -> npm publish -w @xochi/client
 #   widget-lib-v<version>     -> npm publish -w @xochi/widget-lib
 #   provider-v<version>       -> npm publish -w @xochi/provider
+#   widget-v<version>         -> npm publish -w @xochi/widget
 #   recipient-core-v<version> -> npm publish (from packages/recipient-core)
 #
 # Not published from here: @xochi/reference (private) and @xochi/solver-sdk,
@@ -31,14 +32,17 @@
 #
 # First publish. A trusted publisher can only be attached to a package that
 # already exists, so @xochi/spec, @xochi/signer, @xochi/client,
-# @xochi/widget-lib, @xochi/provider and @xochi/recipient-core cannot make their
-# first publish here. The conservative procedure, once per package: an npm owner
-# with 2FA checks out the reviewed release tag's commit (on main), runs the same
-# gates this job runs for that package, and runs `npm publish -w <name>` by hand
-# for a workspace package or `npm publish` from `packages/recipient-core` (the
-# real reviewed version, never a placeholder; provenance comes only from this
-# job's `--provenance` flag, never `publishConfig`). @xochi/signer goes before
-# @xochi/client, which depends on it. Then attach the config above
+# @xochi/widget-lib, @xochi/widget, @xochi/provider and @xochi/recipient-core
+# cannot make their first publish here. The conservative procedure, once per
+# package: an npm owner with 2FA checks out the reviewed release tag's commit
+# (on main), runs the same gates this job runs for that package, and runs
+# `npm publish -w <name>` by hand for a workspace package or `npm publish` from
+# `packages/recipient-core` (the real reviewed version, never a placeholder;
+# provenance comes only from this job's `--provenance` flag, never
+# `publishConfig`). @xochi/signer goes before @xochi/client, then @xochi/widget;
+# @xochi/signer also goes before @xochi/recipient-core. Publish changed
+# dependencies before pinning their real registry versions in consumers. Then
+# attach the config above
 # (`npm trust github <name> --file release.yml --repo xochi-fi/xochi-sdk
 # --env npm-publish --allow-publish`) and set Settings -> Publishing access ->
 # "Require two-factor authentication and disallow tokens", so every later
@@ -55,7 +59,8 @@
 #   - npmjs.com trusted publisher requires environment `npm-publish`, so a
 #     workflow without it gets no credential;
 #   - GitHub environment `npm-publish` accepts deployments only from tags
-#     matching the seven patterns below;
+#     matching the approved package patterns below (widget-v* and
+#     recipient-core-v* require separate settings approval);
 #   - GitHub tag ruleset "release tags" lets only repository admins create,
 #     move or delete those tags.
 #
@@ -79,6 +84,7 @@ on:
       - "client-v*"
       - "widget-lib-v*"
       - "provider-v*"
+      - "widget-v*"
       - "recipient-core-v*"
 
 permissions:
@@ -154,6 +160,7 @@ jobs:
             client-v*)         name='@xochi/client';         dir='packages/client';         version="${TAG#client-v}" ;;
             widget-lib-v*)     name='@xochi/widget-lib';     dir='packages/widget-lib';     version="${TAG#widget-lib-v}" ;;
             provider-v*)       name='@xochi/provider';       dir='packages/provider';       version="${TAG#provider-v}" ;;
+            widget-v*)         name='@xochi/widget';         dir='packages/widget';         version="${TAG#widget-v}" ;;
             recipient-core-v*) name='@xochi/recipient-core'; dir='packages/recipient-core'; version="${TAG#recipient-core-v}" ;;
             *) echo "tag $TAG names no publishable package" >&2; exit 1 ;;
           esac
@@ -249,6 +256,19 @@ jobs:
           npm run build -w @xochi/signer
           npm run build -w @xochi/solver-sdk
           npm run build -w @xochi/client
+
+      - name: Build widget prerequisites
+        if: steps.pkg.outputs.name == '@xochi/widget'
+        run: |
+          npm run build -w @xochi/signer
+          npm run build -w @xochi/client
+          npm run build -w @xochi/widget-lib
+          npm run check:redistribution -w @xochi/widget
+          npm run format:check -w @xochi/widget
+          npm run typecheck -w @xochi/widget
+          npm test -w @xochi/widget
+          npm run build -w @xochi/widget
+          node scripts/verify-widget-consumer.mjs --published-dependencies
 
       # --- @xochi/sdk: the ci.yml `check` gate (drift tests need ERC-8262) ----
 

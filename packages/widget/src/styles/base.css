@@ -1,0 +1,499 @@
+/* Xochi - Base Styles */
+
+/* Font configuration */
+@import "./fonts.css";
+
+/* Animation system */
+@import "./animations.css";
+
+/* Component styles */
+@import "./destination-selector.css";
+
+:root {
+  /* ========================================
+     Core Colors - Dark Pool Theme
+     ======================================== */
+  --obsidian: #0a0a0c;
+  --deep-night: #12121a;
+  --shadow-blockchain: #12012c;
+  --pearl-cream: #e8e4dc;
+  /* ----------------------------------------
+     Neutral text scale
+     ----------------------------------------
+     FOUR rungs, not nine, and every one of them readable.
+
+     Contrast is quoted against the real card surface (--panel-bg composited
+     over --obsidian, rgb(17,17,24)), not against --obsidian bare, because the
+     card is what text actually sits on. Values are set HERE and in themes.css
+     and nowhere else: ~180 call sites read these names, so the scale moves at
+     the index or it does not move.
+
+     Why four. Every rung a user has to READ must clear WCAG AA 4.5:1, and the
+     top of the scale is ~10:1. That leaves room for about four steps that are
+     also far enough apart to tell apart (the just-noticeable difference is
+     roughly 7% in lightness). Nine names could never have been nine rungs, and
+     they were not: --text-hint and --text-ghost were byte-identical, and
+     --text-muted and --text-faint sat 5% apart, under the JND.
+
+     Three of the old names survive as ALIASES below rather than as values, so
+     no call site had to change and none of them can drift apart again.
+
+     Rule for changing any of this: merge UPWARD. If two rungs collapse into
+     one, the survivor takes the BRIGHTER value. Merging downward silently
+     lowers contrast somewhere and no test will tell you which call site.
+
+     textContrast.test.ts reads these declarations and fails the build if any
+     rung drops under AA, if the ladder goes out of order, or if an alias grows
+     a value of its own. */
+  --text-emphasis: rgba(232, 228, 220, 0.8); /* 9.72:1  primary */
+  --text-strong: rgba(232, 228, 220, 0.7); /* 7.64:1  primary */
+  --text-secondary: rgba(232, 228, 220, 0.6); /* 5.91:1  body */
+  --text-muted: rgba(232, 228, 220, 0.55); /* 5.12:1  quiet body (was 0.5 = 4.41, under AA) */
+  --text-dim: rgba(232, 228, 220, 0.51); /* 4.59:1  placeholders, icons (was 0.45 = 3.82) */
+
+  /* Aliases, resolved per theme. `var()` in a custom property is substituted
+     from the same element, and both :root and [data-theme] land on <html>, so
+     these follow whichever theme is active with no per-theme redeclaration. */
+  --text-faint: var(--text-muted);
+  --text-hint: var(--text-dim);
+  --text-ghost: var(--text-dim);
+
+  /* ----------------------------------------
+     Neutral lines
+     ----------------------------------------
+     Borders, dividers and decorative fills. These are NOT on the text scale and
+     are not measured against it: a hairline at 1.45:1 is a hairline, whereas a
+     word at 1.45:1 is a bug, and while both lived under a --text-* name there
+     was no way to tell those two apart by reading the CSS.
+
+     --line-subtle was --text-barely, which never painted a glyph in any of its
+     nine uses. --line-strong takes over the border and dot uses that were
+     borrowing --text-dim and --text-ghost.
+
+     Deliberately NOT aliased to the text scale even though --line-strong
+     currently equals --text-dim. They answer different questions -- "is this
+     readable" and "is this edge visible" -- and coupling them means the next
+     contrast bump silently redraws every border in the app.
+
+     Not to be confused with --panel-border below, which is gold-tinted and
+     belongs to panel edges specifically. These two are neutral. */
+  --line-subtle: rgba(232, 228, 220, 0.15); /* hairline: input rows, toggles */
+  --line-strong: rgba(232, 228, 220, 0.51); /* visible edge: buttons, dots */
+  --crypto-frost: #fdfff9;
+  --ghost-white: rgba(253, 255, 249, 0.9);
+
+  /* Axol.io Brand Accent Colors */
+  --axol-coral: #ffcd9c;
+  --decentralized-coral: #e58476;
+  --cryptowave-sky: #58a1c6;
+  --node-indigo: #28338b;
+
+  /* Pearl accent colors - infused with brand */
+  --pearl-pink: rgba(229, 132, 118, 0.5); /* Decentralized Coral tint */
+  --pearl-green: rgba(88, 161, 198, 0.5);
+  --pearl-violet: rgba(40, 51, 139, 0.4); /* Node Indigo tint */
+  --pearl-blue: rgba(88, 161, 198, 0.35); /* CryptoWave Sky tint */
+
+  /* Muted accent - warm coral influence */
+  --muted-gold: #a89a80;
+  --muted-gold-glow: rgba(168, 154, 128, 0.4);
+  --muted-gold-subtle: rgba(168, 154, 128, 0.08);
+  --muted-gold-10: rgba(168, 154, 128, 0.1);
+  --muted-gold-15: rgba(168, 154, 128, 0.15);
+  --muted-gold-25: rgba(168, 154, 128, 0.25);
+  --muted-gold-30: rgba(168, 154, 128, 0.3);
+  --muted-coral: rgba(255, 205, 156, 0.6); /* Axol Coral */
+
+  /* Sky accent opacity scale (88, 161, 198) */
+  --sky-05: rgba(88, 161, 198, 0.05);
+  --sky-10: rgba(88, 161, 198, 0.1);
+  --sky-12: rgba(88, 161, 198, 0.12);
+  --sky-15: rgba(88, 161, 198, 0.15);
+  --sky-20: rgba(88, 161, 198, 0.2);
+  --sky-25: rgba(88, 161, 198, 0.25);
+  --sky-30: rgba(88, 161, 198, 0.3);
+  --sky-40: rgba(88, 161, 198, 0.4);
+
+  /* Coral accent opacity scale (255, 205, 156) */
+  --coral-10: rgba(255, 205, 156, 0.1);
+  --coral-15: rgba(255, 205, 156, 0.15);
+  --coral-20: rgba(255, 205, 156, 0.2);
+  --coral-30: rgba(255, 205, 156, 0.3);
+
+  /* Negative/error opacity scale (219, 140, 140) */
+  --negative-08: rgba(219, 140, 140, 0.08);
+  --negative-15: rgba(219, 140, 140, 0.15);
+  --negative-20: rgba(219, 140, 140, 0.2);
+  --negative-25: rgba(219, 140, 140, 0.25);
+  --negative-30: rgba(219, 140, 140, 0.3);
+
+  /* Positive/success opacity scale (74, 222, 128 = --color-success) */
+  --positive-15: rgba(74, 222, 128, 0.15);
+  --negative-50: rgba(219, 140, 140, 0.5);
+  /* Dusty rose variant (219, 182, 182) */
+  --negative-muted-60: rgba(219, 182, 182, 0.6);
+  --negative-muted-70: rgba(219, 182, 182, 0.7);
+
+  /* Purple accent opacity scale (166, 134, 176) */
+  --purple-10: rgba(166, 134, 176, 0.1);
+  --purple-15: rgba(166, 134, 176, 0.15);
+  --purple-25: rgba(166, 134, 176, 0.25);
+
+  /* Tier colors - incorporating brand */
+  --tier-standard: rgba(168, 154, 128, 0.15);
+  --tier-standard-text: #a89a80;
+  --tier-trusted: rgba(88, 161, 198, 0.15); /* CryptoWave Sky */
+  --tier-trusted-text: #58a1c6;
+  --tier-verified: rgba(40, 51, 139, 0.15); /* Node Indigo */
+  --tier-verified-text: #7b8ad9; /* Lighter indigo for readability */
+  --tier-premium: rgba(255, 205, 156, 0.15); /* Axol Coral */
+  --tier-premium-text: #ffcd9c;
+  --tier-institutional: rgba(229, 132, 118, 0.15); /* Decentralized Coral */
+  --tier-institutional-text: #e58476;
+
+  /* Tier accent variants (progress bars, emphasis) */
+  --tier-verified-accent: #82a0be;
+  --tier-premium-accent: #b086a6;
+  --tier-institutional-accent: #dbb650;
+
+  /* ========================================
+     Status Colors
+     ======================================== */
+  --color-warning: #fbbf24;
+  --color-success: #4ade80;
+  --color-error: #f87171;
+  --color-negative: #dbb6b6;
+  --color-negative-emphasis: #db9696;
+
+  /* Extended palette */
+  --color-muted-purple: #a686b0;
+  --color-tan: #dbb680;
+  --color-info-blue: #a8c4dc;
+  --color-info-teal: #a8dccf;
+  --color-info-muted: #9fc7bc;
+
+  /* ========================================
+     Typography Scale (see fonts.css for full definitions)
+     ======================================== */
+  /* --text-xs through --text-3xl defined in fonts.css with clamp() */
+  /* --tracking-* defined in fonts.css */
+
+  /* ========================================
+     Spacing Scale
+     ======================================== */
+  --space-xs: 0.25rem; /* 4px */
+  --space-sm: 0.5rem; /* 8px */
+  --space-md: 0.75rem; /* 12px */
+  --space-lg: 1rem; /* 16px */
+  --space-xl: 1.5rem; /* 24px */
+  --space-2xl: 2rem; /* 32px */
+  --space-3xl: 3rem; /* 48px */
+
+  /* ========================================
+     Border Radius
+     ======================================== */
+  --radius-xs: 3px; /* tags, micro elements */
+  --radius-sm: 4px; /* buttons, small elements */
+  --radius-pill: 6px; /* badges, pills */
+  --radius-md: 8px; /* inputs, badges */
+  --radius-lg: 12px; /* panels, cards */
+  --radius-xl: 16px; /* modals */
+  --radius-full: 9999px; /* circles */
+
+  /* ========================================
+     Transitions
+     ======================================== */
+  --transition-fast: 0.15s ease;
+  --transition-base: 0.2s ease;
+  --transition-slow: 0.3s ease;
+
+  /* ========================================
+     Shadows
+     ======================================== */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.15);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.25);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.3);
+  --shadow-glow: 0 4px 20px rgba(168, 154, 128, 0.2);
+  --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+  --shadow-sky-glow: 0 0 10px var(--sky-12);
+
+  /* ========================================
+     Panel Backgrounds
+     ======================================== */
+  --panel-bg: rgba(18, 18, 26, 0.85);
+  --panel-bg-elevated: rgba(18, 18, 26, 0.9);
+  --panel-bg-subtle: rgba(18, 18, 26, 0.7);
+  --panel-border: rgba(168, 154, 128, 0.12);
+  --panel-border-hover: rgba(168, 154, 128, 0.2);
+
+  /* ========================================
+     Inset Backgrounds (inputs, recessed areas)
+     ======================================== */
+  --inset-bg: rgba(10, 10, 12, 0.5);
+  --inset-bg-deep: rgba(10, 10, 12, 0.4);
+  --inset-bg-heavy: rgba(10, 10, 12, 0.6);
+
+  /* ========================================
+     Atmospheric Layer Controls
+     ======================================== */
+  --atmosphere-opacity: 0.4;
+  --overlay-start: rgba(10, 10, 12, 0.3);
+  --overlay-mid: rgba(10, 10, 12, 0.6);
+  --overlay-end: rgba(10, 10, 12, 0.8);
+  --grain-opacity: 0.03;
+  --orb-opacity: 0.15;
+}
+
+/* Screen-reader only utility */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Reset */
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px;
+  scroll-padding-top: 1rem;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--obsidian);
+  color: var(--pearl-cream);
+  min-height: 100vh;
+  overflow-x: hidden;
+  position: relative;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Film grain overlay */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  opacity: var(--grain-opacity);
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  z-index: 1000;
+}
+
+/* Background layers */
+.pearl-bg {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 20% 80%, var(--pearl-violet) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, var(--pearl-green) 0%, transparent 40%),
+    radial-gradient(ellipse at 60% 60%, var(--pearl-pink) 0%, transparent 45%),
+    radial-gradient(ellipse at 30% 30%, var(--pearl-blue) 0%, transparent 35%),
+    linear-gradient(160deg, var(--shadow-blockchain) 0%, var(--obsidian) 100%);
+  opacity: var(--atmosphere-opacity);
+  animation: pearlShift 20s ease-in-out infinite alternate;
+  /* Decorative layer -- must not intercept taps. Without this it sits over the
+     page and swallows clicks (whitepaper TOC links were unclickable on mobile). */
+  pointer-events: none;
+}
+
+@keyframes pearlShift {
+  0% {
+    filter: hue-rotate(0deg) brightness(1);
+  }
+  50% {
+    filter: hue-rotate(15deg) brightness(1.1);
+  }
+  100% {
+    filter: hue-rotate(-10deg) brightness(0.95);
+  }
+}
+
+.dark-overlay {
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    var(--overlay-start) 0%,
+    var(--overlay-mid) 50%,
+    var(--overlay-end) 100%
+  );
+  pointer-events: none;
+}
+
+/* Animated ripple effect - replaces water image */
+.ripple-bg {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  overflow: hidden;
+}
+
+.ripple {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid var(--muted-gold-glow);
+  opacity: 0;
+  will-change: transform, opacity;
+  transform: translateZ(0);
+}
+
+/* Ambient background ripples */
+.ripple-ambient {
+  width: 200px;
+  height: 200px;
+  left: 50%;
+  top: 65%;
+  transform: translate(-50%, -50%);
+  animation: rippleExpand 8s ease-out infinite;
+}
+
+.ripple-1 {
+  animation-delay: 0s;
+}
+
+.ripple-2 {
+  animation-delay: 2.5s;
+}
+
+.ripple-3 {
+  animation-delay: 5s;
+}
+
+/* Drop-triggered ripples */
+.ripple-drop {
+  width: 40px;
+  height: 40px;
+  transform: translate(-50%, -50%);
+  border-width: 2px;
+  border-color: var(--muted-gold);
+  animation: rippleFromDrop 2s ease-out forwards;
+}
+
+@keyframes rippleExpand {
+  0% {
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 0.4;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(4);
+    opacity: 0;
+  }
+}
+
+@keyframes rippleFromDrop {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0.8;
+    border-width: 3px;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(8);
+    opacity: 0;
+    border-width: 1px;
+  }
+}
+
+/* Floating orbs */
+.floating-orbs {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  overflow: hidden;
+}
+
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(40px);
+  opacity: var(--orb-opacity);
+  animation: floatOrb 20s ease-in-out infinite;
+}
+
+.orb-1 {
+  width: 300px;
+  height: 300px;
+  background: var(--pearl-violet);
+  left: 10%;
+  top: 20%;
+  animation-delay: 0s;
+}
+
+.orb-2 {
+  width: 250px;
+  height: 250px;
+  background: var(--pearl-green);
+  right: 15%;
+  top: 30%;
+  animation-delay: -5s;
+  animation-duration: 25s;
+}
+
+.orb-3 {
+  width: 200px;
+  height: 200px;
+  background: var(--pearl-pink);
+  left: 30%;
+  bottom: 20%;
+  animation-delay: -10s;
+  animation-duration: 22s;
+}
+
+.orb-4 {
+  width: 180px;
+  height: 180px;
+  background: var(--pearl-blue);
+  right: 25%;
+  bottom: 30%;
+  animation-delay: -15s;
+  animation-duration: 18s;
+}
+
+@keyframes floatOrb {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  25% {
+    transform: translate(30px, -40px) scale(1.1);
+  }
+  50% {
+    transform: translate(-20px, 20px) scale(0.95);
+  }
+  75% {
+    transform: translate(40px, 30px) scale(1.05);
+  }
+}
+
+.hex-pattern {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 40%;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='52' viewBox='0 0 60 52' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 0l25.98 15v30L30 60 4.02 45V15z' fill='none' stroke='%23a79456' stroke-opacity='0.03' stroke-width='0.5'/%3E%3C/svg%3E");
+  background-size: 60px 52px;
+  opacity: 0.5;
+  pointer-events: none;
+  mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.3) 0%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.3) 0%, transparent 100%);
+}

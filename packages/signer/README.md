@@ -8,7 +8,7 @@ Network-free signing and pre-sign checks for Xochi intents, origin pulls (ERC-30
 npm install @xochi/signer
 ```
 
-ESM + CommonJS with types. Deps: `ethers` v6, `@noble/curves`.
+ESM + CommonJS with types. Direct deps: `ethers` v6, `@noble/curves` ^1.9.0, `@noble/hashes` 1.8.0, `@zkpassport/poseidon2` 0.6.2.
 
 ## Usage
 
@@ -44,6 +44,7 @@ The receive side of stealth (`stealth-receive.ts`) derives a wallet's keys from 
 - **`signERC3009` is USDC-only**; use `signPermit2` for other tokens.
 - **`signUserOpHash` signs raw** (no EIP-191 prefix); only sign a hash `assertPreparedClaimMatchesRequest` or `verifyClaimUserOp` recomputed.
 - **Deposit routes verify against your pinned attestation signer and a store you supply** ([Deposit-address routes](#deposit-address-routes)).
+- **Passkey recipients: confirm a new passkey's PRF with a second ceremony, and refuse one whose derived address differs from the one you recorded** (both checks are the caller's; [Passkey recipients](#passkey-recipients)).
 
 ## Pull verification
 
@@ -82,22 +83,38 @@ A non-EVM origin (Tron) cannot be pulled: the server allocates a per-intent `dep
 
 ## Capabilities
 
-`parseCapabilities` and its accessors (`originPullMethod`, `advertisedTokenAddress`, `advertisedConversionPairs`, `servedChainKeys`, `chainUnservedReason`, `depositAttestationVersionSkew`, `orderBoundsViolation`, `stealthNotionalFloor`, `narrowStealthChains`, `stealthFactoryFor`) model `GET /xochi/capabilities`. The matrix arrives over the quote's channel, so it is **not a trust anchor**: nothing in `capabilities.ts` is named `assert*`, `verify*` or `check*`, nothing there may relax a check, and `pull_recipients` is discovery data, never a pin. `advertisedTokenAddress` is advertised data, not a pinned token address. Read `originPullMethod` per chain: the top-level `pull_method` is EVM-representative and wrong for Tron.
+`parseCapabilities` and its accessors (`originPullMethod`, `advertisedTokenAddress`, `advertisedConversionPairs`, `advertisedRoute`, `routeSupportsPrivacyMode`, `servedChainKeys`, `chainUnservedReason`, `depositAttestationVersionSkew`, `orderBoundsViolation`, `stealthNotionalFloor`, `narrowStealthChains`, `stealthFactoryFor`) model `GET /xochi/capabilities`. The matrix arrives over the quote's channel, so it is **not a trust anchor**: nothing in `capabilities.ts` is named `assert*`, `verify*` or `check*`, nothing there may relax a check, and `pull_recipients` is discovery data, never a pin. `advertisedTokenAddress` is advertised data, not a pinned token address. Read `originPullMethod` per chain: the top-level `pull_method` is EVM-representative and wrong for Tron.
 
 Stealth is per chain. `stealthChains` lists where the server quotes stealth (`[]`: nowhere; `null`: it did not say); `narrowStealthChains` intersects it with your own set and never adds a chain to it. `stealthFactoryFor` reads `chains[].stealth_factory_address` for a single EVM chain listed in `stealth_chains`, with no fallback to the deprecated top-level `stealth_factory_address`. The factory decides who can claim, so hold the advertised one against your own pinned factory allowlist and never widen that allowlist from it. `executeOwnership` is `true` only while the server serves `execute_ownership: true`, i.e. `/xochi/execute` refuses every `kid` but the quote's requester, and absent reads `false`. When a `details.funds_moved: false` refusal may be treated as "nothing moved" is SPEC.md §3.5's sole-caller exception, which needs more than this flag.
 
 Parsing is tolerant (unknown keys dropped, absent optionals `null`, an unusable payload `null`), with these fail-closed readings, each explained in the source: an unadvertised, duplicated or unknown-VM chain is unserved (`null`, never `evm` / `hex20` / first-wins; a duplicate token symbol likewise); an absent `vm_type` means `evm`, a present but unrecognised one keeps the row unaddressable so the duplicate check still sees it (served `cvm`, Canton, is not `hex20`); chain-id keys must be canonical decimal (`"08453"` collapses onto `8453`); and Canton party ids (`hint::1220<64 hex>`) are case-sensitive even when the hint starts `0x`, so `sameAddressish` folds case only for `0x` + hex.
+
+`routes[]` is the producer's authoritative exact-route contract: `{ origin: { chain_id, token }, destination: { kind: "chain", chain_id, token } | { kind: "zk_money", token }, privacy_modes }`. `parseCapabilities` drops a malformed route entry atomically, preserves valid entries in served order, and ignores unknown additive object keys. `advertisedRoute` returns `null` for an absent or duplicated endpoint; `routeSupportsPrivacyMode` is true only for a named mode on that one route. A present list, including `[]`, decides route selection. An absent top-level `routes` becomes `null`, triggering the documented legacy downgrade; a present malformed value fails closed to `[]`. `conversionPairs[].sameChain` keeps its existing per-pair meaning and is not an exclusive-route marker.
 
 ## Shielded recipient and readiness
 
 Inert: nothing in the signing path calls `shielded*.ts`, and shielded settlement is off. These modules only verify; no key is held or accepted. Signature recovery alone never proves current authorization.
 
 - **`verifyRecipientAck` trusts only your inputs.** `binding` is the one you accepted from the source-wallet ceremony, `descriptor` the one it names, `environment` and `network` your corridor record's, and `profile` the `AZTEC_RECIPIENT_PROFILES` entry your corridor record pins for that network. Never take any of them from the recipient. The descriptor is checked against the profile you pass, not against the network: nothing maps a `NetworkIdentity` to a profile for you.
-- **`expected` is the subject you hold**: the backup commitment you stored, the sender set you registered, or the receipt challenge you issued and the settlement you recorded. The two enrollment acknowledgements are held to the binding's own nonce and expiry, a receipt's token to the binding's and its network to yours.
-- **`consumeReplayKey` keys on `recipientAckReplayKey(primaryType, bindingDigest, nonce)`, never the bare nonce**: both enrollment acknowledgements reuse the binding's nonce, which the binding ceremony itself consumed. It must be durable and atomic across processes; it runs last, after every other check.
+- **`expected` is the subject you hold**: the backup commitment you stored, the sender set you registered, or the receipt challenge nonce and expiry you issued plus the settlement you recorded. The enrollment acknowledgements are held to the binding's own nonce and expiry; a receipt is held to both members of its separately issued challenge.
+- **`expected.backupFormatId` selects the backup mode.** Absent or `null` (a legacy row's NULL column), only the sealed-file format verifies, and a passkey-mode acknowledgement refuses with `backup_format_mismatch`. Build `policy.expected` from your own trusted storage, never from the signed acknowledgement. For a passkey recipient, `passkeyBackupAckExpected(storedDescriptor)` computes both the trusted credential commitment and `BACKUP_FORMAT_PASSKEY_V1_ID`; pass its result as `expected`. Only a passkey-derived recipient may use passkey mode; an imported one keeps the sealed-file format.
+- **`lookupAcceptance` and `commitAcceptance` receive only fully verified acknowledgement state.** `lookupAcceptance(replayKey)` reads the durable `{ digest, result }` for an expired exact retry; an absent or different digest fails `challenge_expired`, and no post-expiry commit is attempted. `commitAcceptance` receives an unexpired acknowledgement, including `recipientAckReplayKey(primaryType, bindingDigest, nonce)` and its digest. It MUST atomically commit replay consumption with the complete application acceptance/result and return `{ status: "committed", result }`, or return the previously stored `{ status: "existing", digest, result }`. An exact-digest retry returns that same result with `replayed: true`; a different digest under the replay key refuses with `nonce_replayed`. Neither callback may commit a consumed key alone. A malformed callback outcome throws `TypeError`; it never becomes an accepted acknowledgement.
 - Refusals are `AckEncodingError`, malformed input included; an unknown `primaryType` (untrusted wire input, any non-string included) refuses as `unknown_primary_type`, never a bare `TypeError`. A descriptor or profile of yours that fails its own check throws `RecipientEncodingError`.
 - **`verifyReadinessRecord`** rebuilds the domain from your corridor record and pins `expectedSigner` to the corridor's dedicated attestation key. Pin `expected.root` on a `Membership` check whenever you hold the latest attested root; without it, `minBlock` must be that root's `rootBlock`, or a member record under a superseded root verifies until it ages out. A `RootUpdate` is how a new root is learned, so its root is usually unpinned. `maxAgeSeconds` and `maxFutureSkewSeconds` are capped at 86 400 and 300; choose stricter values per consumer.
 - `recoverReadinessSigner` returns an address, not a verdict: compare it with your pin, or use `verifyReadinessRecord`.
+
+## Passkey recipients
+
+**APPROVED** by product-owner sign-off on 2026-11-09 ([`@xochi/spec` `PASSKEY-RECIPIENT.md`](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/spec/PASSKEY-RECIPIENT.md)).
+
+Deployment remains default-off. Passkey claims MUST NOT be enabled until every `xochi.fi` host is inventoried, serves only Xochi code, and serves every document with the spec's strict CSP (including `'wasm-unsafe-eval'`, excluding `'unsafe-inline'` and `'unsafe-eval'`), and no WebAuthn, Apple or Android association file widens the RP ID boundary. The current app CSP fails this gate.
+
+`derivePasskeyRecipientKeys({ first, second })` turns the two PRF outputs of one WebAuthn ceremony into the recipient CLI's `AccountSecrets`, a 32-byte `wrapKey` and a 32-byte `pxeStoreKey`. Evaluate with `passkeyPrfInputBytes()` (the 32 raw bytes; never encode the hex text of `PASSKEY_PRF_INPUTS`), RP ID `PASSKEY_RP_ID` and `userVerification: "required"`. Pass `results.first` / `results.second` as returned (`ArrayBuffer`) or as any 32-byte view; they are copied, never written. The ceremony itself is the caller's; this package only derives.
+
+- **A missing or short PRF output refuses** (`PasskeyDerivationError`, `prf_output_invalid`). The authenticator did not evaluate PRF: refuse the claim and show the supported list. Never fall back to a passphrase or a random key. `second` equal to `first` refuses too (the same result passed twice).
+- **Confirm a new passkey before deriving anything.** Run a second ceremony on the new credential and require byte-identical `first` and `second` (constant-time); otherwise refuse (`prf_unstable` in the spec) and enroll nothing. A passkey whose PRF changes per ceremony would bind an address no later ceremony can spend from.
+- **The derived account must be the recorded one.** A passkey that answers with different PRF bytes in another browser derives a different, empty account, not an error. Compare the derived address with the address you recorded, and refuse on a mismatch.
+- **`wrapKey` is raw key material**: import it as a non-extractable AES-GCM `CryptoKey` and zero the array. Errors never carry PRF or derived bytes; do not log `PasskeyRecipientKeys`.
 
 Changes: [CHANGELOG.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/signer/CHANGELOG.md).
 

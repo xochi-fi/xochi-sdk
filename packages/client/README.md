@@ -18,6 +18,7 @@ import { createXochiClient } from "@xochi/client";
 const xochi = createXochiClient({
   baseUrl: "https://api.xochi.fi",
   getAuthToken: () => session.token, // optional
+  getAuthGeneration: () => session.generation, // optional in-memory credential epoch
   onAuthExpired: (e) => session.reauthenticate(e),
 });
 
@@ -48,13 +49,109 @@ const quote = await xochi.getQuote(request);
 - An error body is read up to its first 8 KiB; the rest is cancelled unread. A body that does not arrive within the attempt's timeout fails the attempt as a timeout.
 - `ApiError.message` is a capped, redacted excerpt of the error body; never log raw bodies. What is redacted: `src/transport/redact.ts`.
 - 429/503 raise `ApiError` with `retryAfter` (absolute unix seconds, capped at `MAX_RETRY_WAIT_SEC`), read from `Retry-After`, else `X-RateLimit-Reset`, else a JSON body's `retryAfter`. `notAccepted` is the exception.
+- `ApiError.errorCategory` preserves a JSON error body's `error_category`. Copy it into `StructuredError.errorCategory` when reporting failures to the machine. `tag_resolution_unavailable` never auto-retries: show the lookup error and offer a manual fresh quote for the same tag. It invalidates held quotes even on silent refresh; tag quotes never cache one-time recipient addresses. `RefreshRequested` forces a new quote after this failure.
+- A confirmed missing tag still arrives as an HTTP 200 `tag_unresolved` decline. It also clears a stale held quote, including on silent refresh; the machine retains its category in `StructuredError.errorCategory`.
 - `ApiError.notAccepted` is `true` only on the Worker's not-accepted 503 for the executed intent (exact shape: `isNotAcceptedExecuteBody` in `src/transport/client.ts`); its `retryAfter` is the body's `retry_after` wait, which a later `Retry-After` header can only extend. Pass it to the machine as `ErrorReport.notAccepted`.
 - `ApiError.inDoubt` is `false` only on the three execute answers that speak for the intent (the not-accepted 503, a 502 `failed` with `substatus: "not_executed"`, a 409 `promo_unavailable`); every other execute failure, `ApiError` or not, is in doubt (`isInDoubtExecuteAnswer`). It is for the host's copy and logs; the machine never reads it. `false` does not end the order: the signed request stays executable until it expires. Word input errors from `code` and the message.
+
+Credential-failure callbacks apply only to the request's still-current bearer.
+Set `getAuthGeneration` to an in-memory counter changed on logout and
+re-authentication to invalidate earlier requests even when a token is reused.
+The transport rechecks both values after reading the error body; neither value
+is added to the callback event.
 
 ### Validation
 
 - Quote and execute bodies are validated against `QuoteResponseSchema` / `ExecuteResponseSchema` (undeclared top-level keys tolerated); a malformed `read_token` is dropped rather than failing the execute. Each attempt's timeout stays armed until the body is read. The only quote-cache TTL is `DEFAULT_TIMEOUTS.quoteCacheTtlMs`.
 - The exported schemas are `.strict()` (the declared wire shape); the transport validates with a `.passthrough()` copy so undeclared served fields (e.g. `escrow`) reach the signer checks. Running the exported schema directly is stricter than the transport.
+
+## Token metadata
+
+`TOKENS` is the public per-chain metadata registry. `TokenInfo`, `findTokenBySymbol`,
+`findTokenByAddress`, `getTokenInfoByAddress`, `getTokenInfoForChain`,
+`getTokenDecimals` and `TOKEN_DECIMALS` expose the same address/symbol/decimal
+vocabulary to widgets and headless clients. `getTokenInfoForChain` resolves only
+an address registered on that exact chain and returns `undefined` otherwise;
+Tron addresses remain case-sensitive. The address-only EVM lookup keeps its
+explicit display fallback for unknown contracts.
+
+Registry presence means only that metadata can be resolved. It never advertises
+a route: use the live capability `routes` contract and `advertisedRoute` before
+offering a chain/token pair. `isStableSymbol` is the case-sensitive domain
+classification used for dollar-stablecoin pricing and rate checks, not a token
+picker or route allowlist.
+
+## Capability routes
+
+`parseCapabilities`, `advertisedRoute` and `routeSupportsPrivacyMode` are re-exported from `@xochi/client` for route discovery:
+
+```ts
+const capabilities = parseCapabilities(await response.json());
+const route = capabilities
+  ? advertisedRoute(capabilities, {
+      origin: { chainId: 8453, token: "USDC" },
+      destination: { kind: "chain", chainId: 8453, token: "DAI" },
+    })
+  : null;
+const stealth = route?.privacyModes.includes("stealth") === true;
+```
+
+When `routes` is present, it is the authoritative selector source for same-symbol and cross-token routes; query the exact typed endpoint and do not reconstruct a cross-product. A served `[]` or malformed present value means no routes. Only an absent field parses as `null` and triggers the legacy conservative downgrade: same-symbol cross-chain corridors may use their existing leg support, cross-token same-chain still requires `conversionPairs[].sameChain`, and cross-token cross-chain remains disabled. A chain destination is never a `zk_money` destination by implication.
+
+### Trusted Stealth chains
+
+`effectiveStealthChains(capabilities.stealthChains, (chainId) =>
+stealthFactoryFor(capabilities, chainId))` intersects current solver
+advertisement and its per-chain factory with `TRUSTED_STEALTH_FACTORIES` for
+quote availability. Missing, untrusted, or mismatched factories and missing
+advertisement fail closed to `[]`. `trustedStealthChains()` is different: it
+lists every locally trusted chain for scanning and claiming historical payments,
+regardless of current quote availability.
+
+### Executable route model
+
+`resolveRouteModel(capabilities, state, options)` validates chain/token rows and
+indexes only exact advertised routes. `state` is `"live"`, `"stale"`,
+`"fallback"` or `"failed"`; only live, present typed routes authorize execution.
+Duplicate rows, invalid addresses/decimals and untrusted Stealth factories fail
+closed. Typed `zk_money` destinations remain distinct from chain destinations.
+
+The required `options.chainEnabledForRole(chainId, role)` applies the consuming
+application's launch gates. `options.presentationTokens` supplies names and
+optional logos only; addresses, decimals and route authority always come from
+capabilities. `RouteToken`, `RouteLeg`, `ExecutableRouteDestination`,
+`ResolvedRouteModel` and `ResolvedRouteAvailability` describe this model.
+Presentation defaults and fallback capability construction remain outside the
+client.
+
+`capabilityVmType`, destination/refund address validation, token-role accessors,
+`orderBounds` and `servedStealthChains` share the same capability interpretation.
+`stealthToggleState` and `shieldedToggleState` let quotes narrow, never expand,
+live settlement eligibility. `parseTrustFeatures` accepts only literal `true`;
+`effectiveTrustScore` returns zero while trust economics is disabled.
+
+The additional shared vocabulary was extracted from MIT-licensed
+`@xochi/shared` (Copyright 2025-2026 Xochi Contributors), under this package's
+MIT license. Fee display helpers derive their layers from the existing public
+`FEE_SCHEDULE`; they do not maintain an alternate fee schedule. Static address
+maps are metadata, never route authorization or a security pin.
+
+Widget presentation stays in `@xochi/widget`: popular-token ordering, offline
+origin/destination display lists and estimated fallback USD prices are not client
+exports. These preserve the extracted widget's display continuity only; typed
+live routes remain the execution authority, and only fresh live prices can feed
+market comparisons or the excessive-slippage guard. The fallback lists do not
+advertise executable routes.
+
+Token-amount formatting/parsing, address truncation, `formatSupportedTokens` and
+its display cap are owned by the widget's formatting utilities, not exported
+from the client. `classifyDecline` and `supportedOriginSentence` accept
+caller-supplied origin symbols for guidance; without them they give generic
+advice, not a static token support claim.
+
+This #98 ownership disposition is an extraction prerequisite only: publication
+remains gated on the producer/claim-chain prerequisites tracked in #98 and
+separate registry approval.
 
 ## State machine
 

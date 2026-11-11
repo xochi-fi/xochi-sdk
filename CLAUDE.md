@@ -2,9 +2,9 @@
 
 npm workspace monorepo (`workspaces: ["packages/*"]`); the private root publishes nothing. `README.md` is the package chooser. Anchor package: `@xochi/sdk`, ERC-8262 ZK compliance proofs (Noir + Barretenberg UltraHonk), verified on-chain by the [ERC-8262](https://github.com/xochi-fi/ERC-8262) Oracle and Verifier.
 
-A rule lives in exactly one place, shipped or next to the code (package README, SPEC/RFC, source header or TSDoc). This file keeps pointers plus the repo-wide invariants that have no better home.
+A rule lives in exactly one place, shipped or next to the code (package README, SPEC/RFC, source header or TSDoc); this file holds pointers and repo-wide invariants only.
 
-Three things here sign bytes; never conflate them (README "Three kinds of signing"). `@xochi/signer` moves funds: a signature bug or wrong address loses money.
+Three things here sign bytes; never conflate them (README "Three kinds of signing"). `@xochi/signer` moves funds.
 
 ## Scope
 
@@ -14,7 +14,7 @@ Three things here sign bytes; never conflate them (README "Three kinds of signin
 
 ## Map
 
-Each entry's README owns its rules; read it before editing the package.
+Each entry's README owns its rules.
 
 - `packages/sdk` (`@xochi/sdk`): README (npm page; links are absolute GitHub URLs) and `docs/*.md`. Entry point `src/index.ts`; light subpaths per README "Install".
 - `packages/provider` (`@xochi/provider`): provider attestations, `DigestSigner` custody, replay storage. README "Rules"; reference daemon in `daemon/` (its own README; not in the tarball).
@@ -30,7 +30,7 @@ Each entry's README owns its rules; read it before editing the package.
 
 ## Verify a change
 
-Run the jobs in `.github/workflows/ci.yml` in order. Build `@xochi/signer` first: dependents read its `dist/` `.d.ts`. `npm run check:vectors -w @xochi/spec` is the vector gate (regenerate, `git diff --exit-code`, openapi digest). A regenerated vector is a wire change that lands in lockstep with the server, never a refresh to make CI pass (`packages/spec/README.md` "Who is authoritative").
+Run the jobs in `.github/workflows/ci.yml` in order. Build `@xochi/signer` first: dependents read its `dist/` `.d.ts`. `npm run check:vectors -w @xochi/spec` is the vector gate (regenerate, `git diff --exit-code`, openapi digest). A regenerated vector is a wire change that lands in lockstep with the server (`packages/spec/README.md` "Who is authoritative").
 
 ```bash
 npm ci && npm run build && npm run typecheck && npm test   # every workspace, @xochi/signer built first
@@ -41,11 +41,11 @@ npm run daemon -w @xochi/provider                          # build, then run the
 packages/sdk/scripts/sync-circuits.sh ../ERC-8262          # after `nargo compile --workspace` in ERC-8262/circuits
 ```
 
-Circuit sync: use the script, never a manual copy (its header says why); then `npm test -w @xochi/sdk`, whose drift tests hold the artifacts to ERC-8262's verifiers.
+Circuit sync: use the script, never a manual copy; then `npm test -w @xochi/sdk`, whose drift tests hold the artifacts to ERC-8262's verifiers.
 
 ## Repo-wide invariants
 
-- An equality assertion is informative only if at least one side is a value this repo cannot edit (riddler-sdk#92). That is why vendored copies stay and the probes exist (`scripts/probe-lib.mjs` header).
+- An equality assertion is informative only if at least one side is a value this repo cannot edit (riddler-sdk#92): vendored copies stay and the probes exist (`scripts/probe-lib.mjs` header).
 - The vectors' `signer` is the all-`abandon` test key (`signer_is_test_key: true`), never a deploy's pin (`capabilities.deposit_attestation_signer`). Wiring it into a fail-closed check would refuse every real quote.
 - Pins never come from capabilities or discovery (`packages/signer/README.md` "Safety rules").
 - `SOLVER_RFC_VERSION` (`packages/solver-sdk/src/client.ts`) is the one place that literal lives; no file retypes it. Spec and RFC versions live in each document's header. The withdrawn announcement fields and the public-only literal: `packages/solver-sdk/src/schema.ts`; do not restore or widen them.

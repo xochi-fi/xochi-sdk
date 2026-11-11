@@ -33,6 +33,16 @@ import {
 } from "../fee.js";
 import type { QuoteRequest } from "../machine/wire.js";
 import { PROMO_NOT_APPLIED_NOTE, REFERRAL_NEUTRAL_NOTE } from "../shared/index.js";
+import {
+  Session,
+  T0,
+  TO_AMOUNT,
+  apiCalls,
+  ctx,
+  intentTypedData,
+  only,
+  walletCalls,
+} from "../machine/test/session.js";
 
 interface Recorded {
   url: string;
@@ -698,6 +708,45 @@ describe("quote retries only a transient gateway status", () => {
     expect(logged.at(-1)?.level).toBe("error");
   });
 
+  it("preserves a lookup outage category and never retries its 503", async () => {
+    const { c, calls, logged } = client(
+      () =>
+        json(
+          {
+            success: false,
+            can_solve: false,
+            error_category: "tag_resolution_unavailable",
+            error: "We can't look up @alice right now. Please try again.",
+            intent_id: "xi_unavailable",
+            quote_id: "xq_unavailable",
+            expiry: "x",
+            settlement_options: [],
+          },
+          503,
+          { "Retry-After": "5" },
+        ),
+      { retry: { maxAttempts: 5, baseDelayMs: 0 } },
+    );
+    const error = await rejection(c.getQuote({ ...req, recipientTag: "alice" }));
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      code: 503,
+      errorCategory: "tag_resolution_unavailable",
+      retryAfter: expect.any(Number),
+    });
+    expect(calls).toHaveLength(1);
+    expect(logged.filter((entry) => entry.level === "warn")).toEqual([]);
+  });
+
+  it("still retries an unrelated structured 503", async () => {
+    const { c, calls } = client(() =>
+      json({ error_category: "inventory_unverified", error: "Busy" }, 503),
+    );
+    const error = await rejection(c.getQuote(req));
+    expect(error).toMatchObject({ code: 503, errorCategory: "inventory_unverified" });
+    expect(calls).toHaveLength(DEFAULT_RETRY.maxAttempts);
+  });
+
   it("resolves the quote when a transient 502 clears on the second attempt", async () => {
     const { c, calls } = client((call) =>
       call === 1 ? new Response("Bad Gateway", { status: 502 }) : okQuote(),
@@ -989,9 +1038,8 @@ describe("timeouts cover the response body", () => {
   });
 });
 
-// A pull-bearing quote embeds a single-use ERC-3009 nonce. It must never be
-// served from the TTL cache: a re-quote after a failed execute has to mint a
-// fresh nonce. A non-pull quote is safely cacheable.
+// Pull nonces and tag-resolved recipient addresses are single-use. Neither may
+// be served from the TTL cache; ordinary non-pull quotes remain cacheable.
 describe("getQuote cache", () => {
   it("refetches a pull-bearing quote on every call (never cached)", async () => {
     const { c, calls } = client(() =>
@@ -1007,6 +1055,23 @@ describe("getQuote cache", () => {
     await c.getQuote(req);
     await c.getQuote(req);
     expect(calls).toHaveLength(2);
+  });
+
+  it("refetches a tag's one-time address even without an explicit force", async () => {
+    const { c, calls } = client((call) =>
+      okQuote({
+        recipient_tag: "alice",
+        recipient_address:
+          call === 1
+            ? "0x2222222222222222222222222222222222222222"
+            : "0x3333333333333333333333333333333333333333",
+      }),
+    );
+    const request = { ...req, recipientTag: "alice" };
+    const first = await c.getQuote(request);
+    const second = await c.getQuote(request);
+    expect(calls).toHaveLength(2);
+    expect(second.recipientAddress).not.toBe(first.recipientAddress);
   });
 
   it("caches a non-pull quote, and a forced refresh bypasses it", async () => {
@@ -1120,6 +1185,122 @@ describe("getQuote cache", () => {
   });
 });
 
+describe("tag lookup outage through transport and machine", () => {
+  it.each([false, true])("clears an old quote until manual retry (silent: %s)", async (paused) => {
+    const toToken = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
+    const oldAddress = "0x2222222222222222222222222222222222222222";
+    const newAddress = "0x3333333333333333333333333333333333333333";
+    const s = new Session(ctx({ toChainId: 1, toToken, recipientTag: "alice", paused }));
+    const { c, calls } = client((call) => {
+      if (call === 2) {
+        return json(
+          {
+            success: false,
+            can_solve: false,
+            error_category: "tag_resolution_unavailable",
+            error: "We can't look up @alice right now. Please try again.",
+            intent_id: "xi_unavailable",
+            quote_id: "xq_unavailable",
+            expiry: new Date(T0 + 60_000).toISOString(),
+            settlement_options: [],
+          },
+          503,
+        );
+      }
+      const recipient = call === 1 ? oldAddress : newAddress;
+      return okQuote({
+        quote_id: `xq_${call}`,
+        expiry: new Date(T0 + 120_000).toISOString(),
+        to_amount: TO_AMOUNT,
+        recipient_tag: "alice",
+        recipient_address: recipient,
+        eip712: intentTypedData({ toChainId: 1, toToken, recipient }),
+      });
+    });
+    const initial = s.requestQuote();
+    s.send({
+      type: "QuoteReplied",
+      flight: initial.flight,
+      result: { ok: true, quote: await c.getQuote(initial.request) },
+    });
+    expect(s.intent.quote?.recipientAddress).toBe(oldAddress);
+    expect(s.receipt.signing).toEqual({ kind: "ready", signatures: 1 });
+
+    const refreshEffects = s.send({ type: "TimerFired", timer: "refresh" });
+    const refresh = only(apiCalls(refreshEffects, "quote"));
+    const error = await rejection(
+      c.getQuote(refresh.request, { forceRefresh: refresh.forceRefresh }),
+    );
+    if (!(error instanceof ApiError)) throw new Error("expected an API lookup failure");
+    const fx = s.send({
+      type: "QuoteReplied",
+      flight: refresh.flight,
+      result: {
+        ok: false,
+        error: {
+          rejected: false,
+          detail: error.message,
+          value: {
+            message: error.message,
+            code: error.code,
+            retryAfter: error.retryAfter,
+            errorCategory: error.errorCategory,
+          },
+        },
+      },
+    });
+    expect(calls).toHaveLength(2);
+    expect(s.intent).toMatchObject({
+      status: "failed",
+      quote: null,
+      intentId: null,
+      quoteId: null,
+      error: { code: 503, errorCategory: "tag_resolution_unavailable" },
+    });
+    expect(s.model.refresh).toBeNull();
+    expect(s.model.quoteExpiresIn).toBeNull();
+    expect(s.receipt.payout).toEqual({ kind: "none" });
+    expect(s.receipt.signing).toEqual({ kind: "unavailable" });
+    expect(fx).toContainEqual({ type: "Timer", call: { op: "clear", timer: "refresh" } });
+    expect([...refreshEffects, ...fx]).toContainEqual({
+      type: "Timer",
+      call: { op: "clear", timer: "expiry" },
+    });
+    expect(walletCalls(s.send({ type: "SignRequested" }), "signTypedData")).toEqual([]);
+    expect(apiCalls(s.send({ type: "TimerFired", timer: "refresh" }), "quote")).toEqual([]);
+
+    const manual = only(apiCalls(s.send({ type: "RefreshRequested" }), "quote"));
+    expect(manual.forceRefresh).toBe(true);
+    expect(manual.request.recipientTag).toBe("alice");
+    s.send({
+      type: "QuoteReplied",
+      flight: manual.flight,
+      result: {
+        ok: true,
+        quote: await c.getQuote(manual.request, { forceRefresh: manual.forceRefresh }),
+      },
+    });
+    expect(calls).toHaveLength(3);
+    expect(s.intent.error).toBeNull();
+    expect(s.intent.quote?.recipientAddress).toBe(newAddress);
+    const prompt = only(walletCalls(s.send({ type: "SignRequested" }), "signTypedData"));
+    expect(prompt.typedData.message.recipient).toBe(newAddress);
+    const execute = only(
+      apiCalls(
+        s.send({
+          type: "SignReplied",
+          flow: prompt.flow,
+          purpose: "intent",
+          result: { ok: true, signature: "0xsig" },
+        }),
+        "execute",
+      ),
+    );
+    expect(execute.request.quoteId).toBe("xq_3");
+    expect(calls).toHaveLength(3);
+  });
+});
+
 describe("auth injection", () => {
   it("attaches the injected bearer token, and none when absent", async () => {
     const withToken = client(() => okQuote(), { getAuthToken: () => "tok" });
@@ -1155,6 +1336,56 @@ describe("auth injection", () => {
     await rejection(c.getQuote(req));
     expect(events).toEqual([{ reason: "expired", status: 401 }]);
   });
+
+  it.each([
+    { transition: "credential replacement", nextToken: "next", nextGeneration: 0 },
+    { transition: "logout", nextToken: null, nextGeneration: 1 },
+    { transition: "same-token re-authentication", nextToken: "old", nextGeneration: 1 },
+  ])(
+    "does not expire a newer session after $transition during the error body",
+    async ({ nextToken, nextGeneration }) => {
+      let token: string | null = "old";
+      let generation = 0;
+      const events: AuthExpiredEvent[] = [];
+      const bodyRead = Promise.withResolvers<void>();
+      const bodyReady = Promise.withResolvers<void>();
+      let controller!: ReadableStreamDefaultController<Uint8Array>;
+      const body = new ReadableStream<Uint8Array>(
+        {
+          start: (stream) => {
+            controller = stream;
+          },
+          pull: () => {
+            bodyRead.resolve();
+            return bodyReady.promise;
+          },
+        },
+        { highWaterMark: 0 },
+      );
+      const { c } = client(() => new Response(body, { status: 401 }), {
+        getAuthToken: () => token,
+        getAuthGeneration: () => generation,
+        onAuthExpired: (event) => events.push(event),
+      });
+      const outcome = rejection(c.getQuote(req));
+      await bodyRead.promise;
+      token = nextToken;
+      generation = nextGeneration;
+      controller.enqueue(
+        new TextEncoder().encode(
+          JSON.stringify({
+            success: false,
+            error: "Invalid session",
+            error_category: "auth_invalid",
+          }),
+        ),
+      );
+      controller.close();
+      bodyReady.resolve();
+      expect(((await outcome) as ApiError).code).toBe(401);
+      expect(events).toEqual([]);
+    },
+  );
 
   it("does not report a business-rule 403 as a credential failure", async () => {
     const events: AuthExpiredEvent[] = [];

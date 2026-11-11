@@ -4,13 +4,10 @@ Signing for compliance-data providers in [ERC-8262](https://github.com/xochi-fi/
 provider signs the risk signals it produced; the signed circuits (`COMPLIANCE_SIGNED` 0x07,
 `RISK_SCORE_SIGNED` 0x08, `COMPLIANCE_MULTI_SIGNED` 0x09) verify that secp256k1 signature
 in-circuit, and the Oracle accepts only registered `signer_pubkey_hash` values. It also signs
-EIP-712 credential-root publications for `publishCredentialRoot`.
-
-Taker signing (intents, ERC-3009, Permit2) is in
-[`@xochi/signer`](https://github.com/xochi-fi/xochi-sdk/tree/main/packages/signer#readme); proving
-is in [`@xochi/sdk`](https://github.com/xochi-fi/xochi-sdk/tree/main/packages/sdk#readme) (see
-[signed proofs](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/sdk/docs/signed-proofs.md)).
-Nothing here moves funds.
+EIP-712 credential-root publications for `publishCredentialRoot`. Nothing here moves funds: taker
+signing is [`@xochi/signer`](https://github.com/xochi-fi/xochi-sdk/tree/main/packages/signer#readme),
+proving is [`@xochi/sdk`](https://github.com/xochi-fi/xochi-sdk/tree/main/packages/sdk#readme)
+([signed proofs](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/sdk/docs/signed-proofs.md)).
 
 ## Install
 
@@ -21,25 +18,19 @@ npm install @xochi/provider @aztec/bb.js viem
 `viem@^2.55.0` is a peer dependency; `@aztec/bb.js` provides the `Barretenberg` instance used for
 Pedersen hashing. ESM-only (`require()` works on Node 22.12+).
 
-Production key custody uses `DigestSigner`: the package constructs and validates each 32-byte
-protocol digest locally and passes only that digest to `signDigest`. One `DigestSigner` object
-represents one stable key identity; rotation creates a new object. The adapter exposes copied
-32-byte secp256k1 `publicKeyX` / `publicKeyY` coordinates and returns canonical 64-byte `r || s`
-with low S. `signDigest` may perform remote I/O; the adapter owns custody authentication, timeout,
-cancellation, retry, DER decoding and low-S normalization. Adapter failures propagate to the
-caller. The package validates the signature against one copied identity snapshot and derives the
-Ethereum recovery bit before returning it. No private-key bytes cross this interface. A
-`DigestSigner` signs any 32 bytes it is given, so the KMS/HSM key behind it is a raw-digest signing
-oracle: dedicate it to provider signing and never let another application or protocol sign with
-it. `label` is a non-secret diagnostic identifier recorded in private daemon audit failures; do not
-put secrets in it.
+Production custody is `DigestSigner`: the package builds and validates each 32-byte protocol digest
+and passes only that digest to `signDigest`. One object is one stable key identity (rotation
+creates a new object), exposing copied 32-byte `publicKeyX` / `publicKeyY` and returning canonical
+low-S 64-byte `r || s`. The adapter owns custody I/O, timeout, cancellation, retry, DER decoding
+and low-S normalization; its failures propagate. The package verifies the signature against one
+copied identity snapshot and derives the recovery bit. The key behind a `DigestSigner` signs any
+32 bytes: dedicate it to provider signing. `label` is a non-secret diagnostic identifier; keep
+secrets out of it.
 
 `PrivateKeyLoader`, `RawPrivateKeyLoader`, `HexPrivateKeyLoader` and `loadLocalSigner` are the
-explicitly extractable-key path for tests, development and the reference daemon, not production
-custody. `loadPrivateKey()` returns a fresh caller-owned 32-byte byte array; ownership transfers to
-`loadLocalSigner`, which overwrites it without dispatching overridable typed-array methods and
-keeps a separate native `Uint8Array` copy. `destroy()` wipes the local signer's owned copy. It
-cannot wipe immutable strings or copies retained by callers or loaders.
+extractable-key path for tests, development and the reference daemon. `loadPrivateKey()` returns a
+fresh 32-byte array whose ownership passes to `loadLocalSigner`; `destroy()` wipes the signer's
+copy, not immutable strings or copies callers or loaders retain.
 
 ## Signed signals (0x07 / 0x08)
 
@@ -119,9 +110,7 @@ await oracle.publishCredentialRoot(1n, root, cid, notBefore, notAfter, signature
 ```
 
 `credentialRootDigest`, `hashPublication`, `buildDomainSeparator` and `cidHash` are exported for
-verification.
-
-`signCredentialRoot` is asynchronous because `DigestSigner.signDigest` may call remote custody.
+verification. `signCredentialRoot` is asynchronous because `signDigest` may call remote custody.
 
 ## Rules
 
@@ -133,40 +122,28 @@ verification.
 - `submitter` is signed and must be the account that submits the proof.
 - The signed `timestamp` must be within `MAX_PROOF_AGE` when the proof reaches the Oracle
   ([proof timestamps](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/sdk/README.md#proof-timestamps)).
-- The local signer uses deterministic RFC 6979 signing, but generic KMS/HSM `DigestSigner`
-  adapters may return different valid low-S signatures for the same digest.
-- `signSignalsWithReplayProtection` / `signSlotPayloadWithReplayProtection` return byte-identical
-  bundles while a matching `ReplayDb` record is retained, including concurrent attempts.
+- The local signer uses deterministic RFC 6979 signing; a generic KMS/HSM `DigestSigner` may
+  return a different valid low-S signature for the same digest, so identical retry bytes depend on
+  the replay record below. `signCredentialRoot` has no replay ledger.
+- `signSignalsWithReplayProtection` / `signSlotPayloadWithReplayProtection` return the retained
+  bundle while a matching `ReplayDb` record exists, including under concurrent attempts.
   `ReplayDb.recordCanonical` must atomically retain and return one winner across every process
-  sharing persistent storage; a process-local lock is insufficient. `inserted` is true only when
-  that call's candidate became the retained row. Production storage must persist across restarts
-  and retain records for the full proof-validity window; eviction or loss can produce another valid
-  signature.
-
-Replay rows cross a storage trust boundary. The package keeps the locally computed digest private
-and gives storage independent copies of lookup keys and candidate bundles. Before releasing a
-lookup or canonical winner, it copies and validates every fixed-length field, the compact low-S
-signature against the captured signer and payload, the signer commitment, and an `inserted`
-winner's equality to the submitted candidate. Corrupt rows or metadata fail closed. The store
-remains responsible for durable atomicity and retention; a storage failure after custody signing
-returns no bundle, but a later attempt may invoke custody again.
-
-Retrying the same digest is cryptographically safe. A generic adapter may produce different valid
-low-S bytes on each attempt, so byte-identical retry output depends on the matching replay record
-remaining available. `signCredentialRoot` has no built-in replay ledger; callers that require
-byte-identical credential-root retries must retain those results themselves.
+  sharing the storage (a process-local lock is insufficient); `inserted` is true only when that
+  call's candidate became the retained row. Storage must persist across restarts and retain records
+  for the full proof-validity window. Rows returned by storage are copied and validated (fixed-length
+  fields, low-S signature against the captured signer and payload, signer commitment, and an
+  `inserted` winner's equality to the candidate); corrupt rows fail closed. A storage failure after
+  custody signing returns no bundle, and a later attempt may invoke custody again.
 
 ## Registering the signer
 
 `computeSignerPubkeyHash(api, signer.publicKeyX, signer.publicKeyY)` gives the
-`signer_pubkey_hash`.
-Register it once with `oracle.registerSignerPubkeyHash(hash, providerId)` (`@xochi/sdk`); one
-registration covers 0x07, 0x08 and 0x09.
+`signer_pubkey_hash`. Register it once with `oracle.registerSignerPubkeyHash(hash, providerId)`
+(`@xochi/sdk`); one registration covers 0x07, 0x08 and 0x09.
 
 ## Signing daemon
 
-A reference HTTP daemon that keeps the key out of the proving process ships as source in the repo,
-not in this tarball: see
+Reference HTTP daemon, shipped as source in the repo, not in this tarball:
 [daemon/README.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/provider/daemon/README.md).
 
 Changes: [CHANGELOG.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/provider/CHANGELOG.md).

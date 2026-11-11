@@ -1,0 +1,669 @@
+/* Token Search Modal
+ *
+ * Mobile-first two-panel token selector with chain filter and search.
+ * Mobile: full-screen, horizontal chain pills, stacked layout.
+ * Desktop: centered modal, vertical chain sidebar + token list.
+ */
+
+/* ========================================
+   Modal Container
+   ======================================== */
+
+.token-search-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--overlay-end);
+  backdrop-filter: blur(12px);
+  animation: fadeIn 0.3s var(--ease-out, ease);
+}
+
+.token-search-content {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100dvh;
+  min-height: 0;
+  background: var(--panel-bg-elevated);
+  overflow: hidden;
+  animation: modalIn 0.35s var(--ease-out);
+}
+
+/* ========================================
+   Header
+   ======================================== */
+
+.token-search-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-lg) var(--space-xl);
+  border-bottom: 1px solid var(--panel-border);
+  flex-shrink: 0;
+}
+
+.token-search-title {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--pearl-cream);
+  letter-spacing: 0.02em;
+}
+
+.token-search-close {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.token-search-close svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 1.5;
+}
+
+.token-search-close:hover {
+  border-color: var(--line-strong);
+  color: var(--pearl-cream);
+}
+
+/* ========================================
+   Panels Container
+   ======================================== */
+
+.token-search-panels {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ========================================
+   Chain Filter (mobile: horizontal pills)
+   ======================================== */
+
+.token-search-chains {
+  display: flex;
+  flex-direction: row;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-xl);
+  overflow-x: auto;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--panel-border);
+  scrollbar-width: none;
+}
+
+.token-search-chains::-webkit-scrollbar {
+  display: none;
+}
+
+.token-search-chain-search {
+  display: none;
+}
+
+.token-search-chain-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-height: 44px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-full);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.token-search-chain-item:hover {
+  background: var(--muted-gold-subtle);
+  border-color: var(--muted-gold-15);
+  color: var(--pearl-cream);
+}
+
+.token-search-chain-item.active {
+  background: var(--sky-10);
+  border-color: var(--sky-20);
+  color: var(--cryptowave-sky);
+}
+
+.token-search-chain-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.token-search-chain-reason {
+  color: var(--text-muted);
+  font-size: 0.58rem;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.token-search-chain-item--blocked {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.token-search-chain-item--blocked:hover {
+  background: transparent;
+  border-color: var(--panel-border);
+  color: var(--text-secondary);
+}
+
+.token-search-close:focus-visible,
+.token-search-chain-item:focus-visible,
+.token-search-popular-chip:focus-visible,
+.token-search-row:focus-visible {
+  outline: 2px solid var(--muted-gold);
+  outline-offset: 2px;
+}
+
+.token-search-chain-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-full);
+  object-fit: contain;
+}
+
+.token-search-chain-all-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.25;
+}
+
+.token-search-panels--chain .token-search-chains {
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-bottom: 0;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--panel-border) transparent;
+}
+
+.token-search-panels--chain .token-search-chains::-webkit-scrollbar {
+  display: block;
+  width: 4px;
+}
+
+.token-search-panels--chain .token-search-chains::-webkit-scrollbar-thumb {
+  background: var(--panel-border);
+  border-radius: var(--radius-full);
+}
+
+.token-search-panels--chain .token-search-chain-search {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: block;
+  flex-shrink: 0;
+  padding-bottom: var(--space-sm);
+  background: var(--panel-bg-elevated);
+}
+
+.token-search-panels--chain .token-search-chain-item {
+  width: 100%;
+  border-radius: var(--radius-md);
+}
+
+/* ========================================
+   Search Input
+   ======================================== */
+
+.token-search-input-wrap {
+  padding: var(--space-md) var(--space-xl);
+  flex-shrink: 0;
+}
+
+.token-search-input {
+  width: 100%;
+  padding: var(--space-md) var(--space-lg);
+  padding-left: 2.25rem;
+  background: var(--inset-bg-heavy);
+  border: 1px solid var(--panel-border-hover);
+  border-radius: var(--radius-md);
+  color: var(--pearl-cream);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 400;
+  transition: all var(--transition-fast);
+}
+
+.token-search-input::placeholder {
+  color: var(--text-hint);
+}
+
+.token-search-input:focus-visible {
+  outline: none;
+  border-color: var(--muted-gold-glow);
+  box-shadow:
+    0 0 0 3px var(--muted-gold-10),
+    0 0 12px var(--muted-gold-subtle);
+}
+
+.token-search-input-container {
+  position: relative;
+}
+
+.token-search-input-icon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  color: var(--text-hint);
+  pointer-events: none;
+}
+
+/* ========================================
+   Token List Panel
+   ======================================== */
+
+.token-search-tokens {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ========================================
+   Popular Tokens (chips)
+   ======================================== */
+
+.token-search-section-label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-faint);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0 var(--space-xl);
+  margin-bottom: var(--space-sm);
+}
+
+.token-search-popular {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding: 0 var(--space-xl);
+  margin-bottom: var(--space-md);
+  flex-shrink: 0;
+}
+
+.token-search-popular-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-full);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  min-height: 44px;
+}
+
+.token-search-popular-chip:hover {
+  background: var(--muted-gold-subtle);
+  border-color: var(--muted-gold-15);
+  color: var(--pearl-cream);
+}
+
+.token-search-popular-chip .token-search-chip-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-full);
+  object-fit: contain;
+}
+
+/* ========================================
+   Token List
+   ======================================== */
+
+.token-search-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 var(--space-md);
+  scrollbar-width: thin;
+  scrollbar-color: var(--panel-border) transparent;
+}
+
+.token-search-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.token-search-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.token-search-list::-webkit-scrollbar-thumb {
+  background: var(--panel-border);
+  border-radius: 2px;
+}
+
+/* ========================================
+   Token Row
+   ======================================== */
+
+.token-search-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  width: 100%;
+  padding: var(--space-md) var(--space-md);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: left;
+  min-height: 48px;
+}
+
+.token-search-row:hover {
+  background: var(--muted-gold-subtle);
+  border-color: var(--muted-gold-10);
+}
+
+/* ---------------------------------------------------------------------------
+   Three pair states, and they must not look alike.
+
+   A trust-locked pair is a door with a key: it exists, we can fill it, and the
+   row says which score opens it. So it keeps its colour and reads as live but
+   held -- a dashed accent border, the affordance of something you can work
+   toward.
+
+   An unsupported pair is a limit of the protocol that no user action changes.
+   It is drained of colour and sits flat, with no border to suggest it is
+   waiting on you.
+
+   Both stay in the list and both stay readable. Dropping them was the old
+   behaviour and it made "we cannot price this" indistinguishable from "this
+   token does not exist"; rendering them identically to each other would be the
+   same collapse one level up.
+   --------------------------------------------------------------------------- */
+
+.token-search-row--locked,
+.token-search-row--unsupported {
+  cursor: not-allowed;
+}
+
+.token-search-row--locked {
+  border: 1px dashed var(--muted-gold-25);
+  background: var(--muted-gold-subtle);
+}
+
+.token-search-row--locked:hover {
+  border: 1px dashed var(--muted-gold-30);
+  background: var(--muted-gold-10);
+}
+
+.token-search-row--locked .token-search-row-name {
+  color: var(--muted-gold);
+}
+
+.token-search-row--unsupported {
+  opacity: 0.45;
+  filter: grayscale(1);
+  border-color: transparent;
+}
+
+/* No hover lift: nothing happens on click, so nothing should invite one. */
+.token-search-row--unsupported:hover {
+  background: transparent;
+  border-color: transparent;
+}
+
+.token-search-row--unsupported.focused {
+  background: transparent;
+  border-color: transparent;
+}
+
+.token-search-row-badge {
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Gold: reachable. Matches the destination-tag--action treatment used for the
+   stealth destination, which is the other "you can act on this" state. */
+.token-search-row-badge--locked {
+  background: var(--muted-gold-10);
+  color: var(--muted-gold);
+  border: 1px solid var(--muted-gold-25);
+}
+
+/* Flat and borderless: a statement, not an invitation. */
+.token-search-row-badge--unsupported {
+  background: var(--panel-border);
+  color: var(--text-faint);
+}
+
+.token-search-row.selected {
+  background: var(--sky-10);
+  border-color: var(--sky-20);
+}
+
+.token-search-row.focused {
+  background: var(--muted-gold-10);
+  border-color: var(--muted-gold-15);
+}
+
+.token-search-row-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.token-search-row-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.token-search-row-symbol {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--pearl-cream);
+}
+
+.token-search-row-name {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A pair's own refusal is a sentence (the configurator's rows, #46): it wraps
+   rather than ellipsising, since the reason is the point of the row. */
+.token-search-row-name--reason {
+  white-space: normal;
+  overflow: visible;
+}
+
+.token-search-row-chain {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.token-search-row-chain-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+  object-fit: contain;
+  opacity: 0.6;
+}
+
+.token-search-row-chain-name {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-faint);
+}
+
+/* ========================================
+   Empty State
+   ======================================== */
+
+.token-search-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-3xl) var(--space-xl);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+
+/* Chevron on a selectable row: the redundant "this one opens" cue. */
+.token-search-row-glyph {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-faint);
+}
+
+/* Source-of-truth line under the list (pair availability sheet spec). */
+.token-search-footer {
+  margin: 0;
+  padding: 0.5rem 1rem 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.04em;
+  text-align: center;
+  color: var(--text-faint);
+}
+
+/* ========================================
+   Desktop: Two-panel layout
+   ======================================== */
+
+@media (min-width: 601px) {
+  .token-search-modal {
+    align-items: center;
+    padding: 1rem;
+  }
+
+  .token-search-content {
+    max-width: 560px;
+    height: min(680px, calc(100dvh - 2rem));
+    max-height: calc(100dvh - 2rem);
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--panel-border-hover);
+    box-shadow: var(--shadow-xl);
+    backdrop-filter: blur(24px);
+  }
+
+  .token-search-content--chain {
+    max-width: 420px;
+    height: min(560px, calc(100dvh - 2rem));
+  }
+
+  .token-search-panels {
+    flex-direction: row;
+  }
+
+  .token-search-chains {
+    flex-direction: column;
+    width: 180px;
+    min-width: 180px;
+    min-height: 0;
+    padding: var(--space-md);
+    border-bottom: none;
+    border-right: 1px solid var(--panel-border);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--panel-border) transparent;
+  }
+
+  .token-search-panels--chain .token-search-chains {
+    width: 100%;
+    min-width: 0;
+    border-right: 0;
+  }
+
+  .token-search-chain-search {
+    display: block;
+    margin-bottom: var(--space-sm);
+  }
+
+  .token-search-chain-item {
+    border-radius: var(--radius-pill);
+    padding: 8px 10px;
+    min-height: 44px;
+  }
+}
+
+@media (min-width: 601px) and (max-width: 700px) {
+  .token-search-chains {
+    width: 140px;
+    min-width: 140px;
+  }
+}
+
+/* ========================================
+   Reduced Motion
+   ======================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .token-search-modal,
+  .token-search-content {
+    animation-duration: 0.01ms;
+  }
+}

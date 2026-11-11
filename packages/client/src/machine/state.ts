@@ -7,12 +7,13 @@ import type { QuoteResponse } from "./wire.js";
 import type { StoredDepositAttestation } from "./deposit.js";
 
 /**
- * A failure the UI can categorize by HTTP code and, on 429/503 backpressure,
- * run a retry countdown for. Most failures are a plain string instead.
+ * A failure the UI can categorize by errorCategory or HTTP code and, on
+ * 429/503 backpressure, run a retry countdown for. Most failures are a plain string.
  */
 export interface StructuredError {
   message: string;
   code?: number;
+  errorCategory?: string;
   retryAfter?: number; // Unix timestamp
   reason?: string; // From WebSocket intent_failed
 }

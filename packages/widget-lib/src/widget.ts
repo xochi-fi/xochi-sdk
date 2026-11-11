@@ -11,7 +11,7 @@
  */
 
 import { asJson, isRecord, normalizeOrigin, truncate } from "./internal.js";
-import { encodeEmbedParams, type EmbedParams } from "./params.js";
+import { EMBED_THEMES, encodeEmbedParams, type EmbedParams, type EmbedTheme } from "./params.js";
 import {
   ALLOWED_RPC_METHODS,
   DEFAULT_WIDGET_ORIGIN,
@@ -28,6 +28,8 @@ import {
   type HostMessage,
   type RpcErrorObject,
   type RpcId,
+  WIDGET_PROTOCOL_VERSION,
+  type WalletUi,
   type XochiWidgetEvent,
 } from "./protocol.js";
 
@@ -46,6 +48,22 @@ export type XochiWidgetListeners = {
   [E in XochiWidgetEvent as E["name"]]?: (event: E) => void;
 };
 
+/** Maximum time a frame gets to acknowledge protocol and wallet UI ownership. */
+export const WIDGET_READY_TIMEOUT_MS = 10_000;
+
+/** The bounded host/frame compatibility state reported by `onStatusChange`. */
+export type XochiWidgetStatus =
+  | { state: "loading" }
+  | {
+      state: "ready";
+      protocolVersion: typeof WIDGET_PROTOCOL_VERSION;
+      walletUi: WalletUi;
+    }
+  | {
+      state: "error";
+      code: "timeout" | "load-error" | "protocol-mismatch" | "wallet-ui-mismatch";
+      message: string;
+    };
 export interface XochiWidgetOptions {
   /** What the frame opens on (see params.ts). `{}` for its own defaults. */
   params: EmbedParams;
@@ -59,6 +77,15 @@ export interface XochiWidgetOptions {
    * user and the frame should simply follow it.
    */
   autoConnect?: boolean;
+  /**
+   * Which surface owns persistent wallet and account UI. Default `"widget"`.
+   * `"host"` requires `onConnectRequest`.
+   */
+  walletUi?: WalletUi;
+  /** Open the host's wallet UI when a hosted frame asks the user to connect. */
+  onConnectRequest?: () => void;
+  /** Reports bounded frame compatibility and wallet-ownership readiness. */
+  onStatusChange?: (status: XochiWidgetStatus) => void;
   /** Where the widget is served, an origin only. Default `https://widget.xochi.fi`. */
   origin?: string;
   listeners?: XochiWidgetListeners;
@@ -67,6 +94,8 @@ export interface XochiWidgetOptions {
 export interface XochiWidget {
   /** Reload the frame on new params. A no-op when they encode identically. */
   updateParams(params: EmbedParams): void;
+  /** Apply a theme without reloading or changing wallet or trade state. */
+  updateTheme(theme: EmbedTheme): void;
   /** Attach, replace or (with null) detach the host wallet. */
   updateProvider(provider: Eip1193Provider | null): void;
   /** Remove the frame and every listener. Idempotent. */
@@ -154,10 +183,23 @@ export function createXochiWidget(
 ): XochiWidget {
   const origin = normalizeWidgetOrigin(options.origin ?? DEFAULT_WIDGET_ORIGIN);
   let src = embedUrl(origin, options.params);
+  let theme: EmbedTheme | null = options.params.theme ?? null;
+  const walletUi = options.walletUi ?? "widget";
+  if (walletUi !== "widget" && walletUi !== "host") {
+    throw new TypeError('walletUi must be "widget" or "host"');
+  }
+  const onConnectRequest = options.onConnectRequest;
+  if (walletUi === "host" && typeof onConnectRequest !== "function") {
+    throw new TypeError('onConnectRequest must be a function when walletUi is "host"');
+  }
+  const onStatusChange = options.onStatusChange;
+  if (onStatusChange !== undefined && typeof onStatusChange !== "function") {
+    throw new TypeError("onStatusChange must be a function");
+  }
   const listeners: XochiWidgetListeners = { ...options.listeners };
-  const host = container.ownerDocument.defaultView;
-  if (host === null) throw new TypeError("container is not in a document with a window");
-
+  const ownerWindow = container.ownerDocument.defaultView;
+  if (ownerWindow === null) throw new TypeError("container is not in a document with a window");
+  const host: Window = ownerWindow;
   const iframe = container.ownerDocument.createElement("iframe");
   iframe.src = src;
   iframe.title = EMBED_FRAME.title;
@@ -168,22 +210,29 @@ export function createXochiWidget(
   iframe.allow = "clipboard-write";
   iframe.style.border = "0";
   iframe.style.maxWidth = "100%";
+  iframe.hidden = walletUi === "host";
 
   let provider: Eip1193Provider | null = null;
   const autoConnect = options.autoConnect === true;
   let destroyed = false;
-  /** The frame has said `xochi:ready` since it last loaded. */
+  /** The frame has acknowledged this host's protocol and wallet UI ownership. */
   let ready = false;
+  /** A compatible frame announced itself and is awaiting the ownership acknowledgement. */
+  let handshakeStarted = false;
+  let failed = false;
+  let readyTimer: number | null = null;
   /** Bumped on every frame (re)load, so an answer never reaches a later document. */
   let session = 0;
-  /** Request ids in flight for the current session (duplicate-id detection). */
+  /** Bumped for every load/ready handshake; acknowledgements must echo it. */
+  let handshakeId = 0;
+  /** Bumped on provider replacement, so the prior wallet can no longer answer the frame. */
+  let authority = 0;
+  /** Request ids in flight for the current session and provider authority. */
   const pending = new Set<RpcId>();
   /**
-   * Wallet requests still unsettled at the provider, across sessions. The cap
-   * counts these, not `pending`: a reload or a re-announced `xochi:ready` clears
-   * `pending` while the provider is still working on the earlier requests.
-   * No per-request deadline: a prompt waits on a person, so a request the
-   * wallet never settles holds its slot (documented in the README).
+   * Wallet requests still unsettled at the current provider authority. A frame
+   * reload keeps those slots occupied; replacing the provider invalidates and
+   * frees them because its answers can no longer cross the bridge.
    */
   let inFlight = 0;
   /**
@@ -194,9 +243,77 @@ export function createXochiWidget(
    */
   let connected = autoConnect;
 
+  function reportStatus(status: XochiWidgetStatus): void {
+    if (!destroyed) onStatusChange?.(status);
+  }
+
+  function clearReadyTimer(): void {
+    if (readyTimer === null) return;
+    host.clearTimeout(readyTimer);
+    readyTimer = null;
+  }
+
+  function failReady(
+    code: Extract<XochiWidgetStatus, { state: "error" }>["code"],
+    message: string,
+  ): void {
+    if (destroyed || failed || ready) return;
+    failed = true;
+    handshakeStarted = false;
+    clearReadyTimer();
+    if (walletUi === "host") iframe.hidden = true;
+    reportStatus({ state: "error", code, message });
+  }
+
+  function armReadyTimer(): void {
+    clearReadyTimer();
+    readyTimer = host.setTimeout(() => {
+      failReady("timeout", "The trade widget did not become ready. Retry.");
+    }, WIDGET_READY_TIMEOUT_MS);
+  }
+
+  function beginLoading(notify = true): void {
+    ready = false;
+    handshakeStarted = false;
+    failed = false;
+    if (walletUi === "host") iframe.hidden = true;
+    if (notify) reportStatus({ state: "loading" });
+    armReadyTimer();
+  }
+
+  const onFrameError = (): void => {
+    failReady("load-error", "The trade widget could not be loaded. Retry.");
+  };
+
+  const onFrameLoad = (): void => {
+    const notifyLoading = ready || handshakeStarted;
+    session += 1;
+    handshakeId += 1;
+    pending.clear();
+    connected = autoConnect;
+    beginLoading(notifyLoading);
+    handshakeStarted = true;
+    postProvider();
+  };
+
   /** Post to the frame, naming the widget origin as the only acceptable recipient. */
   function post(message: HostMessage): void {
     iframe.contentWindow?.postMessage(message, origin);
+  }
+
+  function postProvider(available = provider !== null): void {
+    post({
+      type: MESSAGE.provider,
+      protocolVersion: WIDGET_PROTOCOL_VERSION,
+      handshakeId,
+      available,
+      autoConnect,
+      walletUi,
+    });
+  }
+
+  function postTheme(): void {
+    if (theme !== null) post({ type: MESSAGE.theme, theme });
   }
 
   function reply(id: RpcId, outcome: { result: unknown } | { error: RpcErrorObject }): void {
@@ -282,12 +399,11 @@ export function createXochiWidget(
       });
       return;
     }
-    // The request goes to the provider attached NOW and its answer is delivered
-    // even if the host swaps providers meanwhile: a transaction the wallet sent
-    // must not be reported as failed. The frame learns of the swap from the
-    // `xochi:provider` and `accountsChanged` messages that follow.
+    // Capture both the document and wallet authority. A later frame or provider
+    // must never receive this wallet's answer.
     const wallet = provider;
     const requestSession = session;
+    const requestAuthority = authority;
     pending.add(id);
     inFlight += 1;
     const args = params === undefined ? { method } : { method, params };
@@ -301,8 +417,9 @@ export function createXochiWidget(
         error: { code: RPC_ERROR.internal, message: "Internal error" },
       }))
       .then((outcome) => {
+        if (destroyed || requestAuthority !== authority) return;
         inFlight -= 1;
-        if (destroyed || requestSession !== session) return;
+        if (requestSession !== session) return;
         pending.delete(id);
         try {
           if (
@@ -341,20 +458,74 @@ export function createXochiWidget(
     const raw: unknown = event.data;
     if (!isRecord(raw) || typeof raw.type !== "string") return;
     const message = asJson(raw);
+    if (failed) return;
 
     switch (raw.type) {
-      case MESSAGE.ready:
+      case MESSAGE.ready: {
+        const notifyLoading = ready || handshakeStarted;
         session += 1;
+        handshakeId += 1;
         pending.clear();
         connected = autoConnect;
+        beginLoading(notifyLoading);
+        if (
+          !isRecord(message) ||
+          message.protocolVersion !== WIDGET_PROTOCOL_VERSION ||
+          Object.keys(raw).length !== 2
+        ) {
+          failReady("protocol-mismatch", "The trade widget version is incompatible. Retry.");
+          return;
+        }
+        handshakeStarted = true;
+        postProvider();
+        return;
+      }
+      case MESSAGE.providerAck:
+        if (!handshakeStarted || !isRecord(message)) return;
+        if (
+          message.protocolVersion !== WIDGET_PROTOCOL_VERSION ||
+          typeof message.handshakeId !== "number" ||
+          !Number.isSafeInteger(message.handshakeId) ||
+          message.handshakeId < 0 ||
+          Object.keys(raw).length !== 4
+        ) {
+          failReady("protocol-mismatch", "The trade widget version is incompatible. Retry.");
+          return;
+        }
+        if (message.handshakeId < handshakeId) return;
+        if (message.handshakeId !== handshakeId) {
+          failReady("protocol-mismatch", "The trade widget version is incompatible. Retry.");
+          return;
+        }
+        if (message.walletUi !== walletUi) {
+          failReady(
+            "wallet-ui-mismatch",
+            "The trade widget could not confirm wallet ownership. Retry.",
+          );
+          return;
+        }
+        handshakeStarted = false;
         ready = true;
-        post({ type: MESSAGE.provider, available: provider !== null, autoConnect });
+        clearReadyTimer();
+        iframe.hidden = false;
+        postTheme();
+        reportStatus({
+          state: "ready",
+          protocolVersion: WIDGET_PROTOCOL_VERSION,
+          walletUi,
+        });
         return;
       case MESSAGE.rpc:
+        if (walletUi === "host" && !ready) return;
         handleRpc(raw, message);
         return;
+      case MESSAGE.connectRequest:
+        if (!ready || walletUi !== "host" || !isRecord(message)) return;
+        if (Object.keys(raw).length !== 1) return;
+        onConnectRequest?.();
+        return;
       case MESSAGE.resize: {
-        if (!isRecord(message)) return;
+        if ((walletUi === "host" && !ready) || !isRecord(message)) return;
         const { height } = message;
         if (typeof height !== "number" || !Number.isFinite(height)) return;
         if (height <= 0 || height > MAX_FRAME_HEIGHT) return;
@@ -362,7 +533,7 @@ export function createXochiWidget(
         return;
       }
       case MESSAGE.event: {
-        if (!isRecord(message)) return;
+        if ((walletUi === "host" && !ready) || !isRecord(message)) return;
         const widgetEvent = toWidgetEvent(message.event);
         if (widgetEvent !== null) emit(widgetEvent);
         return;
@@ -371,8 +542,12 @@ export function createXochiWidget(
   }
 
   attach(options.provider ?? null);
+  iframe.addEventListener("error", onFrameError);
+  iframe.addEventListener("load", onFrameLoad);
   host.addEventListener("message", onMessage);
   container.appendChild(iframe);
+  armReadyTimer();
+  host.queueMicrotask(() => reportStatus({ state: "loading" }));
 
   return {
     updateParams(params) {
@@ -380,24 +555,44 @@ export function createXochiWidget(
       const next = embedUrl(origin, params);
       if (next === src) return;
       src = next;
-      ready = false;
+      theme = params.theme ?? null;
       session += 1;
       pending.clear();
       connected = autoConnect;
       iframe.height = String(params.height ?? EMBED_FRAME.height);
       // The style height an earlier document reported would override it.
       if (params.height !== undefined) iframe.style.height = `${params.height}px`;
+      beginLoading();
       iframe.src = next;
+    },
+    updateTheme(next) {
+      if (destroyed) throw new Error("the Xochi widget was destroyed");
+      if (!EMBED_THEMES.includes(next)) {
+        throw new TypeError(`theme must be one of ${EMBED_THEMES.join(", ")}`);
+      }
+      if (next === theme) return;
+      theme = next;
+      if (ready) postTheme();
     },
     updateProvider(next) {
       if (destroyed) throw new Error("the Xochi widget was destroyed");
       if (next === provider) return;
+      const replacing = provider !== null && next !== null;
+      if (replacing && (ready || handshakeStarted)) postProvider(false);
+      authority += 1;
+      session += 1;
+      pending.clear();
+      inFlight = 0;
+      connected = autoConnect;
       attach(next);
-      if (ready) post({ type: MESSAGE.provider, available: provider !== null, autoConnect });
+      if (ready || handshakeStarted) postProvider();
     },
     destroy() {
       if (destroyed) return;
       destroyed = true;
+      clearReadyTimer();
+      iframe.removeEventListener("error", onFrameError);
+      iframe.removeEventListener("load", onFrameLoad);
       host.removeEventListener("message", onMessage);
       attach(null);
       pending.clear();

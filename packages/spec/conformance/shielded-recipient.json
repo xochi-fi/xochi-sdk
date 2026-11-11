@@ -2,7 +2,7 @@
   "version": 1,
   "generator": "packages/spec/conformance/generate-shielded-recipient.ts",
   "source": "xochi docs/planning/shielded-execution.md §7 (\"Approved 2026-10-18: typed encodings\", Recipient message) and the product-owner decisions of 2026-10-24/25 (xochi#633, xochi#635, xochi-sdk#42)",
-  "testOnlyKeys": "Every secret here (testOnlySecrets, the signing keys behind every signature) is a synthetic TEST ONLY scalar: keccak256 of a label containing 'TEST ONLY', reduced. Never use them for anything else. Networks, corridors, nonces and digests are fixtures.",
+  "testOnlyKeys": "Every secret here (testOnlySecrets, the signing keys behind every signature) is a synthetic TEST ONLY scalar: keccak256 of a label containing 'TEST ONLY', reduced, or, in the passkey section, derived by the passkey derivation from TEST ONLY PRF fixtures (32 x 0x00 / 32 x 0x01, or SHA-256 of a 'TEST ONLY' label). Never use them for anything else. Networks, corridors, nonces and digests are fixtures.",
   "constants": {
     "fieldModulus": "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
     "grumpkinOrder": "0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47",
@@ -1818,7 +1818,7 @@
     ],
     "rules": [
       "bindingDigest = the RecipientBinding EIP-712 digest both parties signed",
-      "BackupPersistenceAck.backupCommitment = keccak256(randomized encrypted backup bytes); backupFormatId = keccak256(UTF8(\"xochi.shielded.backup-format.v1\")) = 0xe37c67f007c5a5bbebbc6c5b9aefd99f252b2cc121e3fc9a269801940f605348; neither value contains plaintext",
+      "BackupPersistenceAck.backupCommitment = keccak256(randomized encrypted backup bytes); backupFormatId = keccak256(UTF8(\"xochi.shielded.backup-format.v1\")) = 0xe37c67f007c5a5bbebbc6c5b9aefd99f252b2cc121e3fc9a269801940f605348; neither value contains plaintext. This is the sealed-file format; passkey.backup.rule adds the passkey format and supersedes this rule for it",
       "BackupPersistenceAck, SenderRegistrationAck and TokenRegistrationAck are enrollment acknowledgements: nonce / challengeExpiry equal the named RecipientBinding challenge members exactly; no second enrollment challenge is issued",
       "PaymentReceiptAck nonce / challengeExpiry are a separate server-issued single-use receipt challenge and signing window",
       "SenderRegistrationAck.registeredSenders: nonempty, strictly ascending (bytewise), each a nonzero in-field Aztec address",
@@ -4044,5 +4044,622 @@
         }
       }
     ]
+  },
+  "passkey": {
+    "status": "APPROVED: product-owner sign-off on departing from xochi#759's sealed backup received 2026-11-09; decided in epic xochi#833 (xochi-sdk#155). Rollout remains gated on PASSKEY-RECIPIENT.md's CSP and xochi.fi host prerequisites. Additive: every value outside this section is unchanged.",
+    "spec": "packages/spec/PASSKEY-RECIPIENT.md",
+    "rpId": "xochi.fi",
+    "rpName": "Xochi",
+    "derivationVersion": 1,
+    "prfInputs": {
+      "first": {
+        "label": "xochi.recipient.passkey.v1/prf/account",
+        "value": "0xda78e1a895e2650478d184cb97b68a58a700ebbc2fd12d57a394873c93439dea"
+      },
+      "second": {
+        "label": "xochi.recipient.passkey.v1/prf/wrap",
+        "value": "0x76b121dc2850fb29af74dcd8357c9c9fd4992d2990cdcd3144c704220b83fda4"
+      }
+    },
+    "hkdf": {
+      "hash": "SHA-256",
+      "salt": "xochi.recipient.passkey.v1",
+      "outputs": [
+        {
+          "name": "accountSecret",
+          "ikm": "first",
+          "info": "xochi.recipient.passkey.v1/account-secret",
+          "length": 64
+        },
+        {
+          "name": "accountSalt",
+          "ikm": "first",
+          "info": "xochi.recipient.passkey.v1/account-salt",
+          "length": 64
+        },
+        {
+          "name": "wrapKey",
+          "ikm": "second",
+          "info": "xochi.recipient.passkey.v1/wrap-key",
+          "length": 32
+        },
+        {
+          "name": "pxeStoreKey",
+          "ikm": "second",
+          "info": "xochi.recipient.passkey.v1/pxe-store-key",
+          "length": 32
+        }
+      ]
+    },
+    "rule": [
+      "prfInputs.first.value / prfInputs.second.value = SHA-256(UTF8(label)); the page passes those 32 raw bytes (never their hex text) as extensions.prf.eval.{first, second} in one ceremony (the browser hashes each again with the 'WebAuthn PRF' context before the authenticator sees it)",
+      "prf.first / prf.second = getClientExtensionResults().prf.results.{first, second}: each exactly 32 bytes, else prf_output_invalid; prf.second equal to prf.first: prf_output_invalid on prf.second",
+      "every HKDF below is HKDF-SHA256 (RFC 5869) with salt = hkdf.salt = UTF8(\"xochi.recipient.passkey.v1\") and info = UTF8 of the hkdf.outputs entry's info string",
+      "secret = OS2IP(HKDF(prf.first, info = UTF8(\"xochi.recipient.passkey.v1/account-secret\"), L = 64)) mod r; salt = OS2IP(HKDF(prf.first, info = UTF8(\"xochi.recipient.passkey.v1/account-salt\"), L = 64)) mod r; either zero: derived_zero",
+      "wrapKey = HKDF(prf.second, info = UTF8(\"xochi.recipient.passkey.v1/wrap-key\"), L = 32): the AES-256-GCM key of the PKW1 wrapped import",
+      "pxeStoreKey = HKDF(prf.second, info = UTF8(\"xochi.recipient.passkey.v1/pxe-store-key\"), L = 32): the key of the browser's persisted encrypted PXE store; derived on every unlock, never persisted",
+      "version: only derivationVersion is accepted, else unsupported_version",
+      "account: stock SchnorrAccount (profile aztec-6.0.0), signing key = deriveMasterMessageSigningSecretKey(secret) (the MSSK_M master scalar), keys = deriveKeys(secret), salt = the derived salt, deployer = 0; one passkey is one recipient"
+    ],
+    "derivations": [
+      {
+        "name": "zeros-ones",
+        "prfSource": "first = 32 x 0x00, second = 32 x 0x01",
+        "prf": {
+          "first": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "second": "0x0101010101010101010101010101010101010101010101010101010101010101"
+        },
+        "hkdfOutput": {
+          "accountSecret": "0xc95fa4be641abb3d75650e2bdc5afb136e9bc0a9e1a5eb5e89a3fa117773984f4054b3af214e5fbf74c181061dd90430b3f66163a9183a4a97f2e2d3ef2a8a9f",
+          "accountSalt": "0x91e897985e17656cad59533c25bed7ee24965202e02ac7ceb1053b58c7749bc63a1cccfe9850f9eda3ecdce40ab2c7b447a60d68a5ada05c3908edceef9cb116",
+          "wrapKey": "0x88c5497da2bcbdd9ca0fd9959ced6779ce674025253b1f7d0ab99d123ba6f97b",
+          "pxeStoreKey": "0x0f902fee0b27c84738b848f2576a0f47becbba0dcff73822f30853297e9dc799"
+        },
+        "secret": "0x16e61e8361407b35f5355c5a84878cf653f211f0747e0f5070623fcd4a6f7e82",
+        "salt": "0x09976444a011a99a61e1c10045618355e1a0170df7322cba11d1230c8c916679",
+        "wrapKey": "0x88c5497da2bcbdd9ca0fd9959ced6779ce674025253b1f7d0ab99d123ba6f97b",
+        "pxeStoreKey": "0x0f902fee0b27c84738b848f2576a0f47becbba0dcff73822f30853297e9dc799",
+        "account": {
+          "name": "passkey zeros-ones",
+          "profile": "aztec-6.0.0",
+          "testOnlySecrets": {
+            "secretKey": "0x16e61e8361407b35f5355c5a84878cf653f211f0747e0f5070623fcd4a6f7e82",
+            "signingPrivateKey": "0x272902ccc826d3847c747b5d4f872e9b7eb06c7d66420ab255478550cd31051e"
+          },
+          "descriptor": {
+            "aztecAddress": "0x0184719b1aac0714af7e0e82d9c5470fdd66ba90f52cfa7929217569b40c219f",
+            "classId": "0x2f7d07db78643da21eefb63ee07d28d1cc23dd86ec9b3a9fa29323bf17269d15",
+            "salt": "0x09976444a011a99a61e1c10045618355e1a0170df7322cba11d1230c8c916679",
+            "deployer": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "signingPublicKeyX": "0x24880e597f82a15ee83e69fd3055308a991f9fad50408a06e1101a3442ef6554",
+            "signingPublicKeyY": "0x03a0ada0b20caaa3bb1e98d48630c07fb794a3a4248879af43f21f12070a3552",
+            "npkMHash": "0x03af6cc5a82d1f2dac07bb7a92f7f657279a27986f465f6556e28ca13374b487",
+            "ivpkMX": "0x044169f6dafb17dfa3f50d1a75756790b16995831e8d15bdfb72a56ce57fa731",
+            "ivpkMY": "0x0b7d3979f0756f00e199404a9158e5ea95d632d774ff4f1d35e2ca16111feafd",
+            "ovpkMHash": "0x0228a41b43fe9d3dfe70c993b3e92746548162a75efdb620497d5048fc79445e",
+            "tpkMHash": "0x16d781e9e37c9645ba255becf014f27582c436458e52399235de768f826df992",
+            "mspkMHash": "0x197e69692f316e6de8d71dbd42e330075389798338ebbc20db8ef4f9ec0a7c37",
+            "fbpkMHash": "0x1640349ccbe0044723ea234baf4a4d25817634ffd08691861f00fded6a09c8c2",
+            "network": {
+              "aztecChainId": "11155111",
+              "protocolVersion": "679261766",
+              "rollupAddress": "0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6",
+              "l1ChainId": "11155111",
+              "genesisOrNetworkDigest": "0x6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e"
+            }
+          },
+          "descriptorDigest": "0x1e5105c6936b20398a0ce86bebc7617b20f54e7edc4235b757d85a46d0bd9c03",
+          "derivation": {
+            "constructorArgsHash": "0x282858385b925c05487100114cf28cd1468c510fc0816c33931f098a1c8ded4d",
+            "initializationHash": "0x0ac48847f5faa0bae63be2b3b197163afda3c07bb8d272194f739e2117792456",
+            "immutablesHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "saltedInitializationHash": "0x0a3d6d64525cf96734e3f9f51340edc23d8a4fc96feddad714b9eedb8ebe4783",
+            "partialAddress": "0x16d268eedd49818430120c70e0cef7f4073c25a2acc64dd79a0ff4b33d8cadbb",
+            "ivpkMHash": "0x06704c4d2b3a87cd41ee566fc9454a41c04fd9e6007ef81e055022ff891ad1b4",
+            "publicKeysHash": "0x0d82b58e5268d71a7a4c7d483d6c6c3274364de7cef3c0fe8d148a3a34f6aae1",
+            "preaddress": "0x14f2bbf2512c4954d46e39e6988ac083f5f59fc2ad7094f32f9576ee139f6c6c",
+            "addressPoint": {
+              "x": "0x0184719b1aac0714af7e0e82d9c5470fdd66ba90f52cfa7929217569b40c219f",
+              "y": "0x102c4473e4f26457ea21ad6e56ec286146376bde6c2e43a25871a29d8c1b8ebe"
+            },
+            "address": "0x0184719b1aac0714af7e0e82d9c5470fdd66ba90f52cfa7929217569b40c219f"
+          }
+        }
+      },
+      {
+        "name": "sha256-labels",
+        "prfSource": "first = SHA-256(UTF8(\"TEST ONLY prf first\")), second = SHA-256(UTF8(\"TEST ONLY prf second\"))",
+        "prf": {
+          "first": "0xb0b3d6bc69d6dd33bbae3c7042b6e498d936691127f7aa808016f861a33f91c9",
+          "second": "0xb6fa7c499b0b304e1c9d0362bbea5b493dd4335666a737fb49b33fde67f4da57"
+        },
+        "hkdfOutput": {
+          "accountSecret": "0x4d1322241aefc84af8c276ab6f1a91c27a0643ab28e8114eaa47d6dc78efdde83c2f40c007cc7010a2aeeca38ac762754c8437e19bc6bd6b38befa17f108d7a3",
+          "accountSalt": "0xbf85dd12e439b504bc9f715114691e5d68187a664589321247449664249c10236961ea246835a2e9d7090a3a39eda5aeea7cfdc29cfc5510712a3e68a72626b3",
+          "wrapKey": "0x1154a7392a60a14f07d534d42df8d0231aff0842ef8b230615b02557ba6f2c94",
+          "pxeStoreKey": "0xb09631054470ce946fe144d6e1de01afe78483325129b6bb15d5f390979321b4"
+        },
+        "secret": "0x25a853a998db29033e2736b012009c2fc43020ed8bb69367683a7c2a8e7af0b6",
+        "salt": "0x17d0b81b79aa82aab662c3789626002c5b713e92cb2610a978271c73ddedede7",
+        "wrapKey": "0x1154a7392a60a14f07d534d42df8d0231aff0842ef8b230615b02557ba6f2c94",
+        "pxeStoreKey": "0xb09631054470ce946fe144d6e1de01afe78483325129b6bb15d5f390979321b4",
+        "account": {
+          "name": "passkey sha256-labels",
+          "profile": "aztec-6.0.0",
+          "testOnlySecrets": {
+            "secretKey": "0x25a853a998db29033e2736b012009c2fc43020ed8bb69367683a7c2a8e7af0b6",
+            "signingPrivateKey": "0x0ed5ee60c22acf5fdea2cf22738a6f89a50cd39fa174c36b1f545dee4d8a81bc"
+          },
+          "descriptor": {
+            "aztecAddress": "0x201b973312ba0dc57a4029a772f57a7ef5cfb46622ac9ea2572851b88f51bc24",
+            "classId": "0x2f7d07db78643da21eefb63ee07d28d1cc23dd86ec9b3a9fa29323bf17269d15",
+            "salt": "0x17d0b81b79aa82aab662c3789626002c5b713e92cb2610a978271c73ddedede7",
+            "deployer": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "signingPublicKeyX": "0x09626c885f3004b78d9daff3b0337cdeea990c3c7ba351cf1fa738a0d3d977b7",
+            "signingPublicKeyY": "0x12ce7852b642ab2999f2cc13f807bfa611646ac1da47dab89635015ea3b6ad05",
+            "npkMHash": "0x23bd17e1554a14e9716d311cb34037a488878178583f87e566d3f4eb6bacfdc6",
+            "ivpkMX": "0x1d5ffc9bb99e17c1154c7829f12df8bc56153eec1113e6505a32d7dfce186a9b",
+            "ivpkMY": "0x18403b8ad11a47ca998dca6ec0a05b647986770da29cc2130dadb063db04eb06",
+            "ovpkMHash": "0x1da863fd495edd6a647cd43c860aeb86b2b2b9a539bd09e57b78f88d478f088c",
+            "tpkMHash": "0x1888c99ffaa5a731c1b92b7132e22f482c4bcf893fc1feaa6618edbf1690d14f",
+            "mspkMHash": "0x1f79f4617c7c7c6d77aaf94ff89a71d347deae59780d17865b36ed28b14ec575",
+            "fbpkMHash": "0x14750b0502dd8e6b5417d89e9dd145f09f49766b543bcd5a4993fb373b5dd6a5",
+            "network": {
+              "aztecChainId": "11155111",
+              "protocolVersion": "679261766",
+              "rollupAddress": "0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6",
+              "l1ChainId": "11155111",
+              "genesisOrNetworkDigest": "0x6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e"
+            }
+          },
+          "descriptorDigest": "0x9620b9b840ee20b14ae19bc247febfa485196b3cfa80ebffd2ac3da33d44fd4c",
+          "derivation": {
+            "constructorArgsHash": "0x027ac1e7412962670e110bbacd417117e95926a00fc084b6281a500c80c80f20",
+            "initializationHash": "0x0a9bedb3ccf51044decb38504edb68b0004a09d95b861f95402704890cda4f73",
+            "immutablesHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "saltedInitializationHash": "0x2d887b24675b894e3c7f45cd04950f6d289f83f2e1f7c42c38ee144b6ac5ebab",
+            "partialAddress": "0x189fa79d1f94fc2075c77278d4f8fa93715906c9cebe80e65cd0722e6d866c4b",
+            "ivpkMHash": "0x097e2382a2cbaedc2f3eaccb6f9dbf41e32884e321c71633336d023e904115fd",
+            "publicKeysHash": "0x239ae28867c7bef2bb8bd6199aed065d134e07e35ffa91dad5a58ec01b75ce40",
+            "preaddress": "0x18be83f80e602d7867fad0ce6d449bb6b13ac4fd018997728cfba8ae653e2302",
+            "addressPoint": {
+              "x": "0x201b973312ba0dc57a4029a772f57a7ef5cfb46622ac9ea2572851b88f51bc24",
+              "y": "0x2cee2924e00e15a506e94a33b09564e31e93858bd6e2c60f4dad24d372882589"
+            },
+            "address": "0x201b973312ba0dc57a4029a772f57a7ef5cfb46622ac9ea2572851b88f51bc24"
+          }
+        }
+      }
+    ],
+    "derivationRefusals": [
+      {
+        "name": "first output 31 bytes",
+        "prf": {
+          "first": "0x00000000000000000000000000000000000000000000000000000000000000",
+          "second": "0x0101010101010101010101010101010101010101010101010101010101010101"
+        },
+        "version": 1,
+        "error": {
+          "code": "prf_output_invalid",
+          "field": "prf.first"
+        }
+      },
+      {
+        "name": "first output 33 bytes",
+        "prf": {
+          "first": "0x000000000000000000000000000000000000000000000000000000000000000000",
+          "second": "0x0101010101010101010101010101010101010101010101010101010101010101"
+        },
+        "version": 1,
+        "error": {
+          "code": "prf_output_invalid",
+          "field": "prf.first"
+        }
+      },
+      {
+        "name": "first output absent (no PRF result)",
+        "prf": {
+          "first": null,
+          "second": "0x0101010101010101010101010101010101010101010101010101010101010101"
+        },
+        "version": 1,
+        "error": {
+          "code": "prf_output_invalid",
+          "field": "prf.first"
+        }
+      },
+      {
+        "name": "second output 31 bytes",
+        "prf": {
+          "first": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "second": "0x01010101010101010101010101010101010101010101010101010101010101"
+        },
+        "version": 1,
+        "error": {
+          "code": "prf_output_invalid",
+          "field": "prf.second"
+        }
+      },
+      {
+        "name": "second output empty",
+        "prf": {
+          "first": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "second": "0x"
+        },
+        "version": 1,
+        "error": {
+          "code": "prf_output_invalid",
+          "field": "prf.second"
+        }
+      },
+      {
+        "name": "second output absent (no PRF result)",
+        "prf": {
+          "first": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "second": null
+        },
+        "version": 1,
+        "error": {
+          "code": "prf_output_invalid",
+          "field": "prf.second"
+        }
+      },
+      {
+        "name": "second output equal to the first (results.first passed twice)",
+        "prf": {
+          "first": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "second": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "version": 1,
+        "error": {
+          "code": "prf_output_invalid",
+          "field": "prf.second"
+        }
+      },
+      {
+        "name": "derivation version 0",
+        "prf": {
+          "first": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "second": "0x0101010101010101010101010101010101010101010101010101010101010101"
+        },
+        "version": 0,
+        "error": {
+          "code": "unsupported_version",
+          "field": "version"
+        }
+      },
+      {
+        "name": "derivation version 2",
+        "prf": {
+          "first": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "second": "0x0101010101010101010101010101010101010101010101010101010101010101"
+        },
+        "version": 2,
+        "error": {
+          "code": "unsupported_version",
+          "field": "version"
+        }
+      }
+    ],
+    "backup": {
+      "formatName": "xochi.shielded.backup-format.passkey.v1",
+      "formatId": "0xfc8e02b9741f099f45fc73cf480359a580e322ceae9ca66d3964a987ad4517f2",
+      "commitmentTag": {
+        "name": "xochi.shielded.passkey-backup-commitment.v1",
+        "value": "0x8f222f44e0f186187a38e34bdcf4086619e6536187560450d9a0ce200249f025"
+      },
+      "rule": [
+        "BackupPersistenceAck (type, purpose and struct unchanged) accepts two backupFormatId values: 0xe37c67f007c5a5bbebbc6c5b9aefd99f252b2cc121e3fc9a269801940f605348 (sealed file) and 0xfc8e02b9741f099f45fc73cf480359a580e322ceae9ca66d3964a987ad4517f2 (passkey); the format id is the mode. This supersedes acknowledgements.rules' sealed-file-only backupFormatId rule for the passkey format",
+        "passkey backupCommitment = keccak256(abi.encode(bytes32 commitmentTag, bytes32 credentialIdHash, bytes32 keccak256(UTF8(rpId)), uint32 derivationVersion)); credentialIdHash = keccak256(raw credential id), nonzero; rpId exactly 'xochi.fi' (rp_id_mismatch); derivationVersion exactly 1 (derivation_version_unsupported)",
+        "only a recipient whose keys derive from the passkey (profile mode 'passkey') may use the passkey format; an imported (PKW1) recipient keeps the sealed-file format and its keccak256(sealed backup bytes) commitment, since PKW1 is a device-local cache, not a backup",
+        "a verifier without a format expectation (absent or null) accepts only the sealed-file format (backup_format_mismatch); with one, the acknowledgement's format must equal it (subject_mismatch)",
+        "the commitment names the credential, never key material; nothing proves the passkey exists or is synced: the acknowledgement is the recipient's statement, as for the sealed file"
+      ],
+      "commitments": [
+        {
+          "name": "TEST ONLY credential id",
+          "credentialIdHashSource": "keccak256(UTF8(\"TEST ONLY credential id\"))",
+          "descriptor": {
+            "credentialIdHash": "0x0f51d6f267f479d4f99be0115f01345c551b48f352902e002a2ff851b20f63f2",
+            "rpId": "xochi.fi",
+            "derivationVersion": 1
+          },
+          "rpIdHash": "0xf8813a07d3c96cf9bd8a9f30f10d4e0eccb520eb414fb640bc2922561f4e9cde",
+          "encoded": "0x8f222f44e0f186187a38e34bdcf4086619e6536187560450d9a0ce200249f0250f51d6f267f479d4f99be0115f01345c551b48f352902e002a2ff851b20f63f2f8813a07d3c96cf9bd8a9f30f10d4e0eccb520eb414fb640bc2922561f4e9cde0000000000000000000000000000000000000000000000000000000000000001",
+          "commitment": "0x1eb1bdb8239f3781e41bcc837832336ad05b52229f01c6074e8dcf6da92c4887"
+        },
+        {
+          "name": "TEST ONLY another credential id",
+          "credentialIdHashSource": "keccak256(UTF8(\"TEST ONLY another credential id\"))",
+          "descriptor": {
+            "credentialIdHash": "0xc3eca8fd7aa8de6e78f40879fba2d4af4e0315c96b61ba4eb01cbaaee82b2154",
+            "rpId": "xochi.fi",
+            "derivationVersion": 1
+          },
+          "rpIdHash": "0xf8813a07d3c96cf9bd8a9f30f10d4e0eccb520eb414fb640bc2922561f4e9cde",
+          "encoded": "0x8f222f44e0f186187a38e34bdcf4086619e6536187560450d9a0ce200249f025c3eca8fd7aa8de6e78f40879fba2d4af4e0315c96b61ba4eb01cbaaee82b2154f8813a07d3c96cf9bd8a9f30f10d4e0eccb520eb414fb640bc2922561f4e9cde0000000000000000000000000000000000000000000000000000000000000001",
+          "commitment": "0x46964e541f32a0e94b3c3ae57a9b584c18fd818d35525c9075c88542e3476b35"
+        }
+      ],
+      "commitmentRefusals": [
+        {
+          "name": "rpId localhost",
+          "descriptor": {
+            "credentialIdHash": "0x0f51d6f267f479d4f99be0115f01345c551b48f352902e002a2ff851b20f63f2",
+            "rpId": "localhost",
+            "derivationVersion": 1
+          },
+          "error": {
+            "code": "rp_id_mismatch",
+            "field": "rpId"
+          }
+        },
+        {
+          "name": "rpId another case",
+          "descriptor": {
+            "credentialIdHash": "0x0f51d6f267f479d4f99be0115f01345c551b48f352902e002a2ff851b20f63f2",
+            "rpId": "XOCHI.FI",
+            "derivationVersion": 1
+          },
+          "error": {
+            "code": "rp_id_mismatch",
+            "field": "rpId"
+          }
+        },
+        {
+          "name": "rpId subdomain",
+          "descriptor": {
+            "credentialIdHash": "0x0f51d6f267f479d4f99be0115f01345c551b48f352902e002a2ff851b20f63f2",
+            "rpId": "app.xochi.fi",
+            "derivationVersion": 1
+          },
+          "error": {
+            "code": "rp_id_mismatch",
+            "field": "rpId"
+          }
+        },
+        {
+          "name": "derivation version 2",
+          "descriptor": {
+            "credentialIdHash": "0x0f51d6f267f479d4f99be0115f01345c551b48f352902e002a2ff851b20f63f2",
+            "rpId": "xochi.fi",
+            "derivationVersion": 2
+          },
+          "error": {
+            "code": "derivation_version_unsupported",
+            "field": "derivationVersion"
+          }
+        },
+        {
+          "name": "derivation version as a string",
+          "descriptor": {
+            "credentialIdHash": "0x0f51d6f267f479d4f99be0115f01345c551b48f352902e002a2ff851b20f63f2",
+            "rpId": "xochi.fi",
+            "derivationVersion": "1"
+          },
+          "error": {
+            "code": "derivation_version_unsupported",
+            "field": "derivationVersion"
+          }
+        },
+        {
+          "name": "credentialIdHash zero",
+          "descriptor": {
+            "credentialIdHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "rpId": "xochi.fi",
+            "derivationVersion": 1
+          },
+          "error": {
+            "code": "digest_zero",
+            "field": "credentialIdHash"
+          }
+        },
+        {
+          "name": "credentialIdHash short",
+          "descriptor": {
+            "credentialIdHash": "0x1234",
+            "rpId": "xochi.fi",
+            "derivationVersion": 1
+          },
+          "error": {
+            "code": "not_bytes32",
+            "field": "credentialIdHash"
+          }
+        }
+      ],
+      "binding": {
+        "name": "passkey sha256-labels binding",
+        "account": "passkey sha256-labels",
+        "primaryType": "RecipientBinding",
+        "environment": "staging",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "679261766",
+          "rollupAddress": "0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e"
+        },
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0x5d6b354bc9af916994e5873d9e348ccb71428137c0d9180344abd25a615f206a"
+        },
+        "message": {
+          "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "sourceChainId": "84532",
+          "aztecRecipient": "0x201b973312ba0dc57a4029a772f57a7ef5cfb46622ac9ea2572851b88f51bc24",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "descriptorDigest": "0x9620b9b840ee20b14ae19bc247febfa485196b3cfa80ebffd2ac3da33d44fd4c",
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "corridorRevision": "1",
+          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "purpose": "xochi.shielded.recipient-binding.v1"
+        },
+        "structHash": "0x12a3fc7407ce0a6241b0b32e644c1e8d3ac9d555dc570d586fdd24e081e67877",
+        "digest": "0x08293ccb499c0703e48c1827833f6299f8bb2050e42bfc90be698af9d794ae07",
+        "wrapper": {
+          "u": "0x7ff3c9255eb3a1f25ba4825039a8d9aef0dca7b1ab972b178839f1d6366b0ce3e338bb963bd6267c1255261a2f1061355c67fc99ad81d1653f1548f17b6ed99a",
+          "u48": "0x7ff3c9255eb3a1f25ba4825039a8d9aef0dca7b1ab972b178839f1d6366b0ce3e338bb963bd6267c1255261a2f106135",
+          "messageField": "0x2b1af18e53439be25343ddad2c6b69cbfb8b78578baef5b551201b80eae1e3af",
+          "provisionalPlainModR": "0x08293ccb499c0703e48c1827833f6299f8bb2050e42bfc90be698af9d794ae07"
+        },
+        "publicKey": {
+          "x": "0x09626c885f3004b78d9daff3b0337cdeea990c3c7ba351cf1fa738a0d3d977b7",
+          "y": "0x12ce7852b642ab2999f2cc13f807bfa611646ac1da47dab89635015ea3b6ad05"
+        },
+        "signature": "0x05730b0e398d242911b55eddc12086f97c790d5cacadcb872098a05de7fea1a814b09ceb064644f740ec43bccd9df245e2e6888c6239e0a2a48dc17cc56daa61"
+      },
+      "acks": [
+        {
+          "name": "BackupPersistenceAck (passkey sha256-labels)",
+          "primaryType": "BackupPersistenceAck",
+          "environment": "staging",
+          "network": {
+            "aztecChainId": "11155111",
+            "protocolVersion": "679261766",
+            "rollupAddress": "0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6",
+            "l1ChainId": "11155111",
+            "genesisOrNetworkDigest": "0x6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e"
+          },
+          "domain": {
+            "name": "Xochi Shielded Recipient",
+            "version": "1",
+            "chainId": "84532",
+            "salt": "0x5d6b354bc9af916994e5873d9e348ccb71428137c0d9180344abd25a615f206a"
+          },
+          "message": {
+            "bindingDigest": "0x08293ccb499c0703e48c1827833f6299f8bb2050e42bfc90be698af9d794ae07",
+            "aztecRecipient": "0x201b973312ba0dc57a4029a772f57a7ef5cfb46622ac9ea2572851b88f51bc24",
+            "backupCommitment": "0x1eb1bdb8239f3781e41bcc837832336ad05b52229f01c6074e8dcf6da92c4887",
+            "backupFormatId": "0xfc8e02b9741f099f45fc73cf480359a580e322ceae9ca66d3964a987ad4517f2",
+            "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+            "challengeExpiry": "1900000000",
+            "purpose": "xochi.shielded.backup-persistence-ack.v1"
+          },
+          "structHash": "0xaf7ff20c368b94e35cf280d779913b660904914708ad58ca694572fb9931a768",
+          "digest": "0xa0a4f81344edbece2024ed575ddbbb2b4b8fdf023e40809130d4d9f4ecc1b590",
+          "wrapper": {
+            "u": "0xa3b5edc0fa794e9e08d64bc4e53041887573059f181694584fa9442e30a46a99333294b86a7645c67c4fddf8874880aab866056a3c247f342c15ae25e9ca342f",
+            "u48": "0xa3b5edc0fa794e9e08d64bc4e53041887573059f181694584fa9442e30a46a99333294b86a7645c67c4fddf8874880aa",
+            "messageField": "0x1c4b5e4749fa96730f84cac90bfc17a589dccf74ee930dbceb26f45f4d2f6bbb",
+            "provisionalPlainModR": "0x0f780cbaa158de50f7341c33d957b213d2f42628d1142edd652ef9391cc1b58d"
+          },
+          "publicKey": {
+            "x": "0x09626c885f3004b78d9daff3b0337cdeea990c3c7ba351cf1fa738a0d3d977b7",
+            "y": "0x12ce7852b642ab2999f2cc13f807bfa611646ac1da47dab89635015ea3b6ad05"
+          },
+          "signature": "0x07dd4ad09240a57188dec861ce6e56dc360bd46912e24879614f6599964c239a233f5482b0eb626f3127e9ecccc380255d28ec97b89ae488c421e7b50b975494"
+        }
+      ],
+      "ackRefusals": [
+        {
+          "name": "BackupPersistenceAck: an unknown backup format",
+          "primaryType": "BackupPersistenceAck",
+          "message": {
+            "bindingDigest": "0x08293ccb499c0703e48c1827833f6299f8bb2050e42bfc90be698af9d794ae07",
+            "aztecRecipient": "0x201b973312ba0dc57a4029a772f57a7ef5cfb46622ac9ea2572851b88f51bc24",
+            "backupCommitment": "0x1eb1bdb8239f3781e41bcc837832336ad05b52229f01c6074e8dcf6da92c4887",
+            "backupFormatId": "0xa5303a53b2ffa984ba00b0b112da199d251e9235ecbb87f0e7f155fcce1d550f",
+            "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+            "challengeExpiry": "1900000000",
+            "purpose": "xochi.shielded.backup-persistence-ack.v1"
+          },
+          "error": {
+            "code": "backup_format_mismatch",
+            "field": "backupFormatId"
+          }
+        }
+      ],
+      "verification": [
+        {
+          "name": "passkey ack, passkey expectation",
+          "vector": "BackupPersistenceAck (passkey sha256-labels)",
+          "expected": {
+            "backupCommitment": "0x1eb1bdb8239f3781e41bcc837832336ad05b52229f01c6074e8dcf6da92c4887",
+            "backupFormatId": "0xfc8e02b9741f099f45fc73cf480359a580e322ceae9ca66d3964a987ad4517f2"
+          },
+          "error": null
+        },
+        {
+          "name": "passkey ack, verifier without a format expectation (sealed file only)",
+          "vector": "BackupPersistenceAck (passkey sha256-labels)",
+          "expected": {
+            "backupCommitment": "0x1eb1bdb8239f3781e41bcc837832336ad05b52229f01c6074e8dcf6da92c4887"
+          },
+          "error": {
+            "code": "backup_format_mismatch",
+            "field": "backupFormatId"
+          }
+        },
+        {
+          "name": "passkey ack, explicit null format expectation (sealed file only)",
+          "vector": "BackupPersistenceAck (passkey sha256-labels)",
+          "expected": {
+            "backupCommitment": "0x1eb1bdb8239f3781e41bcc837832336ad05b52229f01c6074e8dcf6da92c4887",
+            "backupFormatId": null
+          },
+          "error": {
+            "code": "backup_format_mismatch",
+            "field": "backupFormatId"
+          }
+        },
+        {
+          "name": "passkey ack, sealed-file format expected",
+          "vector": "BackupPersistenceAck (passkey sha256-labels)",
+          "expected": {
+            "backupCommitment": "0x1eb1bdb8239f3781e41bcc837832336ad05b52229f01c6074e8dcf6da92c4887",
+            "backupFormatId": "0xe37c67f007c5a5bbebbc6c5b9aefd99f252b2cc121e3fc9a269801940f605348"
+          },
+          "error": {
+            "code": "subject_mismatch",
+            "field": "backupFormatId"
+          }
+        },
+        {
+          "name": "passkey ack, another credential's commitment",
+          "vector": "BackupPersistenceAck (passkey sha256-labels)",
+          "expected": {
+            "backupCommitment": "0x46964e541f32a0e94b3c3ae57a9b584c18fd818d35525c9075c88542e3476b35",
+            "backupFormatId": "0xfc8e02b9741f099f45fc73cf480359a580e322ceae9ca66d3964a987ad4517f2"
+          },
+          "error": {
+            "code": "subject_mismatch",
+            "field": "backupCommitment"
+          }
+        },
+        {
+          "name": "sealed-file ack, passkey expectation",
+          "vector": "BackupPersistenceAck (binding X)",
+          "expected": {
+            "backupCommitment": "0x89d38145c86cef1776f2ce78a7a34412ac6a8891a2de5a886c11a4fbd4c875ab",
+            "backupFormatId": "0xfc8e02b9741f099f45fc73cf480359a580e322ceae9ca66d3964a987ad4517f2"
+          },
+          "error": {
+            "code": "subject_mismatch",
+            "field": "backupFormatId"
+          }
+        },
+        {
+          "name": "sealed-file ack, verifier without a format expectation",
+          "vector": "BackupPersistenceAck (binding X)",
+          "expected": {
+            "backupCommitment": "0x89d38145c86cef1776f2ce78a7a34412ac6a8891a2de5a886c11a4fbd4c875ab"
+          },
+          "error": null
+        },
+        {
+          "name": "sealed-file ack, sealed-file format expected",
+          "vector": "BackupPersistenceAck (binding X)",
+          "expected": {
+            "backupCommitment": "0x89d38145c86cef1776f2ce78a7a34412ac6a8891a2de5a886c11a4fbd4c875ab",
+            "backupFormatId": "0xe37c67f007c5a5bbebbc6c5b9aefd99f252b2cc121e3fc9a269801940f605348"
+          },
+          "error": null
+        }
+      ]
+    }
   }
 }

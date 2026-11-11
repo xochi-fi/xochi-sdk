@@ -14,6 +14,7 @@ export * from "./shielded-recipient";
 export * from "./shielded-recipient-acks";
 export * from "./shielded-oxide";
 export * from "./shielded-readiness";
+export * from "./passkey-recipient";
 export * from "./permit2";
 export * from "./intent-verify";
 export * from "./claim-verify";

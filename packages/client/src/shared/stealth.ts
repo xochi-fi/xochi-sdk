@@ -66,10 +66,39 @@ export const TRUSTED_STEALTH_FACTORIES: Readonly<Record<number, readonly string[
 export function isTrustedStealthFactory(
   address: string | undefined | null,
   chainId: number | undefined | null,
+  trusted: Readonly<Record<number, readonly string[]>> = TRUSTED_STEALTH_FACTORIES,
 ): boolean {
   if (!address || chainId === undefined || chainId === null) return false;
-  const allowed = TRUSTED_STEALTH_FACTORIES[chainId];
+  const allowed = trusted[chainId];
   if (!allowed) return false;
   const normalized = address.toLowerCase();
   return allowed.some((f) => f.toLowerCase() === normalized);
+}
+
+/**
+ * Solver-advertised stealth destination chains narrowed to this client's
+ * per-chain trusted factory allowlist. Unknown, empty, duplicated, or
+ * untrusted entries never widen availability.
+ */
+export function effectiveStealthChains(
+  advertised: readonly number[] | null | undefined,
+  advertisedFactory: (chainId: number) => string | null | undefined,
+  trusted: Readonly<Record<number, readonly string[]>> = TRUSTED_STEALTH_FACTORIES,
+): readonly number[] {
+  if (advertised == null) return [];
+  return advertised.filter(
+    (chainId, index) =>
+      advertised.indexOf(chainId) === index &&
+      isTrustedStealthFactory(advertisedFactory(chainId), chainId, trusted),
+  );
+}
+
+/** Chains whose previously settled stealth payments this client can scan and claim. */
+export function trustedStealthChains(
+  trusted: Readonly<Record<number, readonly string[]>> = TRUSTED_STEALTH_FACTORIES,
+): readonly number[] {
+  return Object.entries(trusted)
+    .filter(([, factories]) => factories.length > 0)
+    .map(([chainId]) => Number(chainId))
+    .sort((a, b) => a - b);
 }

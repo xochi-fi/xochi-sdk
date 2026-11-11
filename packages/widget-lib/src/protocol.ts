@@ -6,14 +6,19 @@
  * `connectToHost` (frame.ts).
  *
  *   frame -> host   xochi:ready            the frame loaded and listens
+ *                   xochi:provider:ack     ownership was applied for protocol v1
  *                   xochi:rpc              an EIP-1193 request for the host wallet
+ *                   xochi:connect:request  ask the host to open its wallet UI
  *                   xochi:resize           the frame's content height, in CSS px
  *                   xochi:event            a trade lifecycle event
- *   host -> frame   xochi:provider         whether a host wallet is attached, and
- *                                          whether the frame may connect it unasked
+ *   host -> frame   xochi:provider         wallet availability, connection policy,
+ *                                          wallet UI ownership and protocol version
  *                   xochi:rpc:result       the answer to one xochi:rpc, by id
  *                   xochi:provider:event   accountsChanged / chainChanged / disconnect
+ *                   xochi:theme            runtime theme, independent of wallet state
  */
+
+import type { EmbedTheme } from "./params.js";
 
 /** Where the widget is served. */
 export const DEFAULT_WIDGET_ORIGIN = "https://widget.xochi.fi";
@@ -24,13 +29,18 @@ export const EMBED_PATH = "/embed";
 /** The frame's initial size and accessible name (the configurator's snippet uses the same). */
 export const EMBED_FRAME = { width: 460, height: 760, title: "Xochi swap" } as const;
 
+/** Current host/frame handshake version. Ownership acknowledgement was added in v1. */
+export const WIDGET_PROTOCOL_VERSION = 1 as const;
 /** The message `type` strings. */
 export const MESSAGE = {
   ready: "xochi:ready",
+  providerAck: "xochi:provider:ack",
   rpc: "xochi:rpc",
+  connectRequest: "xochi:connect:request",
   resize: "xochi:resize",
   event: "xochi:event",
   provider: "xochi:provider",
+  theme: "xochi:theme",
   rpcResult: "xochi:rpc:result",
   providerEvent: "xochi:provider:event",
 } as const;
@@ -106,6 +116,9 @@ export const RPC_ERROR = {
 /** A JSON-RPC request id: a non-empty string or a safe integer. */
 export type RpcId = string | number;
 
+/** Which surface owns persistent wallet and account UI. */
+export type WalletUi = "widget" | "host";
+
 export interface RpcErrorObject {
   code: number;
   message: string;
@@ -128,13 +141,20 @@ export type XochiWidgetEventName = XochiWidgetEvent["name"];
 
 /** Messages the frame sends to the host. */
 export type FrameMessage =
-  | { type: typeof MESSAGE.ready }
+  | { type: typeof MESSAGE.ready; protocolVersion: typeof WIDGET_PROTOCOL_VERSION }
+  | {
+      type: typeof MESSAGE.providerAck;
+      protocolVersion: typeof WIDGET_PROTOCOL_VERSION;
+      handshakeId: number;
+      walletUi: WalletUi;
+    }
   | {
       type: typeof MESSAGE.rpc;
       id: RpcId;
       method: string;
       params?: readonly unknown[] | Record<string, unknown>;
     }
+  | { type: typeof MESSAGE.connectRequest }
   | { type: typeof MESSAGE.resize; height: number }
   | { type: typeof MESSAGE.event; event: XochiWidgetEvent };
 
@@ -142,6 +162,9 @@ export type FrameMessage =
 export type HostMessage =
   | {
       type: typeof MESSAGE.provider;
+      protocolVersion: typeof WIDGET_PROTOCOL_VERSION;
+      /** Host-generated handshake generation; the frame echoes it in its acknowledgement. */
+      handshakeId: number;
       available: boolean;
       /**
        * The host's `autoConnect` option. False (the default): the frame offers
@@ -149,7 +172,10 @@ export type HostMessage =
        * True: the frame connects it on load.
        */
       autoConnect: boolean;
+      /** Which surface owns persistent wallet and account UI. */
+      walletUi: WalletUi;
     }
+  | { type: typeof MESSAGE.theme; theme: EmbedTheme }
   | { type: typeof MESSAGE.rpcResult; id: RpcId; result: unknown }
   | { type: typeof MESSAGE.rpcResult; id: RpcId; error: RpcErrorObject }
   | { type: typeof MESSAGE.providerEvent; event: "accountsChanged"; data: string[] }

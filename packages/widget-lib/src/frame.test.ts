@@ -13,6 +13,7 @@
 import { describe, expect, it } from "vitest";
 import {
   HostRpcError,
+  EMBED_THEMES,
   MAX_ERROR_MESSAGE_LENGTH,
   MAX_MESSAGE_LENGTH,
   MAX_PENDING_RPC,
@@ -22,6 +23,7 @@ import {
   mintTradeRef,
   type HostConnection,
   type XochiWidgetEvent,
+  type EmbedTheme,
 } from "./index.js";
 import wire from "./frame.wire.json";
 
@@ -161,6 +163,7 @@ describe("the wire", () => {
       });
       expect(connection!.available()).toBe(s.expect.available);
       expect(connection!.autoConnect()).toBe(s.expect.autoConnect);
+      expect(connection!.walletUi()).toBe("widget");
       observed = [];
     }
   });
@@ -183,7 +186,9 @@ describe("connectToHost", () => {
 
   it("with hostOrigin, says ready to that origin only and lets nothing else pin", () => {
     const { frame, connection } = connect({ hostOrigin: `${HOST}/` });
-    expect(frame.take()).toEqual([{ targetOrigin: HOST, message: '{"type":"xochi:ready"}' }]);
+    expect(frame.take()).toEqual([
+      { targetOrigin: HOST, message: '{"type":"xochi:ready","protocolVersion":1}' },
+    ]);
     frame.receive({ type: "xochi:provider", available: true }, "https://evil.example");
     expect(connection.available()).toBe(false);
     connection.resize(500);
@@ -200,6 +205,129 @@ describe("connectToHost", () => {
     expect(connection.available()).toBe(false);
     attach(frame);
     expect(connection.available()).toBe(true);
+  });
+
+  it("defaults ownership for an older host and ignores malformed ownership", () => {
+    const { frame, connection } = connect();
+    expect(connection.walletUi()).toBe("widget");
+    frame.receive({ type: "xochi:provider", available: true, walletUi: "other" });
+    expect(connection.available()).toBe(false);
+    expect(connection.walletUi()).toBe("widget");
+    attach(frame);
+    expect(connection.available()).toBe(true);
+    expect(connection.walletUi()).toBe("widget");
+  });
+
+  it("acknowledges versioned ownership before notifying availability observers", () => {
+    const { frame, connection } = connect();
+    frame.take();
+    let acknowledgedBeforeObserver = false;
+    connection.onAvailability(() => {
+      acknowledgedBeforeObserver = frame
+        .take()
+        .some(
+          ({ message }) =>
+            message ===
+            '{"type":"xochi:provider:ack","protocolVersion":1,"handshakeId":7,"walletUi":"host"}',
+        );
+    });
+    frame.receive({
+      type: "xochi:provider",
+      protocolVersion: 1,
+      handshakeId: 7,
+      available: true,
+      autoConnect: false,
+      walletUi: "host",
+    });
+
+    expect(connection.available()).toBe(true);
+    expect(connection.walletUi()).toBe("host");
+    expect(acknowledgedBeforeObserver).toBe(true);
+    expect(frame.take()).toEqual([]);
+  });
+
+  it("notifies ownership changes even while wallet availability stays false", () => {
+    const { frame, connection } = connect();
+    const seen: string[] = [];
+    const stop = connection.onWalletUi((walletUi) => seen.push(walletUi));
+    frame.receive({
+      type: "xochi:provider",
+      available: false,
+      autoConnect: false,
+      walletUi: "host",
+    });
+    expect(connection.available()).toBe(false);
+    expect(connection.walletUi()).toBe("host");
+    expect(seen).toEqual(["host"]);
+
+    frame.receive({
+      type: "xochi:provider",
+      available: false,
+      autoConnect: true,
+      walletUi: "host",
+    });
+    frame.receive({
+      type: "xochi:provider",
+      available: false,
+      walletUi: "invalid",
+    });
+    expect(seen).toEqual(["host"]);
+
+    frame.receive({
+      type: "xochi:provider",
+      available: false,
+      autoConnect: false,
+      walletUi: "widget",
+    });
+    expect(seen).toEqual(["host", "widget"]);
+    stop();
+    frame.receive({
+      type: "xochi:provider",
+      available: false,
+      autoConnect: false,
+      walletUi: "host",
+    });
+    expect(seen).toEqual(["host", "widget"]);
+  });
+
+  it("queues one connect request until a host-owned handshake pins the origin", () => {
+    const { frame, connection } = connect();
+    expect(frame.take()).toEqual([
+      { targetOrigin: "*", message: '{"type":"xochi:ready","protocolVersion":1}' },
+    ]);
+    connection.requestConnect();
+    connection.requestConnect();
+    expect(frame.take()).toEqual([]);
+    frame.receive({
+      type: "xochi:provider",
+      available: false,
+      autoConnect: false,
+      walletUi: "host",
+    });
+    expect(connection.walletUi()).toBe("host");
+    expect(frame.take()).toEqual([
+      { targetOrigin: HOST, message: '{"type":"xochi:connect:request"}' },
+    ]);
+
+    connection.requestConnect();
+    expect(frame.take()).toEqual([
+      { targetOrigin: HOST, message: '{"type":"xochi:connect:request"}' },
+    ]);
+  });
+
+  it("drops a queued connect request for widget-owned UI", () => {
+    const { frame, connection } = connect();
+    frame.take();
+    connection.requestConnect();
+    attach(frame);
+    expect(frame.take()).toEqual([]);
+    frame.receive({
+      type: "xochi:provider",
+      available: true,
+      autoConnect: false,
+      walletUi: "host",
+    });
+    expect(frame.take()).toEqual([]);
   });
 
   it("drops an oversized host message, but still answers the request it was for", async () => {
@@ -256,6 +384,85 @@ describe("connectToHost", () => {
     } finally {
       if (native) Object.defineProperty(Promise, "withResolvers", native);
     }
+  });
+});
+
+describe("runtime themes", () => {
+  it("accepts only exact valid themes from the pinned parent after its handshake", () => {
+    const { frame, connection } = connect({ hostOrigin: HOST });
+    const seen: EmbedTheme[] = [];
+    connection.onTheme((theme) => seen.push(theme));
+    expect(connection.theme()).toBeNull();
+    frame.receive({ type: "xochi:theme", theme: "contrast" });
+    expect(connection.theme()).toBeNull();
+    attach(frame);
+    expect(connection.theme()).toBeNull();
+
+    frame.receive({ type: "xochi:theme", theme: "contrast" }, "https://evil.example");
+    frame.receive({ type: "xochi:theme", theme: "contrast" }, HOST, frame.stranger);
+    frame.receive({ type: "xochi:theme", theme: "contrast" }, HOST, null as never);
+    for (const malformed of [
+      null,
+      "contrast",
+      { type: "xochi:theme" },
+      { type: "xochi:theme", theme: null },
+      { type: "xochi:theme", theme: false },
+      { type: "xochi:theme", theme: ["dim"] },
+      { type: "xochi:theme", theme: "dark" },
+      { type: "xochi:theme", theme: "DIM" },
+      { type: "xochi:theme", theme: "dim", extra: true },
+      { type: "xochi:theme", theme: "dim", pad: "x".repeat(MAX_MESSAGE_LENGTH) },
+    ]) {
+      frame.receive(malformed);
+    }
+    expect(connection.theme()).toBeNull();
+    expect(seen).toEqual([]);
+
+    for (const theme of EMBED_THEMES) {
+      frame.receive({ type: "xochi:theme", theme });
+      frame.receive({ type: "xochi:theme", theme });
+      expect(connection.theme()).toBe(theme);
+    }
+    expect(seen).toEqual([...EMBED_THEMES]);
+  });
+
+  it("preserves the runtime theme across repeated provider handshakes", () => {
+    const { frame, connection } = connect();
+    attach(frame);
+    const seen: EmbedTheme[] = [];
+    connection.onTheme((theme) => seen.push(theme));
+    frame.receive({ type: "xochi:theme", theme: "dim" });
+    for (const handshakeId of [1, 2]) {
+      frame.receive({
+        type: "xochi:provider",
+        protocolVersion: 1,
+        handshakeId,
+        available: true,
+        autoConnect: false,
+        walletUi: "widget",
+      });
+      frame.receive({ type: "xochi:theme", theme: "dim" });
+    }
+    expect(connection.theme()).toBe("dim");
+    expect(seen).toEqual(["dim"]);
+  });
+
+  it("stops theme observers on unsubscribe and ignores messages after destroy", () => {
+    const { frame, connection } = connect();
+    attach(frame);
+    const seen: EmbedTheme[] = [];
+    const stop = connection.onTheme((theme) => seen.push(theme));
+    frame.receive({ type: "xochi:theme", theme: "dim" });
+    stop();
+    stop();
+    frame.receive({ type: "xochi:theme", theme: "light" });
+    expect(connection.theme()).toBe("light");
+    connection.onTheme((theme) => seen.push(theme));
+    connection.destroy();
+    connection.destroy();
+    frame.receive({ type: "xochi:theme", theme: "contrast" });
+    expect(connection.theme()).toBe("light");
+    expect(seen).toEqual(["dim"]);
   });
 });
 
@@ -347,6 +554,8 @@ describe("the frame's own refusals", () => {
     const { frame, connection } = connect();
     attach(frame);
     frame.take();
+    let ownershipChanges = 0;
+    connection.onWalletUi(() => ownershipChanges++);
     connection.destroy();
     connection.destroy();
     await expect(connection.provider.request({ method: "eth_chainId" })).rejects.toMatchObject({
@@ -355,6 +564,13 @@ describe("the frame's own refusals", () => {
     });
     connection.resize(300);
     connection.emit({ name: "trade:completed", tradeRef: TRADE_REF });
+    connection.requestConnect();
+    frame.receive({
+      type: "xochi:provider",
+      available: false,
+      walletUi: "host",
+    });
+    expect(ownershipChanges).toBe(0);
     expect(frame.take()).toEqual([]);
   });
 });

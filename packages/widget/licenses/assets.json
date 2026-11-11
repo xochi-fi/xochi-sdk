@@ -1,0 +1,132 @@
+{
+  "sourceRepository": "xochi-fi/xochi-widget",
+  "sourceRevision": "51e7f9f",
+  "artworkAuthorization": "On 2026-11-10, the requester explicitly confirmed authority to permit public redistribution of all 25 listed artwork files unchanged and granted that permission. No additional provenance documents or notices were supplied. This is not an assertion that the artwork is MIT-licensed.",
+  "assets": [
+    {
+      "path": "src/assets/fonts/*.woff2",
+      "status": "cleared",
+      "license": "OFL-1.1",
+      "evidence": "https://raw.githubusercontent.com/githubnext/monaspace/main/LICENSE",
+      "notice": "licenses/Monaspace-OFL-1.1.txt",
+      "details": "All 13 baseline Monaspace Argon, Neon and Xenon files copied without modification; Reserved Font Names preserved."
+    },
+    { "path": "src/assets/defillama.svg", "status": "cleared", "evidence": "artworkAuthorization" },
+    {
+      "path": "src/assets/chains/arbitrum.svg",
+      "status": "cleared",
+      "evidence": "artworkAuthorization"
+    },
+    {
+      "path": "src/assets/chains/arc.svg",
+      "status": "cleared",
+      "evidence": "artworkAuthorization"
+    },
+    {
+      "path": "src/assets/chains/aztec.svg",
+      "status": "cleared",
+      "evidence": "artworkAuthorization"
+    },
+    {
+      "path": "src/assets/chains/base.svg",
+      "status": "cleared",
+      "evidence": "artworkAuthorization"
+    },
+    {
+      "path": "src/assets/chains/ethereum.svg",
+      "status": "cleared",
+      "evidence": "artworkAuthorization"
+    },
+    {
+      "path": "src/assets/chains/gnosis.png",
+      "status": "cleared",
+      "evidence": "artworkAuthorization"
+    },
+    {
+      "path": "src/assets/chains/optimism.svg",
+      "status": "cleared",
+      "evidence": "artworkAuthorization"
+    },
+    {
+      "path": "src/assets/chains/polygon.svg",
+      "status": "cleared",
+      "evidence": "artworkAuthorization"
+    },
+    {
+      "path": "src/assets/chains/robinhood.svg",
+      "status": "cleared",
+      "evidence": "artworkAuthorization"
+    },
+    {
+      "path": "src/assets/chains/tron.svg",
+      "status": "cleared",
+      "evidence": "artworkAuthorization"
+    },
+    {
+      "path": "src/assets/chains/xochi.svg",
+      "status": "cleared",
+      "evidence": "artworkAuthorization"
+    },
+    {
+      "path": "src/assets/tokens/arb.svg",
+      "status": "cleared",
+      "evidence": "artworkAuthorization"
+    },
+    {
+      "path": "src/assets/tokens/dai.png",
+      "status": "cleared",
+      "evidence": "artworkAuthorization"
+    },
+    {
+      "path": "src/assets/tokens/eth.svg",
+      "status": "cleared",
+      "evidence": "artworkAuthorization"
+    },
+    {
+      "path": "src/assets/tokens/eure.png",
+      "status": "cleared",
+      "evidence": "artworkAuthorization"
+    },
+    { "path": "src/assets/tokens/op.png", "status": "cleared", "evidence": "artworkAuthorization" },
+    {
+      "path": "src/assets/tokens/pol.svg",
+      "status": "cleared",
+      "evidence": "artworkAuthorization"
+    },
+    {
+      "path": "src/assets/tokens/raxol.png",
+      "status": "cleared",
+      "evidence": "artworkAuthorization"
+    },
+    {
+      "path": "src/assets/tokens/usdc.png",
+      "status": "cleared",
+      "evidence": "artworkAuthorization"
+    },
+    {
+      "path": "src/assets/tokens/usdg.png",
+      "status": "cleared",
+      "evidence": "artworkAuthorization"
+    },
+    {
+      "path": "src/assets/tokens/usdt.png",
+      "status": "cleared",
+      "evidence": "artworkAuthorization"
+    },
+    {
+      "path": "src/assets/tokens/wbtc.png",
+      "status": "cleared",
+      "evidence": "artworkAuthorization"
+    },
+    {
+      "path": "src/assets/tokens/wsteth.png",
+      "status": "cleared",
+      "evidence": "artworkAuthorization"
+    },
+    {
+      "path": "src/assets/tokens/zchf.png",
+      "status": "cleared",
+      "evidence": "artworkAuthorization"
+    }
+  ]
+}

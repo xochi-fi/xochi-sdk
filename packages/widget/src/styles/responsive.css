@@ -1,0 +1,118 @@
+/* Xochi - Responsive Styles */
+
+@media (max-width: 1200px) {
+  .trade-container {
+    grid-template-columns: 240px 1fr 280px;
+  }
+
+  .verify-grid {
+    grid-template-columns: 1fr 320px;
+  }
+}
+
+@media (max-width: 992px) {
+  .trade-container {
+    grid-template-columns: 1fr;
+    padding: 76px 1rem 2rem;
+    height: auto;
+    max-height: none;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .market-panel,
+  .orders-panel {
+    display: none;
+  }
+
+  .order-panel {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .verify-grid,
+  .assets-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .score-display {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2rem;
+  }
+
+  .score-details {
+    width: 100%;
+    justify-content: space-around;
+  }
+}
+
+/* Tablet portrait: intermediate layout */
+@media (max-width: 768px) {
+  .toast-container {
+    right: 0.75rem;
+    bottom: 0.75rem;
+    left: 0.75rem;
+  }
+
+  .toast {
+    max-width: 100%;
+  }
+
+  .quote-summary {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .quote-item {
+    min-width: 40%;
+  }
+}
+
+@media (max-width: 600px) {
+  .toast-container {
+    right: 0.5rem;
+    bottom: 0.5rem;
+    left: 0.5rem;
+  }
+
+  .verify-container,
+  .assets-container {
+    padding: 1rem 1rem 1rem;
+  }
+
+  .score-card,
+  .portfolio-card {
+    padding: 1.5rem;
+  }
+
+  .provider-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .portfolio-value .value-amount {
+    font-size: 2.25rem;
+  }
+
+  .portfolio-actions {
+    flex-direction: column;
+  }
+
+  .action-btn {
+    width: 100%;
+  }
+}
+
+/* Small phones */
+@media (max-width: 480px) {
+  .quote-summary {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .quote-item {
+    min-width: 0;
+    flex-direction: row;
+    justify-content: space-between;
+  }
+}

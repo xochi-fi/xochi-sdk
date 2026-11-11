@@ -105,6 +105,46 @@ export interface ConversionPair {
   sameChain: boolean;
 }
 
+/** A privacy mode the producer explicitly supports for one advertised route. */
+export type RoutePrivacyMode = "public" | "stealth" | "shielded";
+
+/** The chain/token pair from which an advertised route originates. */
+export interface RouteOrigin {
+  chainId: number;
+  token: string;
+}
+
+/** A destination on a chain served by the producer. */
+export interface ChainRouteDestination {
+  kind: "chain";
+  chainId: number;
+  token: string;
+}
+
+/**
+ * The typed zk.money destination reserved by the wire contract. Its presence is
+ * an explicit producer claim; a chain route to DAI does not imply this destination.
+ */
+export interface ZkMoneyRouteDestination {
+  kind: "zk_money";
+  token: string;
+}
+
+export type RouteDestination = ChainRouteDestination | ZkMoneyRouteDestination;
+
+/** One exact origin-to-destination route, in producer-served order. */
+export interface CapabilityRoute {
+  origin: RouteOrigin;
+  destination: RouteDestination;
+  privacyModes: readonly RoutePrivacyMode[];
+}
+
+/** The typed endpoints used to query the producer's authoritative route list. */
+export interface AdvertisedRouteQuery {
+  origin: RouteOrigin;
+  destination: RouteDestination;
+}
+
 /** Who receives an origin pull on one chain, per method. */
 export interface PullRecipients {
   erc3009: string | null;
@@ -183,6 +223,13 @@ export interface SolverCapabilities {
    * through {@link advertisedConversionPairs}.
    */
   conversionPairs: readonly Record<string, unknown>[];
+  /**
+   * The producer's authoritative exact routes, parsed fail-closed per entry and
+   * kept in served order. `null` means the field was absent, so a consumer may
+   * apply its documented legacy downgrade. A present malformed value and `[]`
+   * both fail closed to no routes.
+   */
+  routes: readonly CapabilityRoute[] | null;
 
   raw: Record<string, unknown>;
 }
@@ -205,6 +252,7 @@ export function addressFormatForVm(vmType: VmType): AddressFormat {
 const VM_TYPES: readonly string[] = ["evm", "tvm", "svm", "cvm"];
 const ADDRESS_FORMATS: readonly string[] = ["hex20", "base58check", "base58", "canton_party"];
 const PULL_METHODS: readonly string[] = ["erc3009", "permit2", "deposit_address"];
+const ROUTE_PRIVACY_MODES: readonly RoutePrivacyMode[] = ["public", "stealth", "shielded"];
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -420,6 +468,68 @@ function parseObjectList(raw: unknown): Record<string, unknown>[] {
   return raw.map(asRecord).filter((x): x is Record<string, unknown> => x !== null);
 }
 
+function parseRoutePrivacyModes(raw: unknown): RoutePrivacyMode[] | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const modes: RoutePrivacyMode[] = [];
+  for (const value of raw) {
+    if (
+      typeof value !== "string" ||
+      !ROUTE_PRIVACY_MODES.includes(value as RoutePrivacyMode) ||
+      modes.includes(value as RoutePrivacyMode)
+    ) {
+      return null;
+    }
+    modes.push(value as RoutePrivacyMode);
+  }
+  return modes;
+}
+
+/**
+ * Parses one route atomically. A malformed known field or unknown discriminator
+ * drops the whole entry; unknown additive object keys are deliberately ignored.
+ */
+function parseRoute(raw: unknown): CapabilityRoute | null {
+  const route = asRecord(raw);
+  const origin = asRecord(route?.origin);
+  const destination = asRecord(route?.destination);
+  if (!route || !origin || !destination) return null;
+
+  const originChainId =
+    typeof origin.chain_id === "number" ? asChainIdValue(origin.chain_id) : null;
+  const originToken = asString(origin.token);
+  const destinationKind = asString(destination.kind);
+  const destinationToken = asString(destination.token);
+  const privacyModes = parseRoutePrivacyModes(route.privacy_modes);
+  if (
+    originChainId === null ||
+    originToken === null ||
+    destinationToken === null ||
+    privacyModes === null
+  ) {
+    return null;
+  }
+
+  const parsedOrigin: RouteOrigin = { chainId: originChainId, token: originToken };
+  if (destinationKind === "chain") {
+    const destinationChainId =
+      typeof destination.chain_id === "number" ? asChainIdValue(destination.chain_id) : null;
+    if (destinationChainId === null) return null;
+    return {
+      origin: parsedOrigin,
+      destination: { kind: "chain", chainId: destinationChainId, token: destinationToken },
+      privacyModes,
+    };
+  }
+  if (destinationKind === "zk_money") {
+    return {
+      origin: parsedOrigin,
+      destination: { kind: "zk_money", token: destinationToken },
+      privacyModes,
+    };
+  }
+  return null;
+}
+
 /**
  * Parses a `/xochi/capabilities` body. Returns `null` only when the payload is
  * not an object; a body missing every field parses to an empty matrix. "The
@@ -469,6 +579,12 @@ export function parseCapabilities(raw: unknown): SolverCapabilities | null {
       .filter((x): x is TokenCapability => x !== null),
     corridors: parseObjectList(r.corridors),
     conversionPairs: parseObjectList(r.conversion_pairs),
+    routes:
+      !("routes" in r) || r.routes === undefined
+        ? null
+        : Array.isArray(r.routes)
+          ? r.routes.map(parseRoute).filter((x): x is CapabilityRoute => x !== null)
+          : [],
 
     raw: r,
   };
@@ -571,6 +687,40 @@ export function advertisedConversionPairs(
     if (from !== null && to !== null) out.push({ from, to, sameChain: pair.same_chain === true });
   }
   return out;
+}
+
+function sameRouteDestination(left: RouteDestination, right: RouteDestination): boolean {
+  if (left.kind !== right.kind || left.token !== right.token) return false;
+  if (left.kind === "chain" && right.kind === "chain") return left.chainId === right.chainId;
+  return left.kind === "zk_money" && right.kind === "zk_money";
+}
+
+/**
+ * Finds the producer's one authoritative route for these endpoints. An absent
+ * contract and duplicate matches both return `null`: a consumer must not choose
+ * between two conflicting capability entries by array position.
+ */
+export function advertisedRoute(
+  caps: Pick<SolverCapabilities, "routes">,
+  query: AdvertisedRouteQuery,
+): CapabilityRoute | null {
+  if (caps.routes === null) return null;
+  const matches = caps.routes.filter(
+    (route) =>
+      route.origin.chainId === query.origin.chainId &&
+      route.origin.token === query.origin.token &&
+      sameRouteDestination(route.destination, query.destination),
+  );
+  return matches.length === 1 ? matches[0]! : null;
+}
+
+/** True only when the matching explicit route advertises `privacyMode`. */
+export function routeSupportsPrivacyMode(
+  caps: Pick<SolverCapabilities, "routes">,
+  query: AdvertisedRouteQuery,
+  privacyMode: RoutePrivacyMode,
+): boolean {
+  return advertisedRoute(caps, query)?.privacyModes.includes(privacyMode) === true;
 }
 
 /**

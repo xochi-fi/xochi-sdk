@@ -4,37 +4,84 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 
 ## [Unreleased]
 
-### Added
-
-- **18-decimal shielded vectors** (xochi#736: the first production shielded asset is Oxide DAI, 18 decimals; every shielded vector so far was 6 decimals). Additive only: every existing vector, digest and signature is byte-identical.
-  - `conformance/shielded-terms.json`: manifest `eighteen-decimal-corridor` (L1 DAI to OXDAI, 18 decimals both sides, 1:1 units; the network and other members stay fixtures, so it is not the production manifest), and previews plus terms `eighteen-decimal-floor-binds` (1 DAI, the 5e15 floor binds) and `eighteen-decimal-note-cap` (5,166 DAI, every amount above 2^64, the layers bind).
-  - `conformance/shielded.json`: accepted amounts `eighteen-decimal-unit` (1e18) and `oxdai-note-cap` (5166e18).
-  - `conformance/shielded-recipient.json`: `PaymentReceiptAck (binding X, 18-decimal note cap)`, a receipt for 5166e18 under its own receipt nonce.
-- **6-to-18 decimal shielded vectors** (xochi-sdk#131: the production OXDAI corridor, xochi#757 revision 2, is USDC with 6 decimals to OXDAI with 18, units 1 : 10^12, and no vector exercised a mixed-decimal conversion). Additive only: every existing vector, digest and signature is byte-identical.
-  - `conformance/shielded-terms.json` manifest `six-to-eighteen-decimal-corridor`: Ethereum USDC to OXDAI, 6 -> 18 decimals, `1` : `1000000000000`, `ceil-source-units`. The network and other members stay fixtures, so it is a revision 1 / `staging` fixture, not a revision 2 shape. Riddler's conformance test, once it re-vendors this file, digests it with `CorridorManifest.from_typed`; configured as a corridor entry, Riddler refuses to boot (`decode!/1`) and `parse/1` refuses it `revision_identity_fixed`. Never configure it.
-  - Fee policy of the new previews and terms: the Standard stable rates (8 / 6 / 8 = 22 bps, USD to USD), a fixture policy, not what an OXDAI user pays. The xochi Worker admits Verified and above; since Riddler#1425 (#1421) each caller pays their own tier's stable row, and only the gas floor comes from the corridor entry's `policy.gas_floor`.
-  - Previews plus terms: `six-to-eighteen-exact-multiple` (1 OXDAI, base 1,000,000 USDC units, the floor binds), `six-to-eighteen-rounds-up` (1e18 + 1 OXDAI base units, base rounded up to 1,000,001), `six-to-eighteen-layers-bind` (1,000 OXDAI, fee 2,200,000, the layers bind), `six-to-eighteen-round-up-moves-layers` (base rounded up to 2,500,000, fee 5,500; a fee on the rounded-down base gives 5,497) and `six-to-eighteen-layer-remainders` (base 999,999,999, fee 2,199,997; one combined floor gives 2,199,999, rounding each layer up 2,200,000). `test/shielded-terms-generate.test.ts` pins that the last two still separate those wrong implementations.
-  - Consumer coverage once consumers pick this up: Riddler's preview test re-derives each fee breakdown from `source.amount - totalFee`, which pins the per-layer flooring and the floor; once xochi bumps its `@xochi/spec` pin, the Worker reproduces every manifest digest and every terms digest and signature. Nothing yet derives the base from the destination amount through the 1 : 10^12 conversion (`rounds-up`, `round-up-moves-layers`, `layer-remainders`): that takes a xochi test feeding each 6-to-18 vector's `inputs` through `expectedTracerAmounts(..., "Standard", ...)` or a Riddler assertion of the ceil base.
-- **`TokenRegistrationAck`** (xochi#753, OX-12; shipped in `@xochi/signer` 0.7.0 and consumed by xochi#805). An OXDAI payout reaches only a recipient whose PXE registered the OxideToken contract and ran `store_immutables` (zkmoney-public `8fd19841`, `delivery.nr:30, 173-265`, `immutables.nr:40-57`); the acknowledgement closes that enrollment gap. Additive only: every earlier vector, digest and signature is byte-identical.
-  - `conformance/shielded-recipient.json` `acknowledgements`: the fourth primary type, `TokenRegistrationAck(bytes32 bindingDigest,bytes32 aztecRecipient,bytes32 aztecToken,bytes32 aztecTokenClassId,bytes32 tokenImmutablesHash,bytes32 nonce,uint64 challengeExpiry,string purpose)` (typehash `0x1e76fb8f...c45f`), purpose `xochi.shielded.token-registration-ack.v1`, under `Domain (binding)`. It reuses the binding's nonce and expiry and names `aztecTokenClassId`, the class of the artifact the PXE registered.
-  - New `oxideToken` section: the OxideToken `immutablesHash` rule (`poseidon2([DOM_SEP__TOKEN_IMMUTABLES = 0x67a58cb3, portal, teeRegistry, FieldCompressedString(name), FieldCompressedString(symbol), decimals, maxNoteAmount])`), the Aztec v6 mainnet OXDAI vector (immutables "Oxide DAI" / "OXDAI" / 18 / 5166e18 -> `0x22da781e...7de6`, class `0x27df40f9...3f949`, deployed address `0x11d2bed2...e0a3`), the underlying-ERC-20 immutables `readOxideTokenImmutables` would give (a different hash), refusals, `oxideTokenClassIds`, and `requiredEnrollmentAcks` (an OxideToken corridor requires the three enrollment acks; every other corridor, the testnet tracer included, keeps the two).
-  - `aztec-crosscheck` re-derives each immutables hash through the SDK's `poseidon2HashWithSeparator` and the OXDAI address through `computeContractAddressFromInstance`, held to the deployed address.
+## [0.13.0] - 2026-11-09
 
 ### Changed
 
-- **Docs restructure, no normative change**: version history moves here from `SPEC.md` §0.2-§0.3, `SOLVER-RFC.md` "Changes in" and `ESCROW-RFC.md` §10; the rules only those sections held now live in the body (`SOLVER-RFC.md` §4.2, `ESCROW-RFC.md` §4 and §10). Each duplicated rule has one home; `ESCROW-RFC.md` §11's delivery plan and the review-round narration leave the RFCs. Vectors, digests and RFC versions are byte-identical.
+- Normatively define authenticated passkey address recovery on a new device:
+  `POST /api/shielded/recipients/passkey-address` computes the commitment server-side, scopes the
+  lookup to the wallet authenticated by the current SIWE JWT, and returns one `aztec_recipient`.
+  Durable admitted records remain recovery-eligible after revocation solely for existing funds;
+  unexpired unused pending records remain eligible, while expired unused pending records do not.
+  Every matching durable admitted record, active or revoked, and every eligible pending record must
+  name one recipient or the lookup fails with 409. Missing, other-wallet and ineligible records
+  answer 404; responses are private/no-store. Revocation still prevents the binding from
+  authorizing new enrollment or payment, but a revoked admitted record remains in same-wallet
+  enrollment consistency checks so its commitment cannot be rebound to another recipient. A
+  durable unique `(source_wallet, backup_commitment)` guard makes the check and binding admission
+  atomic, including concurrent first enrollments. A guard backed by an admitted binding is
+  permanent; one backed only by expired unused pending bindings may be reassigned only under its
+  lock after rechecking that no eligible or admitted binding remains. The claim page requires exact
+  lowercase equality with its local derivation before writing a profile.
+- Require recipient-acknowledgement replay consumption and application acceptance/result to commit
+  atomically. The signer callback returns either a newly committed result or the existing result
+  with its stored digest; an exact retry returns that result, including after challenge expiry,
+  while a digest conflict fails closed. An expired acknowledgement without the same stored digest
+  never reaches the commit operation. A replay key may never be committed alone.
+- Extend SPEC §0.2 compatibility through `0.13.0`; the XochiIntent domain version remains `3`.
+- Define caller-provided UUIDv4 journal ids for `RecipientCore.send` and
+  `CoreExitRequest.journalId?`, and make `restoreJournals` the sole owner of idempotent complete
+  versus interrupted restore decisions. Vectors and derivation constants are unchanged.
+
+### Added
+
+- **Passkey recipients, APPROVED** (xochi-sdk#155, epic xochi#833; shipped in `@xochi/signer` 0.8.0; product-owner sign-off 2026-11-09). A Stealth on Aztec recipient whose Aztec keys derive from a WebAuthn passkey (PRF extension), so the claim page needs no passphrase or backup file. Approval fixes the protocol but does not authorize deployment: passkey claims remain default-off until the mandatory CSP and `xochi.fi` host prerequisites are satisfied. Additive: every earlier vector, digest, signature and verdict is byte-identical. Two prose strings outside the new section change: `testOnlyKeys` now covers the passkey fixtures, and the sealed-file `acknowledgements.rules` entry points at `passkey.backup.rule`.
+  - New `PASSKEY-RECIPIENT.md` (shipped and exported). It covers:
+    - the derivation (pass the 32 raw eval-input bytes);
+    - the WebAuthn parameters (`userVerification: "required"` with the UV flag checked, and a confirming get that must reproduce `first` and `second` byte for byte before anything is derived, else `prf_unstable`);
+    - the refusals and the no-PRF path;
+    - the `PKW1` wrapped import, a device-local cache that is not a backup;
+    - the passkey backup mode, only for passkey-derived recipients (imported ones keep the sealed-file format; the recipient core enforces it through `RecipientKeySource.kind`);
+    - the threat model: a lost, unsynced passkey means unrecoverable funds; a non-synced authenticator is a single copy; a non-reproducible PRF; the `xochi.fi` trust boundary (no Related Origin Requests, `webcredentials` or `get_login_creds` association; the provider account; XSS on any host); a strict CSP, allowing `'wasm-unsafe-eval'` and forbidding `'unsafe-inline'`/`'unsafe-eval'`, on every document of every `xochi.fi` host as a MUST rollout prerequisite that today's app policy fails; Xochi stores only the commitment;
+    - a sourced PRF support matrix.
+  - `conformance/shielded-recipient.json`, new `passkey` section:
+    - the RP ID, version and PRF eval inputs, and the HKDF parameters;
+    - the two decided derivation vectors (`zeros-ones`, `sha256-labels`), each with its raw HKDF outputs, secret, salt, wrap key, PXE store key and full stock `SchnorrAccount` 6.0.0 account (descriptor, digest, address derivation);
+    - derivation refusals, including a `second` output equal to the `first`;
+    - the backup format and commitment tag, two credential commitments (`keccak256("TEST ONLY credential id")` -> `0x1eb1bdb8...4887`) and commitment refusals;
+    - the passkey recipient's own signed binding and a signed passkey-mode `BackupPersistenceAck`, with an unknown-format refusal;
+    - `verification`, the verifier verdict for each combination of sealed/passkey ack and expectation.
+  - The schema's refusal-code enum gains `subject_mismatch`, `rp_id_mismatch`, `derivation_version_unsupported`, `prf_output_invalid` and `unsupported_version`.
+  - `aztec-crosscheck` holds each passkey account to the `@aztec-labs` 6.0.0 SDK: `Fr.fromBufferReduce` of the HKDF outputs, `deriveKeys`, `deriveMasterMessageSigningSecretKey`, the instance address. The two new signatures go through bb.js under both SDK lines.
+- **18-decimal shielded vectors** (xochi#736: the first production shielded asset is Oxide DAI, 18 decimals; every shielded vector so far was 6 decimals).
+  - `conformance/shielded-terms.json`: manifest `eighteen-decimal-corridor` (L1 DAI to OXDAI, 18 decimals both sides, 1:1 units; the network and other members stay fixtures, so it is not the production manifest), and previews plus terms `eighteen-decimal-floor-binds` (1 DAI, the 5e15 floor binds) and `eighteen-decimal-note-cap` (5,166 DAI, every amount above 2^64, the layers bind).
+  - `conformance/shielded.json`: accepted amounts `eighteen-decimal-unit` (1e18) and `oxdai-note-cap` (5166e18).
+  - `conformance/shielded-recipient.json`: `PaymentReceiptAck (binding X, 18-decimal note cap)`, a receipt for 5166e18 under its own receipt nonce.
+- **6-to-18 decimal shielded vectors** (xochi-sdk#131: the production OXDAI corridor, xochi#757 revision 2, is USDC with 6 decimals to OXDAI with 18, units 1 : 10^12, and no vector exercised a mixed-decimal conversion).
+  - `conformance/shielded-terms.json` manifest `six-to-eighteen-decimal-corridor`: Ethereum USDC to OXDAI, 6 -> 18 decimals, `1` : `1000000000000`, `ceil-source-units`. The network and other members stay fixtures, so it is a revision 1 / `staging` fixture, not a revision 2 shape. Riddler's conformance test, once it re-vendors this file, digests it with `CorridorManifest.from_typed`; configured as a corridor entry, Riddler refuses to boot (`decode!/1`) and `parse/1` refuses it `revision_identity_fixed`. Never configure it.
+  - Fee policy of the new previews and terms: the Standard stable rates (8 / 6 / 8 = 22 bps, USD to USD), a fixture policy, not what an OXDAI user pays. The xochi Worker admits Verified and above; since Riddler#1425 (#1421) each caller pays their own tier's stable row, and only the gas floor comes from the corridor entry's `policy.gas_floor`.
+  - Previews plus terms: `six-to-eighteen-exact-multiple` (1 OXDAI, base 1,000,000 USDC units, the floor binds), `six-to-eighteen-rounds-up` (1e18 + 1 OXDAI base units, base rounded up to 1,000,001), `six-to-eighteen-layers-bind` (1,000 OXDAI, fee 2,200,000, the layers bind), `six-to-eighteen-round-up-moves-layers` (base rounded up to 2,500,000, fee 5,500; a fee on the rounded-down base gives 5,497) and `six-to-eighteen-layer-remainders` (base 999,999,999, fee 2,199,997; one combined floor gives 2,199,999, rounding each layer up 2,200,000). `test/shielded-terms-generate.test.ts` pins that the last two still separate those wrong implementations.
+- **`TokenRegistrationAck`** (xochi#753, OX-12; shipped in `@xochi/signer` 0.7.0 and consumed by xochi#805). An OXDAI payout reaches only a recipient whose PXE registered the OxideToken contract and ran `store_immutables` (zkmoney-public `8fd19841`, `delivery.nr:30, 173-265`, `immutables.nr:40-57`); the acknowledgement closes that enrollment gap.
+  - `conformance/shielded-recipient.json` `acknowledgements`: the fourth primary type, `TokenRegistrationAck(bytes32 bindingDigest,bytes32 aztecRecipient,bytes32 aztecToken,bytes32 aztecTokenClassId,bytes32 tokenImmutablesHash,bytes32 nonce,uint64 challengeExpiry,string purpose)` (typehash `0x1e76fb8f...c45f`), purpose `xochi.shielded.token-registration-ack.v1`, under `Domain (binding)`. It reuses the binding's nonce and expiry and names `aztecTokenClassId`, the class of the artifact the PXE registered.
+  - New `oxideToken` section: the OxideToken `immutablesHash` rule (`poseidon2([DOM_SEP__TOKEN_IMMUTABLES = 0x67a58cb3, portal, teeRegistry, FieldCompressedString(name), FieldCompressedString(symbol), decimals, maxNoteAmount])`), the Aztec v6 mainnet OXDAI vector (immutables "Oxide DAI" / "OXDAI" / 18 / 5166e18 -> `0x22da781e...7de6`, class `0x27df40f9...3f949`, deployed address `0x11d2bed2...e0a3`), the underlying-ERC-20 immutables `readOxideTokenImmutables` would give (a different hash), refusals, `oxideTokenClassIds`, and `requiredEnrollmentAcks` (an OxideToken corridor requires the three enrollment acks; every other corridor, the testnet tracer included, keeps the two).
+  - `aztec-crosscheck` re-derives each immutables hash through the SDK's `poseidon2HashWithSeparator` and the OXDAI address through `computeContractAddressFromInstance`, held to the deployed address.
+- **Typed capability routes**: SPEC §6 defines additive ordered `routes[]` entries with typed chain / zk.money destinations and per-route privacy modes. When present, the list is the authoritative exact selector source; `conformance/capability-routes.json` pins same-symbol cross-chain and cross-token same-chain producer examples, with no self-loop, cross-token cross-chain, zk.money or shielded route. Absence retains the conservative legacy route rules, and `conversion_pairs.same_chain` is unchanged.
+
+### Changed
+
+- **Docs restructure, no normative change**: version history moves here from `SPEC.md` §0.2-§0.3, `SOLVER-RFC.md` "Changes in" and `ESCROW-RFC.md` §10; the rules only those sections held now live in the body (`SOLVER-RFC.md` §4.2, `ESCROW-RFC.md` §4 and §10). Each duplicated rule has one home; `ESCROW-RFC.md` §11's delivery plan and the review-round narration leave the RFCs.
 - `exports` uses subpath patterns (`./*.md`, `./conformance/*.json`, `./fee/*.json`, `./erc8262/*.json`, the three `wire/` files). Every previously exported path resolves as before.
 
 - **`TokenRegistrationAck` status cleanup** (xochi#753): remove the stale `PROPOSED` labels and
   descriptive `oxideToken.proposed` field now that `@xochi/signer` 0.7.0 and xochi#805 consume the
-  acknowledgement. Type strings, typehashes, signed vectors and signatures are byte-identical.
+  acknowledgement.
 
-- **`conformance/shielded-terms.json`**: the `CorridorManifestV1` proposed note now defines the two digest preimages no source defined (decided 2026-11-02, xochi `shielded-execution.md` §7): `aztecTokenArtifactDigest` is sha256 of the raw compiled artifact JSON as published, `solverConstructorDigest` is the solver account's Aztec `initializationHash` (with the instance's salt, deployer, class id and public keys it recomputes the address). Note text only: type strings, typehashes and every digest are byte-identical.
-- **`conformance/shielded-recipient.json`**: `SenderRegistrationAck` `scope` is now `"both designs"` (was `"B-panel"`). D4 was amended on 2026-11-01 (xochi#719): the design-A testnet tracer delivers with address-derived tagging, so its recipients register the bridge account as a sender and sign this acknowledgement too (xochi#720). Label only: type string, typehash, vectors and signatures are byte-identical.
+- **`conformance/shielded-terms.json`**: the `CorridorManifestV1` proposed note now defines the two digest preimages no source defined (decided 2026-11-02, xochi `shielded-execution.md` §7): `aztecTokenArtifactDigest` is sha256 of the raw compiled artifact JSON as published, `solverConstructorDigest` is the solver account's Aztec `initializationHash` (with the instance's salt, deployer, class id and public keys it recomputes the address). Note text only.
+- **`conformance/shielded-recipient.json`**: `SenderRegistrationAck` `scope` is now `"both designs"` (was `"B-panel"`). D4 was amended on 2026-11-01 (xochi#719): the design-A testnet tracer delivers with address-derived tagging, so its recipients register the bridge account as a sender and sign this acknowledgement too (xochi#720). Label only.
 
 ### Fixed
 
-- `conformance/shielded-recipient.schema.json`: the refusal-code enum lists `digest_zero` and `backup_format_mismatch`, which the committed vectors already use; the vectors failed their own schema. Vectors are byte-identical.
+- `conformance/shielded-recipient.schema.json`: the refusal-code enum lists `digest_zero` and `backup_format_mismatch`, which the committed vectors already use; the vectors failed their own schema.
 
 ## [0.12.0] - 2026-10-31
 
@@ -59,7 +106,7 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 
 ### Changed
 
-- **Version 0.11.0** (MINOR): adds the shielded-recipient and shielded-readiness conformance sets. Existing vectors remain byte-identical; no active taker signed struct or wire field changes. It also carries the docs-only SPEC.md §3.2 / §3.4 / §5.1 changes, `[PROPOSED]` SOLVER-RFC §13 and ESCROW-RFC §5.1 tier 1s below (neither `rfcVersion` moves). Riddler must advertise `spec_version: "0.11.0"` in lockstep and vendor `shielded`, `shielded-recipient` and `shielded-readiness`.
+- **Version 0.11.0** (MINOR): adds the shielded-recipient and shielded-readiness conformance sets. It also carries the docs-only SPEC.md §3.2 / §3.4 / §5.1 changes, `[PROPOSED]` SOLVER-RFC §13 and ESCROW-RFC §5.1 tier 1s below (neither `rfcVersion` moves). Riddler must advertise `spec_version: "0.11.0"` in lockstep and vendor `shielded`, `shielded-recipient` and `shielded-readiness`.
 - **SPEC.md §3.2 / §3.4 / §5.1 (docs only, no wire change)**: §3.2 makes `aztec_proof` do-not-send (`0.10.0` said to send it for `shielded`; no producer or consumer uses it). §3.4 / §5.1 list only the served shielded status scalars (`noteCommitment`, `nullifierHash`, `l2TxHash`) with shielded not offered, dropping "testnet; launch-pending", the "~120s" fill and the `noteHashes` / `nullifiers` arrays. §5.1 adds that before shielded is offered every Worker intent read not authenticated as the intent wallet's session MUST receive the status-only view (lockstep with the Worker).
 - **Wire contract (`wire/openapi.json` + `openapi.sha256`) refreshed from prod** after the shielded preview deployment. The structural differ reports `0 BREAKING, 8 STALE`: three pxe-bridge readiness relay endpoints and their schemas, Canton TestNet chain id `4149314359`, and the `readiness_not_enabled` / `readiness_unavailable` error codes. That classification deliberately excludes description-only changes; the generated contract also synchronizes these material rules:
   - deposit-attestation v3 signs exactly 18 fixed lines, adds `refund_address`, and corrects normalization so `to_token` and `recipient` are lowercased only when the entire value is `0x`-prefixed hex;
@@ -80,7 +127,7 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 
 ### Changed
 
-- **Version 0.10.0** (MINOR): adds the shielded-terms and solver-registration conformance sets plus Canton order-id cases. Existing vectors remain byte-identical; no active taker signed struct or wire field changes. Riddler must advertise `spec_version: "0.10.0"` in lockstep.
+- **Version 0.10.0** (MINOR): adds the shielded-terms and solver-registration conformance sets plus Canton order-id cases. Riddler must advertise `spec_version: "0.10.0"` in lockstep.
 - **SOLVER-RFC `0.6.0-draft`: quote-through corridors** (Riddler #1193): a corridor the venue cannot fill synchronously quotes the panel's firm best bid, settles second-price against the public `minOutput` reserve, and carries `quoteThrough` plus `minValidUntilMs`. Capabilities advertise the settle rule, quote TTL and configured corridors. No signed struct changes.
 
 - **Wire contract (`wire/openapi.json` + `openapi.sha256`) refreshed from a Riddler branch build, not prod** (`--allow-non-prod`; Riddler `feat/shielded-aztec-terms`): `0 BREAKING, 11 STALE`, all of them the new `POST /xochi/shielded/preview` (Riddler#1296), its nine schemas and the `shielded_terms_refused` error code. Refresh again from prod once that Riddler change is deployed.

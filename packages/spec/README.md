@@ -12,12 +12,21 @@ RFCs, and the byte-equality vector sets every signer implementation (TypeScript,
 version:**` header); makers gate on `SOLVER_RFC_VERSION` from `@xochi/solver-sdk`.
 - **`ESCROW-RFC.md`**: non-custodial escrow (`orderId` preimage, `OpenAuth`, proof-of-fill).
   `[RESERVED]` and inert.
+- **`PASSKEY-RECIPIENT.md`**: **APPROVED** passkey recipients (xochi-sdk#155; product-owner
+  sign-off 2026-11-09). Covers the WebAuthn PRF key derivation, the WebAuthn parameters and
+  refusals, the `PKW1` wrapped import, the passkey `BackupPersistenceAck` mode, the threat model and
+  the PRF support matrix. Approval does not authorize deployment: passkey claims remain default-off
+  until every CSP and host rollout prerequisite in §6 is satisfied. Its vectors are the `passkey`
+  section of `conformance/shielded-recipient.json`.
 - **`conformance/conformance.json`** + `schema.json`: 45 signing vectors (9 erc3009, 19 permit2, 17
   xochi) with inputs and `expected_{signer,digest,signature,signed_object}`.
 - **`conformance/solver-bid-v2.json`** + `.schema.json`: SolverBid v2 sealing (SOLVER-RFC §5.1).
 - **`conformance/{order-id,open-auth,dest-blinding,fill-salt,fill-auth,fill-attestation,slash-attestation,fill-acceptance}.json`**
   (+ `.schema.json`): escrow vectors (ESCROW-RFC, SOLVER-RFC §5.3). Public test keys only.
 - **`conformance/xsp.json`** + `.schema.json`: Xochi Settlement Protocol digests (ESCROW-RFC §13).
+- **`conformance/capability-routes.json`** + `.schema.json`: the producer's
+  ordered typed-route examples. Riddler keeps a byte-identical fixture and
+  asserts its capability derivation against the decoded routes.
 - **`conformance/shielded.json`** + `.schema.json`: shielded settlement contract v1 typed encodings
   (xochi `docs/planning/shielded-execution.md` §7): NetworkIdentity, the salted `Domain (binding)` /
   `Domain (terms)`, RecipientBinding digests with source-wallet signatures (public test keys),
@@ -34,7 +43,10 @@ version:**` header); makers gate on `SOLVER_RFC_VERSION` from `@xochi/solver-sdk
   `PaymentReceiptAck`, and `TokenRegistrationAck` contracts. Its `oxideToken` section records
   the OxideToken immutables hash, OXDAI vector, and corridors that require the acknowledgement
   (xochi#753). The enrollment acknowledgements reuse the named binding's exact
-  nonce and expiry; a payment receipt uses its own receipt challenge. TEST ONLY keys.
+  nonce and expiry; a payment receipt uses its own receipt challenge. Its **APPROVED** `passkey`
+  section (`PASSKEY-RECIPIENT.md`; product-owner sign-off 2026-11-09) pins the passkey derivation,
+  the passkey backup commitment and a passkey-mode acknowledgement with the verifier's verdicts.
+  TEST ONLY keys.
 - **`conformance/shielded-readiness.json`** + `.schema.json`: the pxe-bridge readiness
   attestations (`Membership`, `RecipientDeployment`, `RootUpdate`) under the
   `Xochi Shielded Readiness` domain, with replay and record-parse refusals. Public test key.
@@ -73,6 +85,10 @@ A changed vector is a wire change. Never regenerate one to make a check pass.
   decimal `output`, absolute `validUntilMs`). Drift silently rejects every honest bid; an
   `rfcVersion` skew moves no digest, so its guard is the pre-bid check (SOLVER-RFC §12).
   `npm run generate:solver-bid-v2 -w @xochi/spec` lands in lockstep with the server.
+- **`capability-routes.json`** mirrors Riddler's producer fixture byte-for-byte.
+  Riddler's live pair, chain, token and settlement gates are authoritative; the
+  vector pins their deterministic capability serialization and the SDK parser
+  consumes the same bytes. Neither side keeps an independent route allowlist.
 - **`shielded.json`** is generated here and vendored inbound by Riddler and the Xochi Worker, which
   never compute their own expectations (§7 "Vector authority"). Its generator derives every value
   from §7's literals with ethers primitives and imports nothing from `@xochi/signer`, whose
@@ -101,9 +117,14 @@ A changed vector is a wire change. Never regenerate one to make a check pass.
   never between two copies of this repo's own code. Its `acknowledgements` section is approved
   protocol bytes: changing a member, type, purpose or ordering requires a new primary
   type/version. `backupFormatId` is exactly
-  `keccak256(UTF8("xochi.shielded.backup-format.v1"))`. The verifiers (`verifyRecipientAck`,
+  `keccak256(UTF8("xochi.shielded.backup-format.v1"))` (sealed file) or, in passkey mode,
+  `keccak256(UTF8("xochi.shielded.backup-format.passkey.v1"))`; a verifier that names no format
+  accepts only the first. The verifiers (`verifyRecipientAck`,
   `verifyReadinessRecord`) and what their callers must supply are `@xochi/signer`'s: its
   README, "Shielded recipient and readiness".
+  A caller accepting an acknowledgement MUST atomically commit replay-key consumption with the
+  application acceptance/result, or persist an exact-request durable idempotent result with the
+  consumption and return it on retry; committing the consumed key alone is forbidden.
 - **`fee/*`** mirrors `Riddler.Integrations.Xochi.FeePolicy` in lockstep: the schedule is
   `fee/schedule.json`, the rules SPEC §4. A schedule change lands on both sides and regenerates
   the vectors (`npm run generate:fee -w @xochi/spec`, from `@xochi/client`'s built
@@ -114,7 +135,7 @@ A changed vector is a wire change. Never regenerate one to make a check pass.
 Pin an exact version; never read a sibling checkout:
 
 ```bash
-npm install --save-dev --save-exact @xochi/spec@0.12.0
+npm install --save-dev --save-exact @xochi/spec@0.13.0
 ```
 
 ```ts
@@ -124,7 +145,7 @@ import conformance from "@xochi/spec/conformance/conformance.json" with { type: 
 Non-JS CI:
 
 ```bash
-npm pack @xochi/spec@0.12.0 && tar -xzf xochi-spec-0.12.0.tgz   # -> package/conformance/..., package/fee/...
+npm pack @xochi/spec@0.13.0 && tar -xzf xochi-spec-0.13.0.tgz   # -> package/conformance/..., package/fee/...
 ```
 
 ## Verifying an implementation
