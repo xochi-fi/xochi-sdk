@@ -101,24 +101,40 @@ export class MemoryKeyValueStore implements KeyValueStore {
   }
 }
 
-/** Web Locks semantics: a name is held until its lease is released (a closed tab releases). */
+/**
+ * Web Locks semantics: a name is held until its lease is released (a closed tab releases), or
+ * until another context steals it (`steal`), which aborts the holder's `lost` signal.
+ */
 export class MemoryLockManager implements LockManager {
   readonly held = new Map<string, LockHolder>();
+  private readonly losses = new Map<string, AbortController>();
 
   async tryAcquire(name: string, holder: LockHolder): Promise<LockLease | null> {
     if (this.held.has(name)) return null;
     this.held.set(name, holder);
-    const held = this.held;
+    const lost = new AbortController();
+    this.losses.set(name, lost);
+    const { held, losses } = this;
     let released = false;
     return {
       name,
       holder,
+      lost: lost.signal,
       async release() {
         if (released) return;
         released = true;
+        if (lost.signal.aborted) return;
         held.delete(name);
+        losses.delete(name);
       },
     };
+  }
+
+  /** Another context takes `name` (Web Locks `steal: true`) and keeps it. */
+  steal(name: string, thief: LockHolder = { id: "thief", nonce: "TEST ONLY", kind: "steal" }) {
+    this.losses.get(name)?.abort(new Error(`TEST ONLY: ${name} stolen`));
+    this.losses.delete(name);
+    this.held.set(name, thief);
   }
 }
 

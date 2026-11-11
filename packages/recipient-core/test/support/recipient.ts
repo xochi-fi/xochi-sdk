@@ -301,6 +301,8 @@ export class PayoutNode extends DryRunAztec {
 
   /** Called as the deploy reaches the node, after its `beforeSubmit` hook. */
   onDeploySend: () => void = () => undefined;
+  /** Runs once the deployment is built, before its `beforeSubmit` record. */
+  beforeDeploySubmit: () => void = () => undefined;
   deploySends = 0;
   /** Whether the account is initialized and published on the node. */
   deployed = false;
@@ -315,6 +317,7 @@ export class PayoutNode extends DryRunAztec {
     beforeSubmit?: (txHash: string) => Promise<void>,
   ): Promise<string> {
     const txHash = hex("de");
+    this.beforeDeploySubmit();
     await beforeSubmit?.(txHash);
     this.deploySends += 1;
     this.onDeploySend();

@@ -497,4 +497,29 @@ describe("WebLocksManager", () => {
     expect(await acquire(waiter!, name)).toEqual({ name, holder });
     await waiter!.close();
   });
+
+  it("aborts the lease's lost signal when another tab steals the lock; release then resolves", async () => {
+    const [holderTab, thief] = await Promise.all([openTab(), openTab()]);
+    const name = "xochi-recipient:0x456:operations";
+    expect(await acquire(holderTab!, name)).not.toBeNull();
+    expect(await holderTab!.evaluate(() => window.lease?.lost?.aborted)).toBe(false);
+
+    await thief!.evaluate((lockName) => {
+      window.lockFreed = navigator.locks.request(lockName, { steal: true }, async () => undefined);
+    }, name);
+    await thief!.evaluate(() => window.lockFreed);
+
+    const lost = await holderTab!.evaluate(async () => {
+      const signal = window.lease!.lost!;
+      if (!signal.aborted) {
+        const aborted = Promise.withResolvers<void>();
+        signal.addEventListener("abort", () => aborted.resolve(), { once: true });
+        await aborted.promise;
+      }
+      await window.lease!.release();
+      return (signal.reason as DOMException).name;
+    });
+    expect(lost).toBe("AbortError");
+    await Promise.all([holderTab!.close(), thief!.close()]);
+  });
 });

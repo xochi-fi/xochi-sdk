@@ -267,6 +267,11 @@ export function restoreLockName(address: string): string {
   return `${operationsLockName(address)}:restore`;
 }
 
+/** The lease one `deploy` holds, across tabs and workers, from reconciliation to its record. */
+export function deployLockName(address: string): string {
+  return `${operationsLockName(address)}:deploy`;
+}
+
 const STATE_LEASE_ATTEMPTS = 200;
 const STATE_LEASE_RETRY_MS = 25;
 
@@ -330,6 +335,7 @@ interface CoreJournals {
   state: StateRecord;
   locks: LockManager;
   restoreHolder: LockHolder;
+  deployHolder: LockHolder;
   corridor: Corridor;
   address: string;
 }
@@ -502,13 +508,40 @@ class Core implements RecipientCore {
    * its hash; included and reverted is refused (a sponsored claim was consumed: request a new
    * sponsorship) and forgotten; dropped answers its hash if the account is deployed, and is sent
    * again only once the node has answered dropped for 30 s (a load-balanced node may not have
-   * seen it yet); anything else is refused until the node decides.
+   * seen it yet); anything else is refused until the node decides. Holds the `deployLockName`
+   * lease throughout and is refused while another session (tab, worker or concurrent call) holds
+   * it, so two sessions never send two deployments or spend one sponsored claim twice.
    */
   deploy(claim: FeeJuiceClaim | null): Promise<{ txHash: string }> {
-    return this.#holding(() => this.#deploy(claim));
+    return this.#holding(async () => {
+      const { locks, address, deployHolder } = this.#journals;
+      const name = deployLockName(address);
+      const lease = await locks.tryAcquire(name, deployHolder);
+      if (lease === null) {
+        throw new Error(
+          `another session is deploying this recipient (${name}); run deploy again once it finishes`,
+        );
+      }
+      try {
+        return await this.#deploy(claim, () => {
+          if (lease.lost?.aborted) {
+            throw new Error(
+              `this session lost the deploy lease (${name}) to another context; the deployment was not sent`,
+              { cause: lease.lost.reason },
+            );
+          }
+        });
+      } finally {
+        await lease.release();
+      }
+    });
   }
 
-  async #deploy(claim: FeeJuiceClaim | null): Promise<{ txHash: string }> {
+  /** `assertLeaseHeld` runs before the deployment is recorded, so a lost lease sends nothing. */
+  async #deploy(
+    claim: FeeJuiceClaim | null,
+    assertLeaseHeld: () => void,
+  ): Promise<{ txHash: string }> {
     const kv = this.#deps.kv;
     const recorded = await this.#recordedDeployment();
     if (recorded !== null) {
@@ -552,6 +585,7 @@ class Core implements RecipientCore {
       await kv.delete(DEPLOY_KEY);
     }
     const txHash = await setupAccount(this.#ctx, this.#secretAccount, claim, async (hash) => {
+      assertLeaseHeld();
       await kv.put(DEPLOY_KEY, prettyJsonBytes({ txHash: hash, sponsored: claim !== null }));
     });
     if (txHash === null) {
@@ -951,6 +985,11 @@ export async function openRecipientCore(
       id: String(pid),
       nonce: crypto.randomUUID(),
       kind: "restore",
+    },
+    deployHolder: {
+      id: String(pid),
+      nonce: crypto.randomUUID(),
+      kind: "deploy",
     },
   };
   const core = new Core(deps, account, port, tokenArtifact, journals);

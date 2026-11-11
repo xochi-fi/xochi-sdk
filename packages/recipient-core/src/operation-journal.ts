@@ -466,9 +466,17 @@ export class OperationJournal {
   /**
    * Claims a `building` spend's or exit's submission for its holder, before its broadcast record
    * (`recordBroadcastBeforeSend`). Refused once a successor's abort decided it: that operation
-   * is aborted and must not be sent.
+   * is aborted and must not be sent. Also refused, before deciding, once this holder's lease was
+   * taken away (`LockLease.lost`): a successor may now judge this holder dead and abort it.
    */
   async claimSubmission(id: string): Promise<void> {
+    const lost = this.session?.lost;
+    if (lost?.aborted) {
+      throw new Error(
+        `this session lost its holder lease to another context; operation ${id} was not sent: reopen the recipient before moving funds`,
+        { cause: lost.reason },
+      );
+    }
     if ((await this.decideSubmission(await this.get(id), "send")) !== "send") {
       throw new Error(
         `operation ${id} was aborted by another session before its submission; it was not sent`,

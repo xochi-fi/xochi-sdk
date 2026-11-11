@@ -51,6 +51,12 @@ export interface LockHolder {
 export interface LockLease {
   readonly name: string;
   readonly holder: LockHolder;
+  /**
+   * Aborted, with the platform's reason, if the lock is taken from this holder while it is held
+   * (browser: another context's Web Locks `steal`). Never aborted by `release()`, which then
+   * resolves without error. Absent where a held lock cannot be taken away (Node pid locks).
+   */
+  readonly lost?: AbortSignal;
   release(): Promise<void>;
 }
 

@@ -9,6 +9,7 @@ import { NodeSubmission } from "../src/node-submission.js";
 import {
   DuplicateOperationIdError,
   OperationJournal,
+  holderLockName,
   operationsLockName,
   type JournalHolder,
 } from "../src/operation-journal.js";
@@ -201,6 +202,40 @@ describe("operation journal over the storage and lock ports", () => {
     const aborted = await successor.get(operation.id);
     expect(aborted.status).toBe("aborted");
     expect(aborted.txHash).toBeUndefined();
+  });
+
+  it("a holder whose lease was stolen refuses to send, before deciding the submission", async () => {
+    const kv = new MemoryKeyValueStore();
+    const locks = new MemoryLockManager();
+    const holder = journalFor(kv, locks, TAB_A);
+    const operation = await holder.begin("spend", { amount: "1" });
+    locks.steal(holderLockName(operationsLockName(ADDRESS), TAB_A.pid));
+
+    let sent = 0;
+    const submission = new NodeSubmission({
+      async sendTx() {
+        sent += 1;
+      },
+    } as unknown as AztecNode);
+    await expect(
+      submission.run(
+        recordBroadcastBeforeSend(holder, operation.id, OXDAI_MAINNET_REV2),
+        async () => submission.node.sendTx({ getTxHash: () => TxHash.fromString(TX_HASH) } as Tx),
+        createSubmissionDiagnosticState("spend"),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      recordBroadcastBeforeSend(
+        holder,
+        operation.id,
+        OXDAI_MAINNET_REV2,
+      )(TxHash.fromString(TX_HASH)),
+    ).rejects.toThrow(
+      `this session lost its holder lease to another context; operation ${operation.id} was not sent: reopen the recipient before moving funds`,
+    );
+    expect(sent).toBe(0);
+    expect(kv.text(`operations/submission-${operation.id}-${operation.lockNonce}.lock`)).toBeNull();
+    expect(await holder.get(operation.id)).toMatchObject({ status: "building" });
   });
 
   it("a send that wins the submission boundary keeps a successor from aborting it", async () => {

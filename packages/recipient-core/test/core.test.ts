@@ -17,6 +17,7 @@ import { ExitJournal, backupContents, sealBackup, type BackupContents } from "..
 import { LiveAztec, recordBroadcastBeforeSend } from "../src/chain.js";
 import { OXDAI_MAINNET_REV2, type Corridor } from "../src/corridor.js";
 import {
+  deployLockName,
   importCliBackup,
   openRecipientCore,
   restoreJournals,
@@ -551,6 +552,37 @@ describe("deploy", () => {
     expect(await core.deploy(null)).toEqual({ txHash: hex("de") });
     expect(seenAtSend).toEqual([{ txHash: hex("de"), sponsored: false }]);
     expect(h.kv.text("deploy.json")).toBeNull();
+    await core.close();
+  });
+
+  it("refuses a deploy while another session holds the deploy lease, sending nothing", async () => {
+    const h = harness();
+    const core = await h.open();
+    const name = deployLockName(account.descriptor.aztecAddress);
+    const other = await h.locks.tryAcquire(name, { id: "other-tab", nonce: "1", kind: "deploy" });
+
+    await expect(core.deploy(null)).rejects.toThrow(
+      `another session is deploying this recipient (${name}); run deploy again once it finishes`,
+    );
+    expect(h.node.deploySends).toBe(0);
+    await other!.release();
+    expect(await core.deploy(null)).toEqual({ txHash: hex("de") });
+    expect(h.locks.held.has(name)).toBe(false);
+    await core.close();
+  });
+
+  it("sends nothing once another context steals the deploy lease before the record", async () => {
+    const h = harness();
+    const core = await h.open();
+    const name = deployLockName(account.descriptor.aztecAddress);
+    h.node.beforeDeploySubmit = () => h.locks.steal(name);
+
+    await expect(core.deploy(null)).rejects.toThrow(
+      `this session lost the deploy lease (${name}) to another context; the deployment was not sent`,
+    );
+    expect(h.node.deploySends).toBe(0);
+    expect(h.kv.text("deploy.json")).toBeNull();
+    expect(h.locks.held.get(name)?.kind).toBe("steal");
     await core.close();
   });
 
