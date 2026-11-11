@@ -394,7 +394,7 @@ describe("retry restores the settlement mode by name", () => {
     expect(document.querySelector<HTMLButtonElement>(".submit-btn")?.disabled).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: /^Shielded/ }));
     expect(screen.getByLabelText("zk.money tag")).toBeTruthy();
-    expect(document.querySelector(".settlement-caption")?.textContent).toBe("");
+    expect(document.querySelector(".settlement-caption[aria-live]")?.textContent).toBe("");
   });
 });
 

@@ -148,9 +148,9 @@ const payAmount = (): HTMLInputElement => {
   return input;
 };
 
-/** The tap notice the caption is answering, if any. */
+/** The tap notice the live caption is answering, if any. Other guidance shares its class. */
 const captionNotice = (): string | null =>
-  document.querySelector(".settlement-caption")?.getAttribute("data-notice") ?? null;
+  document.querySelector(".settlement-caption[aria-live]")?.getAttribute("data-notice") ?? null;
 
 /** Every guidance line currently on screen: the caption notice and the alert. */
 const notices = (): string[] =>
@@ -242,11 +242,18 @@ describe("stealth blockers are triaged, not collapsed", () => {
     await renderTrade(<SwapPanel />);
     await stealthOffered();
     expect(metaLines("Stealth")).toEqual({ lines: 1, fixes: 1 });
+    expect(document.querySelector("#stealth-destinations")?.textContent).toBe(
+      "Stealth destinations: Ethereum only.",
+    );
+    expect(mode("Stealth").getAttribute("aria-describedby")).toBe("stealth-destinations");
     fireEvent.click(mode("Stealth"));
     expect(captionNotice()).toBeNull();
-    expect(document.querySelector(".settlement-caption")?.textContent).toContain(
+    expect(document.querySelector(".settlement-caption[aria-live]")?.textContent).toContain(
       "Stealth derives its one-time address from a connected wallet.",
     );
+    // The picker's exact-route guidance replaces the network hint, never stacks on it.
+    expect(document.querySelector("#stealth-destinations")).toBeNull();
+    expect(mode("Stealth").hasAttribute("aria-describedby")).toBe(false);
     expect(selected()).toEqual(["Stealth"]);
     expect(payAmount().value).toBe("");
     expect(document.querySelector("#stealth-destination-guidance")?.textContent).toContain(
