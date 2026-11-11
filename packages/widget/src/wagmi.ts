@@ -66,11 +66,13 @@ export const arc = defineChain({
 // override first, then PublicNode (CORS-friendly, key-free, reliable) as the
 // primary, then the chain's own public RPC as a fallback. viem's `fallback`
 // transport fails over to the next on error, so a single provider 5xx/401
-// (mainnet.base.org 503, polygon-rpc.com 401) no longer drops balance reads.
+// (mainnet.base.org 503) no longer drops balance reads. A fallback must answer
+// eth_call and eth_getLogs with CORS headers: cloudflare-eth.com (-32603 on
+// eth_call) and polygon-rpc.com ("API key disabled") were dead and are dropped.
 // Override the primary via VITE_{CHAIN}_RPC_URL (Alchemy/Infura/axol-api later).
 const env = RPC_URLS;
 const rpcs: Record<string, Array<string | undefined>> = {
-  mainnet: [env.mainnet, "https://ethereum-rpc.publicnode.com", "https://cloudflare-eth.com"],
+  mainnet: [env.mainnet, "https://ethereum-rpc.publicnode.com", "https://eth.drpc.org"],
   arbitrum: [
     env.arbitrum,
     "https://arbitrum-one-rpc.publicnode.com",
@@ -78,7 +80,7 @@ const rpcs: Record<string, Array<string | undefined>> = {
   ],
   optimism: [env.optimism, "https://optimism-rpc.publicnode.com", "https://mainnet.optimism.io"],
   base: [env.base, "https://base-rpc.publicnode.com", "https://mainnet.base.org"],
-  polygon: [env.polygon, "https://polygon-bor-rpc.publicnode.com", "https://polygon-rpc.com"],
+  polygon: [env.polygon, "https://polygon-bor-rpc.publicnode.com", "https://polygon.drpc.org"],
   robinhood: [env.robinhood, "https://rpc.mainnet.chain.robinhood.com"],
   arc: [ARC_BROWSER_RPC_URL ?? "https://rpc.mainnet.arc.io"],
   gnosis: [env.gnosis, "https://gnosis-rpc.publicnode.com", "https://rpc.gnosischain.com"],
