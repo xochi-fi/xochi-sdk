@@ -196,6 +196,7 @@ export function SwapPanel({
     destinationChainIds,
     destinationPickerMode,
     stealthDestinationGuidance,
+    stealthHintChainIds,
     originTokensByChain,
     destinationTokensByChain,
     classifyOriginToken,
@@ -213,8 +214,9 @@ export function SwapPanel({
     stealthDestinationGuidance !== null &&
     (stealthDestinationGuidance.status !== "live" ||
       !stealthDestinationGuidance.selectedPairSupported);
-  const showStealthDestinationHint =
-    stealthChainNames !== "" && stealthDestinationGuidance === null;
+  const stealthHintChainNames = joinChainNames(
+    stealthHintChainIds.map((chainId) => EXTENDED_CHAIN_NAMES[chainId]),
+  );
   const connectWallet = onConnectRequest ?? openConnectModal;
   const setupAction =
     settlementFix === "setup" && !needsChainSwitch && !flowReopenable && !routeBlocked && !flowOpen;
@@ -311,7 +313,7 @@ export function SwapPanel({
                 gate or zk.money navigation disables this control; quote and
                 execution authorization remain separately guarded. */
                 disabled={!stealthClickable}
-                aria-describedby={showStealthDestinationHint ? "stealth-destinations" : undefined}
+                aria-describedby={stealthHintChainNames ? "stealth-destinations" : undefined}
                 title={
                   stealthFix === "route" && stealthRefusalReason
                     ? // The solver's own sentence for the refusal (R16), capped
@@ -377,12 +379,12 @@ export function SwapPanel({
             </div>
           </div>
 
-          {/* Trusted, live-advertised Stealth networks, before Stealth is chosen.
-          Guidance only: route eligibility stays with the exact live routes. Once
-          the Stealth picker is open, its own guidance below replaces this line. */}
-          {showStealthDestinationHint && (
+          {/* The live Stealth networks the picker would offer for this source,
+          before Stealth is chosen. Guidance only: eligibility stays with the
+          exact live routes. The open picker's own guidance replaces this line. */}
+          {stealthHintChainNames && (
             <div id="stealth-destinations" className="settlement-caption">
-              Stealth destinations: <strong>{stealthChainNames} only.</strong>
+              Stealth destinations: <strong>{stealthHintChainNames} only.</strong>
             </div>
           )}
 
