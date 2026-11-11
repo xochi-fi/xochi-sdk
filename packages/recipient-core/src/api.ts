@@ -199,8 +199,19 @@ export interface ReceiptApi {
   submitReceipt(intentId: string, body: ReceiptSubmission): Promise<ReceiptResult>;
 }
 
-/** The only Xochi API origin the client sends the source-wallet bearer to; the default. */
+/** The production Xochi API origin; the default. */
 export const XOCHI_API_URL = "https://api.xochi.fi";
+
+/**
+ * The only Xochi API origins the client sends the source-wallet bearer to: production, staging
+ * and the fallback ingress (xochi `src/config.ts`, `es.xochi.fi` -> `api-es.xochi.fi`). Anything
+ * else is refused, so a caller-supplied URL can never carry the SIWE session elsewhere.
+ */
+export const XOCHI_API_ORIGINS: readonly string[] = Object.freeze([
+  XOCHI_API_URL,
+  "https://api-stg.xochi.fi",
+  "https://api-es.xochi.fi",
+]);
 
 export class HttpEnrollmentApi implements EnrollmentApi, ReceiptApi {
   /**
@@ -213,8 +224,10 @@ export class HttpEnrollmentApi implements EnrollmentApi, ReceiptApi {
     private readonly fetchImpl?: HttpFetch,
   ) {
     const url = new URL(baseUrl);
-    if (url.origin !== XOCHI_API_URL) {
-      throw new Error(`enrollment API must be ${XOCHI_API_URL} (got ${url.origin})`);
+    if (!XOCHI_API_ORIGINS.includes(url.origin)) {
+      throw new Error(
+        `enrollment API must be one of ${XOCHI_API_ORIGINS.join(", ")} (got ${url.origin})`,
+      );
     }
     if (url.pathname !== "/" || url.search || url.hash) {
       throw new Error("enrollment API URL must not contain a path, query or fragment");

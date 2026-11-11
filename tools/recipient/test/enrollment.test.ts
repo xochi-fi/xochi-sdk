@@ -231,12 +231,28 @@ describe("enrollment projection binding", () => {
 
 describe("enrollment API origin", () => {
   it("never sends the source-wallet bearer to a caller-selected HTTPS origin", () => {
-    expect(() => new HttpEnrollmentApi("https://attacker.example", "TEST ONLY")).toThrow(
-      /must be https:\/\/api.xochi.fi/,
-    );
+    for (const refused of [
+      "https://attacker.example",
+      "http://api.xochi.fi",
+      "https://api.xochi.fi.attacker.example",
+      "https://xochi.fi",
+      "https://api-stg.xochi.fi:8443",
+      "http://localhost:8788",
+    ]) {
+      expect(() => new HttpEnrollmentApi(refused, "TEST ONLY")).toThrow(/must be one of/);
+    }
     expect(() => new HttpEnrollmentApi("https://api.xochi.fi/extra", "TEST ONLY")).toThrow(
       /must not contain a path/,
     );
-    expect(() => new HttpEnrollmentApi("https://api.xochi.fi", "TEST ONLY")).not.toThrow();
+  });
+
+  it("accepts production, staging and the fallback ingress", () => {
+    for (const allowed of [
+      "https://api.xochi.fi",
+      "https://api-stg.xochi.fi",
+      "https://api-es.xochi.fi/",
+    ]) {
+      expect(() => new HttpEnrollmentApi(allowed, "TEST ONLY")).not.toThrow();
+    }
   });
 });
