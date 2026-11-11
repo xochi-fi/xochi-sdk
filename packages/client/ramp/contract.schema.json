@@ -1,0 +1,1448 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "contract_version": {
+          "type": "string",
+          "const": "ramp/1"
+        },
+        "kind": {
+          "type": "string",
+          "const": "offer"
+        },
+        "offer_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,96}$"
+        },
+        "capability_revision": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,96}$"
+        },
+        "provider_id": {
+          "type": "string",
+          "const": "peer"
+        },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "onramp",
+            "offramp"
+          ]
+        },
+        "fiat": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "fiat"
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            "decimals": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18
+            }
+          },
+          "required": [
+            "kind",
+            "currency",
+            "decimals"
+          ]
+        },
+        "crypto": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "crypto"
+            },
+            "chain_id": {
+              "type": "string",
+              "pattern": "^eip155:[1-9][0-9]*$"
+            },
+            "asset_id": {
+              "type": "string",
+              "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}$"
+            },
+            "symbol": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,16}$"
+            },
+            "decimals": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            }
+          },
+          "required": [
+            "kind",
+            "chain_id",
+            "asset_id",
+            "symbol",
+            "decimals"
+          ]
+        },
+        "rail": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{0,63}$"
+            },
+            "label": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            }
+          },
+          "required": [
+            "id",
+            "label"
+          ]
+        },
+        "bounds": {
+          "type": "object",
+          "properties": {
+            "measured_in": {
+              "type": "string",
+              "enum": [
+                "fiat",
+                "crypto"
+              ]
+            },
+            "minimum": {
+              "type": "object",
+              "properties": {
+                "asset": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "fiat"
+                        },
+                        "currency": {
+                          "type": "string",
+                          "pattern": "^[A-Z]{3}$"
+                        },
+                        "decimals": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 18
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "currency",
+                        "decimals"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "crypto"
+                        },
+                        "chain_id": {
+                          "type": "string",
+                          "pattern": "^eip155:[1-9][0-9]*$"
+                        },
+                        "asset_id": {
+                          "type": "string",
+                          "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}$"
+                        },
+                        "symbol": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9._-]{1,16}$"
+                        },
+                        "decimals": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 255
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "chain_id",
+                        "asset_id",
+                        "symbol",
+                        "decimals"
+                      ]
+                    }
+                  ]
+                },
+                "atomic": {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]*)$"
+                }
+              },
+              "required": [
+                "asset",
+                "atomic"
+              ]
+            },
+            "maximum": {
+              "type": "object",
+              "properties": {
+                "asset": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "fiat"
+                        },
+                        "currency": {
+                          "type": "string",
+                          "pattern": "^[A-Z]{3}$"
+                        },
+                        "decimals": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 18
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "currency",
+                        "decimals"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "crypto"
+                        },
+                        "chain_id": {
+                          "type": "string",
+                          "pattern": "^eip155:[1-9][0-9]*$"
+                        },
+                        "asset_id": {
+                          "type": "string",
+                          "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}$"
+                        },
+                        "symbol": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9._-]{1,16}$"
+                        },
+                        "decimals": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 255
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "chain_id",
+                        "asset_id",
+                        "symbol",
+                        "decimals"
+                      ]
+                    }
+                  ]
+                },
+                "atomic": {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]*)$"
+                }
+              },
+              "required": [
+                "asset",
+                "atomic"
+              ]
+            }
+          },
+          "required": [
+            "measured_in",
+            "minimum",
+            "maximum"
+          ]
+        },
+        "interaction": {
+          "type": "object",
+          "properties": {
+            "presentation": {
+              "type": "string",
+              "enum": [
+                "embedded",
+                "popup",
+                "redirect",
+                "manual"
+              ]
+            },
+            "requirement_codes": {
+              "maxItems": 32,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]{0,63}$"
+              }
+            }
+          },
+          "required": [
+            "presentation",
+            "requirement_codes"
+          ]
+        },
+        "availability": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "state": {
+                  "type": "string",
+                  "const": "available"
+                },
+                "valid_until": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                }
+              },
+              "required": [
+                "state",
+                "valid_until"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "state": {
+                  "type": "string",
+                  "const": "setup_required"
+                },
+                "requirement_codes": {
+                  "maxItems": 32,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                  }
+                }
+              },
+              "required": [
+                "state",
+                "requirement_codes"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "state": {
+                  "type": "string",
+                  "const": "temporarily_unavailable"
+                },
+                "reason_code": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                },
+                "retry_after": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                }
+              },
+              "required": [
+                "state",
+                "reason_code"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "state": {
+                  "type": "string",
+                  "const": "not_supported"
+                },
+                "reason_code": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                }
+              },
+              "required": [
+                "state",
+                "reason_code"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "state": {
+                  "type": "string",
+                  "const": "availability_unknown"
+                },
+                "reason_code": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                }
+              },
+              "required": [
+                "state",
+                "reason_code"
+              ]
+            }
+          ]
+        },
+        "disclosures": {
+          "type": "object",
+          "properties": {
+            "public_state": {
+              "maxItems": 32,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]{0,63}$"
+              }
+            },
+            "identity_visible_to": {
+              "maxItems": 32,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]{0,63}$"
+              }
+            },
+            "liveness_dependencies": {
+              "maxItems": 32,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]{0,63}$"
+              }
+            }
+          },
+          "required": [
+            "public_state",
+            "identity_visible_to",
+            "liveness_dependencies"
+          ]
+        },
+        "observed_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        }
+      },
+      "required": [
+        "contract_version",
+        "kind",
+        "offer_id",
+        "capability_revision",
+        "provider_id",
+        "direction",
+        "fiat",
+        "crypto",
+        "rail",
+        "bounds",
+        "interaction",
+        "availability",
+        "disclosures",
+        "observed_at"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "contract_version": {
+          "type": "string",
+          "const": "ramp/1"
+        },
+        "kind": {
+          "type": "string",
+          "const": "intent"
+        },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "onramp",
+            "offramp"
+          ]
+        },
+        "exact": {
+          "type": "object",
+          "properties": {
+            "side": {
+              "type": "string",
+              "enum": [
+                "fiat",
+                "crypto"
+              ]
+            },
+            "money": {
+              "type": "object",
+              "properties": {
+                "asset": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "fiat"
+                        },
+                        "currency": {
+                          "type": "string",
+                          "pattern": "^[A-Z]{3}$"
+                        },
+                        "decimals": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 18
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "currency",
+                        "decimals"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "crypto"
+                        },
+                        "chain_id": {
+                          "type": "string",
+                          "pattern": "^eip155:[1-9][0-9]*$"
+                        },
+                        "asset_id": {
+                          "type": "string",
+                          "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}$"
+                        },
+                        "symbol": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9._-]{1,16}$"
+                        },
+                        "decimals": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 255
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "chain_id",
+                        "asset_id",
+                        "symbol",
+                        "decimals"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "atomic": {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]*)$"
+                }
+              },
+              "required": [
+                "asset",
+                "atomic"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "side",
+            "money"
+          ],
+          "additionalProperties": false
+        },
+        "fiat": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "fiat"
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            "decimals": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18
+            }
+          },
+          "required": [
+            "kind",
+            "currency",
+            "decimals"
+          ],
+          "additionalProperties": false
+        },
+        "crypto": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "crypto"
+            },
+            "chain_id": {
+              "type": "string",
+              "pattern": "^eip155:[1-9][0-9]*$"
+            },
+            "asset_id": {
+              "type": "string",
+              "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}$"
+            },
+            "symbol": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,16}$"
+            },
+            "decimals": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            }
+          },
+          "required": [
+            "kind",
+            "chain_id",
+            "asset_id",
+            "symbol",
+            "decimals"
+          ],
+          "additionalProperties": false
+        },
+        "recipient": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{40}$"
+        },
+        "region": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$"
+        },
+        "route": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "crypto"
+                },
+                "chain_id": {
+                  "type": "string",
+                  "pattern": "^eip155:[1-9][0-9]*$"
+                },
+                "asset_id": {
+                  "type": "string",
+                  "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}$"
+                },
+                "symbol": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._-]{1,16}$"
+                },
+                "decimals": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 255
+                }
+              },
+              "required": [
+                "kind",
+                "chain_id",
+                "asset_id",
+                "symbol",
+                "decimals"
+              ],
+              "additionalProperties": false
+            },
+            "to": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "crypto"
+                },
+                "chain_id": {
+                  "type": "string",
+                  "pattern": "^eip155:[1-9][0-9]*$"
+                },
+                "asset_id": {
+                  "type": "string",
+                  "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}$"
+                },
+                "symbol": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._-]{1,16}$"
+                },
+                "decimals": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 255
+                }
+              },
+              "required": [
+                "kind",
+                "chain_id",
+                "asset_id",
+                "symbol",
+                "decimals"
+              ],
+              "additionalProperties": false
+            },
+            "recipient": {
+              "type": "string",
+              "pattern": "^0x[0-9a-fA-F]{40}$"
+            },
+            "settlement": {
+              "type": "string",
+              "enum": [
+                "public",
+                "stealth"
+              ]
+            }
+          },
+          "required": [
+            "from",
+            "to",
+            "recipient",
+            "settlement"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "contract_version",
+        "kind",
+        "direction",
+        "exact",
+        "fiat",
+        "crypto",
+        "recipient"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "contract_version": {
+          "type": "string",
+          "const": "ramp/1"
+        },
+        "kind": {
+          "type": "string",
+          "const": "preview"
+        },
+        "operation_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,96}$"
+        },
+        "quote_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,96}$"
+        },
+        "offer_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,96}$"
+        },
+        "capability_revision": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,96}$"
+        },
+        "request_digest": {
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{64}$"
+        },
+        "pay": {
+          "type": "object",
+          "properties": {
+            "asset": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "fiat"
+                    },
+                    "currency": {
+                      "type": "string",
+                      "pattern": "^[A-Z]{3}$"
+                    },
+                    "decimals": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 18
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "currency",
+                    "decimals"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "crypto"
+                    },
+                    "chain_id": {
+                      "type": "string",
+                      "pattern": "^eip155:[1-9][0-9]*$"
+                    },
+                    "asset_id": {
+                      "type": "string",
+                      "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}$"
+                    },
+                    "symbol": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9._-]{1,16}$"
+                    },
+                    "decimals": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "chain_id",
+                    "asset_id",
+                    "symbol",
+                    "decimals"
+                  ]
+                }
+              ]
+            },
+            "atomic": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)$"
+            }
+          },
+          "required": [
+            "asset",
+            "atomic"
+          ]
+        },
+        "receive": {
+          "type": "object",
+          "properties": {
+            "asset": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "fiat"
+                    },
+                    "currency": {
+                      "type": "string",
+                      "pattern": "^[A-Z]{3}$"
+                    },
+                    "decimals": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 18
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "currency",
+                    "decimals"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "crypto"
+                    },
+                    "chain_id": {
+                      "type": "string",
+                      "pattern": "^eip155:[1-9][0-9]*$"
+                    },
+                    "asset_id": {
+                      "type": "string",
+                      "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}$"
+                    },
+                    "symbol": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9._-]{1,16}$"
+                    },
+                    "decimals": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "chain_id",
+                    "asset_id",
+                    "symbol",
+                    "decimals"
+                  ]
+                }
+              ]
+            },
+            "atomic": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)$"
+            }
+          },
+          "required": [
+            "asset",
+            "atomic"
+          ]
+        },
+        "fees": {
+          "maxItems": 32,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]{0,63}$"
+              },
+              "money": {
+                "type": "object",
+                "properties": {
+                  "asset": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "fiat"
+                          },
+                          "currency": {
+                            "type": "string",
+                            "pattern": "^[A-Z]{3}$"
+                          },
+                          "decimals": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 18
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "currency",
+                          "decimals"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "crypto"
+                          },
+                          "chain_id": {
+                            "type": "string",
+                            "pattern": "^eip155:[1-9][0-9]*$"
+                          },
+                          "asset_id": {
+                            "type": "string",
+                            "pattern": "^(eip155:[1-9][0-9]*\\/erc20:)?0x[0-9a-fA-F]{40}$"
+                          },
+                          "symbol": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9._-]{1,16}$"
+                          },
+                          "decimals": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 255
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "chain_id",
+                          "asset_id",
+                          "symbol",
+                          "decimals"
+                        ]
+                      }
+                    ]
+                  },
+                  "atomic": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  }
+                },
+                "required": [
+                  "asset",
+                  "atomic"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "money"
+            ]
+          }
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "leg_order": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": [
+                {
+                  "type": "string",
+                  "const": "peer"
+                }
+              ],
+              "additionalItems": false,
+              "minItems": 1,
+              "maxItems": 1
+            },
+            {
+              "type": "array",
+              "items": [
+                {
+                  "type": "string",
+                  "const": "peer"
+                },
+                {
+                  "type": "string",
+                  "const": "xochi"
+                }
+              ],
+              "additionalItems": false,
+              "minItems": 2,
+              "maxItems": 2
+            },
+            {
+              "type": "array",
+              "items": [
+                {
+                  "type": "string",
+                  "const": "xochi"
+                },
+                {
+                  "type": "string",
+                  "const": "peer"
+                }
+              ],
+              "additionalItems": false,
+              "minItems": 2,
+              "maxItems": 2
+            }
+          ]
+        },
+        "disclosures": {
+          "type": "object",
+          "properties": {
+            "public_state": {
+              "maxItems": 32,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]{0,63}$"
+              }
+            },
+            "identity_visible_to": {
+              "maxItems": 32,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]{0,63}$"
+              }
+            },
+            "liveness_dependencies": {
+              "maxItems": 32,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]{0,63}$"
+              }
+            }
+          },
+          "required": [
+            "public_state",
+            "identity_visible_to",
+            "liveness_dependencies"
+          ]
+        }
+      },
+      "required": [
+        "contract_version",
+        "kind",
+        "operation_id",
+        "quote_id",
+        "offer_id",
+        "capability_revision",
+        "request_digest",
+        "pay",
+        "receive",
+        "fees",
+        "expires_at",
+        "leg_order",
+        "disclosures"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "contract_version": {
+          "type": "string",
+          "const": "ramp/1"
+        },
+        "kind": {
+          "type": "string",
+          "const": "snapshot"
+        },
+        "operation_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,96}$"
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)$"
+        },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "onramp",
+            "offramp"
+          ]
+        },
+        "leg_order": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": [
+                {
+                  "type": "string",
+                  "const": "peer"
+                }
+              ],
+              "additionalItems": false,
+              "minItems": 1,
+              "maxItems": 1
+            },
+            {
+              "type": "array",
+              "items": [
+                {
+                  "type": "string",
+                  "const": "peer"
+                },
+                {
+                  "type": "string",
+                  "const": "xochi"
+                }
+              ],
+              "additionalItems": false,
+              "minItems": 2,
+              "maxItems": 2
+            },
+            {
+              "type": "array",
+              "items": [
+                {
+                  "type": "string",
+                  "const": "xochi"
+                },
+                {
+                  "type": "string",
+                  "const": "peer"
+                }
+              ],
+              "additionalItems": false,
+              "minItems": 2,
+              "maxItems": 2
+            }
+          ]
+        },
+        "peer": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "const": "peer"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "not_started",
+                "quoted",
+                "approval_required",
+                "action_required",
+                "processing",
+                "completed",
+                "failed",
+                "in_doubt",
+                "refunded",
+                "skipped"
+              ]
+            },
+            "failure_code": {
+              "type": "string",
+              "enum": [
+                "invalid_request",
+                "capabilities_unavailable",
+                "capability_unavailable",
+                "quote_expired",
+                "quote_changed",
+                "approval_rejected",
+                "provider_declined",
+                "provider_timeout",
+                "proof_failed",
+                "peer_in_doubt",
+                "xochi_in_doubt",
+                "route_failed",
+                "session_conflict",
+                "unsupported_version",
+                "internal"
+              ]
+            },
+            "recoverable": {
+              "type": "boolean"
+            },
+            "transaction_hash": {
+              "type": "string",
+              "pattern": "^0x[0-9a-fA-F]{64}$"
+            }
+          },
+          "required": [
+            "name",
+            "state",
+            "recoverable"
+          ]
+        },
+        "xochi": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "const": "xochi"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "not_started",
+                "quoted",
+                "approval_required",
+                "action_required",
+                "processing",
+                "completed",
+                "failed",
+                "in_doubt",
+                "refunded",
+                "skipped"
+              ]
+            },
+            "failure_code": {
+              "type": "string",
+              "enum": [
+                "invalid_request",
+                "capabilities_unavailable",
+                "capability_unavailable",
+                "quote_expired",
+                "quote_changed",
+                "approval_rejected",
+                "provider_declined",
+                "provider_timeout",
+                "proof_failed",
+                "peer_in_doubt",
+                "xochi_in_doubt",
+                "route_failed",
+                "session_conflict",
+                "unsupported_version",
+                "internal"
+              ]
+            },
+            "recoverable": {
+              "type": "boolean"
+            },
+            "transaction_hash": {
+              "type": "string",
+              "pattern": "^0x[0-9a-fA-F]{64}$"
+            }
+          },
+          "required": [
+            "name",
+            "state",
+            "recoverable"
+          ]
+        },
+        "allowed_actions": {
+          "maxItems": 9,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "interact",
+              "check_status",
+              "requote",
+              "recover_peer",
+              "approve_route",
+              "execute_route",
+              "recover_route",
+              "skip_route"
+            ]
+          }
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "terminal": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "contract_version",
+        "kind",
+        "operation_id",
+        "revision",
+        "direction",
+        "leg_order",
+        "peer",
+        "allowed_actions",
+        "updated_at",
+        "terminal"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "contract_version": {
+          "type": "string",
+          "const": "ramp/1"
+        },
+        "kind": {
+          "type": "string",
+          "const": "command"
+        },
+        "operation_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,96}$"
+        },
+        "leg": {
+          "type": "string",
+          "enum": [
+            "peer",
+            "xochi"
+          ]
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "approve",
+            "interact",
+            "check_status",
+            "requote",
+            "recover_peer",
+            "approve_route",
+            "execute_route",
+            "recover_route",
+            "skip_route"
+          ]
+        },
+        "context": {
+          "type": "object",
+          "properties": {
+            "expected_revision": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)$"
+            },
+            "idempotency_key": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,96}$"
+            }
+          },
+          "required": [
+            "expected_revision",
+            "idempotency_key"
+          ],
+          "additionalProperties": false
+        },
+        "quote_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,96}$"
+        },
+        "accepted_disclosure_codes": {
+          "maxItems": 32,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$"
+          }
+        }
+      },
+      "required": [
+        "contract_version",
+        "kind",
+        "operation_id",
+        "leg",
+        "action",
+        "context"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "contract_version": {
+          "type": "string",
+          "const": "ramp/1"
+        },
+        "kind": {
+          "type": "string",
+          "const": "error"
+        },
+        "code": {
+          "type": "string",
+          "enum": [
+            "invalid_request",
+            "capabilities_unavailable",
+            "capability_unavailable",
+            "quote_expired",
+            "quote_changed",
+            "approval_rejected",
+            "provider_declined",
+            "provider_timeout",
+            "proof_failed",
+            "peer_in_doubt",
+            "xochi_in_doubt",
+            "route_failed",
+            "session_conflict",
+            "unsupported_version",
+            "internal"
+          ]
+        }
+      },
+      "required": [
+        "contract_version",
+        "kind",
+        "code"
+      ]
+    }
+  ],
+  "$id": "https://xochi.fi/contracts/ramp/1",
+  "title": "ramp/1 public wire contract"
+}

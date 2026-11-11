@@ -1,0 +1,23 @@
+{
+  "name": "xochi-peer-compatibility",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "scripts": {
+    "start": "node cli.mjs",
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "test": "node --test compatibility.test.mjs",
+    "verify:graph": "node ../../scripts/verify-peer-graph.mjs"
+  },
+  "dependencies": {
+    "@zkp2p/sdk": "0.15.0-rc.11",
+    "viem": "2.57.17"
+  },
+  "devDependencies": {
+    "vite": "8.3.7"
+  }
+}

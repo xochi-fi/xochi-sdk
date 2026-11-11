@@ -63,6 +63,12 @@ jobs:
       - name: Unit tests
         run: npm test -w @xochi/${{ matrix.ws }}
 
+      - name: Ramp schema matches its zod source
+        if: matrix.ws == 'client'
+        run: |
+          npm run generate:ramp -w @xochi/client
+          git diff --exit-code -- packages/client/ramp/contract.schema.json
+
       - name: Build
         run: npm run build -w @xochi/${{ matrix.ws }}
 
@@ -89,6 +95,25 @@ jobs:
           npm run build -w @xochi/widget
       - name: Rehearse packed public consumer
         run: node scripts/verify-widget-consumer.mjs
+
+  peer-compatibility:
+    name: Peer package compatibility
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/peer-compatibility
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: examples/peer-compatibility/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm run verify:graph
+      - run: npm test
+      - run: npm start
+      - run: npm run build
 
   # The protocol packages (packages/{signer,spec,solver-sdk,reference}).
   # @xochi/signer builds first: every other workspace consumes its .d.ts. The

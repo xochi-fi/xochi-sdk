@@ -20,6 +20,14 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
   excessive-slippage decisions. This is an extraction prerequisite, not
   publication approval; #98's producer and claim-chain prerequisites and
   separate registry approval remain gates.
+- Add canonical snake_case `ramp/1` schemas and inferred TypeScript bindings,
+  exact atomic-unit parsing, sanitized boundary validation, independently derived
+  leg outcomes, revision/idempotency command preflight, and shared JSON conformance
+  fixtures. In-doubt operations never permit execute-again. No provider executor,
+  durable replay store, wallet signer or new bridge is included.
+- Export packed JSON Schema/conformance artifacts for other runtimes. Add a
+  separately pinned Peer compatibility example; package compatibility and a
+  fail-closed readiness result do not establish live execution or publication.
 
 ### Fixed
 
@@ -32,6 +40,19 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
   expiring a replacement session, including same-token logout/re-authentication.
   The widget supplies its local wallet-session generation; no credentials enter
   the client state machine.
+- Keep recoverable failed legs nonterminal while preserving failed/partial-success
+  outcomes. Permit only the failed leg's explicit recovery action; never repeat a
+  completed sibling, reopen a refunded leg or execute an in-doubt operation again.
+  Add canonical recovery, finality, stale-revision and replay conformance vectors.
+- Snapshot bounded data descriptors at the `parseRamp` boundary; reject accessors
+  without invoking them and contain throwing or revoked Proxies as `invalid_request`.
+  Never log or retain escaped provider errors.
+- Reject unknown keys in `ramp/1` intents and commands; provider data still drops
+  bounded unknown fields. `parseRamp` now checks route assets and recipient against
+  the intent, preview pay/receive/fee assets against the leg order, and CAIP-19
+  `asset_id` chains. `approve` and `execute_route` require `quote_id`.
+  `checkRampCommand` returns `invalid_command` / `invalid_receipt` instead of throwing.
+  Schema patterns drop lookahead so RE2 validators accept them.
 
 ### Fixed
 
