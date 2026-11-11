@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
 
 jobs:
   # @xochi/sdk (packages/sdk). The job key stays `check`.
@@ -61,6 +62,12 @@ jobs:
 
       - name: Unit tests
         run: npm test -w @xochi/${{ matrix.ws }}
+
+      - name: Ramp schema matches its zod source
+        if: matrix.ws == 'client'
+        run: |
+          npm run generate:ramp -w @xochi/client
+          git diff --exit-code -- packages/client/ramp/contract.schema.json
 
       - name: Build
         run: npm run build -w @xochi/${{ matrix.ws }}
