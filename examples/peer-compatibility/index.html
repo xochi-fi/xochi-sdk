@@ -45,8 +45,8 @@
           <input name="platform" required pattern="[a-z][a-z0-9_]{0,31}" value="venmo"
         /></label>
       </p>
-      <button type="submit">Check live capabilities</button>
-      <button type="button" id="connect">Request Peer extension connection</button>
+      <button type="submit" disabled>Check live capabilities</button>
+      <button type="button" id="connect" disabled>Request Peer extension connection</button>
     </form>
     <pre id="result" aria-live="polite"></pre>
     <script type="module" src="/browser.mjs"></script>
