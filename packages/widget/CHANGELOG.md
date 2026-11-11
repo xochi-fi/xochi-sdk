@@ -20,7 +20,7 @@
   keep long zk.money tags inside mobile and desktop confirmation/history layouts.
 - Show exact live Stealth receive choices and unsupported-pair guidance before amount entry, while preserving explicit presets, host locks and Public selection.
 - Require explicit asset selection when a live Stealth chain needs a different receive token; leave zk.money without retaining its tag or repairing the source.
-- Name the live, trusted Stealth destination networks beside the privacy controls before Stealth is selected, matching the hosted widget; the Stealth picker's exact-route guidance replaces it.
+- Name the live Stealth networks the picker would offer for the selected source beside the privacy controls before Stealth is selected, preserving the hosted widget's guidance; the open picker's exact-route guidance replaces it.
 - Preserve integration-only browser initialization through package tree-shaking.
 - Isolate framed Wagmi storage/discovery and reuse each bridge's config, preserving connected wallets across theme renders without relaxing auto-connect consent.
 - Add an anonymous, exact published-prerequisite consumer mode alongside the explicitly local-artifact rehearsal.

@@ -210,6 +210,12 @@ export function useSwapPanel(
           selectedPairSupported: stealthDestinations.selectedPairSupported,
         }
       : null;
+  // Before Stealth is selected, name the networks its picker would offer for
+  // this source: the same exact-route, trust and policy projection, live only.
+  const stealthHintChainIds =
+    destinationPickerMode === "public" && stealthDestinations.status === "live"
+      ? stealthDestinations.chainIds
+      : [];
   const destinationHandlers = useRef({
     mode: destinationPickerMode,
     chainChange: route.handleToChainChange,
@@ -535,6 +541,7 @@ export function useSwapPanel(
     sourceChainIds: route.sourceChainIds,
     destinationPickerMode,
     stealthDestinationGuidance,
+    stealthHintChainIds,
     destinationChainIds:
       destinationPickerMode === "stealth"
         ? stealthDestinations.chainIds

@@ -98,7 +98,7 @@ Provider teardown revokes pending key setup and zeroes retained secret buffers. 
 
 ### Live Stealth destinations
 
-Selecting Stealth is navigation, not wallet setup or signing consent. Before Stealth is selected, the panel names the trusted Stealth networks the live producer advertises; that line is guidance only and never grants route eligibility. Before an amount is entered, receive choices come from exact live routes for the selected source, independently trusted factories and host constraints. Unsupported explicit presets remain visible with guidance; they do not silently become Public or another token. Public selection keeps its existing catalog and repair behavior.
+Selecting Stealth is navigation, not wallet setup or signing consent. Before Stealth is selected, the panel names the live Stealth networks its picker would offer for the selected source; that line is guidance only and never grants route eligibility. Before an amount is entered, receive choices come from exact live routes for the selected source, independently trusted factories and host constraints. Unsupported explicit presets remain visible with guidance; they do not silently become Public or another token. Public selection keeps its existing catalog and repair behavior.
 
 When a live chain requires a different receive asset, choosing that chain opens its eligible asset picker without changing either leg until the user selects the asset. Unlaunched Shielded destinations and the Public-only zk.money rail are excluded from Stealth choices. Switching out of zk.money clears its tag and quote, not the source leg. Quotes and execution retain all existing amount, authorization and signing checks.
 
