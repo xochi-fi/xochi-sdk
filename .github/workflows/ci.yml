@@ -243,7 +243,8 @@ jobs:
   # own package and lockfile, not a workspace, so the Aztec SDK never reaches the other jobs. The
   # CLI compiles the same sources through tools/recipient/src/core (recipient-tool job above).
   recipient-core:
-    runs-on: ubuntu-latest
+    # Playwright 1.59.1 has no Chromium build for ubuntu-latest (26.04).
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
