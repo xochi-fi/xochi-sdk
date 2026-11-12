@@ -17,6 +17,7 @@ export const TOKEN_ICONS: Record<string, string> = {
   WETH: ethSvg,
   wstETH: wstethPng,
   USDC: usdcPng,
+  USDC_E: usdcPng,
   USDT: usdtPng,
   USDG: usdgPng,
   RAXOL: raxolPng,

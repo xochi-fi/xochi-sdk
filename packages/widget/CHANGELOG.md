@@ -35,6 +35,10 @@
   authority immediately before signing. Preserve already-submitted outcomes.
 - Scope history and authentication responses to the initiating session generation.
   Preserve explicit bridge ownership and consumer resubscription across effect restarts.
+- Replace the dead mainnet and Polygon RPC fallbacks (`cloudflare-eth.com`,
+  `polygon-rpc.com`) with `eth.drpc.org` and `polygon.drpc.org`, as the hosted
+  widget did.
+- Show the USDC icon for bridged USDC (`USDC_E`) on the send leg.
 - Consume explicit sign-in scans through the fresh authenticated scanner. Wallet,
   chain, connector and session changes cancel the pending scan instead of moving
   it to another authority.

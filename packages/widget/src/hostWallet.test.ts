@@ -10,14 +10,19 @@ import {
   type HostMessage,
 } from "@xochi/widget-lib";
 import { WagmiProvider, createConfig, createConnector, http } from "wagmi";
+import { hydrate, serialize } from "@wagmi/core";
 import {
+  connect,
   disconnect,
   getAccount,
   reconnect,
   watchAccount,
+  signTypedData,
   type GetAccountReturnType,
 } from "wagmi/actions";
 import { mainnet } from "wagmi/chains";
+import { verifyTypedData } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { HOST_WALLET_ID, autoConnectHostWallet, createWagmiConfig, hostWallet } from "./wagmi.js";
 
 // The host wallet's wagmi connector over widget-lib's frame bridge, which runs
@@ -149,6 +154,93 @@ describe("hostWallet", () => {
       expect([...config.state.connections.keys()]).toEqual([connector.uid]);
     } finally {
       unmount();
+    }
+  });
+
+  it("signs on Robinhood after a frame rerender without restoring stale wallet connectors", async () => {
+    const account = privateKeyToAccount(
+      "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+    );
+    const typedData = {
+      domain: { name: "XochiIntent", version: "3", chainId: 4663 },
+      types: { Transfer: [{ name: "amount", type: "uint256" }] },
+      primaryType: "Transfer",
+      message: { amount: 5000000n },
+    } as const;
+    const staleUid = "previous-frame";
+    localStorage.setItem(
+      "wagmi.store",
+      serialize({
+        version: 2,
+        state: {
+          chainId: 4663,
+          current: staleUid,
+          connections: new Map([
+            [
+              staleUid,
+              {
+                accounts: [account.address],
+                chainId: 4663,
+                connector: { id: HOST_WALLET_ID, name: "Host", type: "injected", uid: staleUid },
+              },
+            ],
+          ]),
+        },
+      }),
+    );
+    const answerRpcs = (event: MessageEvent): void => {
+      const message = event.data as FrameMessage | null;
+      if (message?.type !== MESSAGE.rpc) return;
+      if (message.method === "eth_signTypedData_v4") {
+        if (!Array.isArray(message.params)) throw new Error("Expected signing RPC params");
+        const payload = JSON.parse(String(message.params?.[1])) as Parameters<
+          typeof account.signTypedData
+        >[0];
+        void account.signTypedData(payload).then(
+          (result) => hostSends({ type: MESSAGE.rpcResult, id: message.id, result }),
+          (error: unknown) =>
+            hostSends({
+              type: MESSAGE.rpcResult,
+              id: message.id,
+              error: { code: -32603, message: String(error) },
+            }),
+        );
+        return;
+      }
+      const result =
+        message.method === "eth_chainId"
+          ? "0x1237"
+          : message.method === "eth_accounts" || message.method === "eth_requestAccounts"
+            ? [account.address]
+            : undefined;
+      hostSends(
+        result === undefined
+          ? {
+              type: MESSAGE.rpcResult,
+              id: message.id,
+              error: { code: 4200, message: "Unsupported RPC" },
+            }
+          : { type: MESSAGE.rpcResult, id: message.id, result },
+      );
+    };
+    parent.addEventListener("message", answerRpcs);
+    try {
+      hostSends({ type: MESSAGE.provider, available: true, autoConnect: true });
+      const config = createWagmiConfig(bridge);
+      await hydrate(config, { reconnectOnMount: false }).onMount();
+      const connector = config.connectors.find((c) => c.id === HOST_WALLET_ID)!;
+      await connect(config, { connector });
+      // Wagmi's non-SSR Hydrate runs on every provider render.
+      await hydrate(config, { reconnectOnMount: false }).onMount();
+      const signed = await signTypedData(config, typedData);
+      expect(
+        await verifyTypedData({ ...typedData, address: account.address, signature: signed }),
+      ).toBe(true);
+      await disconnect(config);
+      expect(getAccount(config).status).toBe("disconnected");
+    } finally {
+      parent.removeEventListener("message", answerRpcs);
+      localStorage.removeItem("wagmi.store");
     }
   });
 
