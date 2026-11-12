@@ -239,6 +239,32 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # packages/recipient-core: the platform-neutral recipient core and its browser adapters. Its
+  # own package and lockfile, not a workspace, so the Aztec SDK never reaches the other jobs. The
+  # CLI compiles the same sources through tools/recipient/src/core (recipient-tool job above).
+  recipient-core:
+    # Playwright 1.59.1 has no Chromium build for ubuntu-latest (26.04).
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.23.4
+          cache: npm
+          cache-dependency-path: packages/recipient-core/package-lock.json
+
+      - name: Recipient core, browser adapters (headless Chromium) and attestation verifier
+        working-directory: packages/recipient-core
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm run typecheck
+          npm run format:check
+          npm test
+          npm run build
+          npm pack --dry-run --ignore-scripts
+
   python-conformance:
     runs-on: ubuntu-latest
     steps:

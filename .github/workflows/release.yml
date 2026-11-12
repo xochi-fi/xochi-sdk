@@ -1,12 +1,13 @@
 # Publish one package to npm from a tag.
 #
-#   sdk-v<version>         -> npm publish -w @xochi/sdk
-#   spec-v<version>        -> npm publish -w @xochi/spec
-#   signer-v<version>      -> npm publish -w @xochi/signer
-#   client-v<version>      -> npm publish -w @xochi/client
-#   widget-lib-v<version>  -> npm publish -w @xochi/widget-lib
-#   provider-v<version>    -> npm publish -w @xochi/provider
-#   widget-v<version>      -> npm publish -w @xochi/widget
+#   sdk-v<version>            -> npm publish -w @xochi/sdk
+#   spec-v<version>           -> npm publish -w @xochi/spec
+#   signer-v<version>         -> npm publish -w @xochi/signer
+#   client-v<version>         -> npm publish -w @xochi/client
+#   widget-lib-v<version>     -> npm publish -w @xochi/widget-lib
+#   provider-v<version>       -> npm publish -w @xochi/provider
+#   widget-v<version>         -> npm publish -w @xochi/widget
+#   recipient-core-v<version> -> npm publish (from packages/recipient-core)
 #
 # Not published from here: @xochi/reference (private) and @xochi/solver-sdk,
 # which ships once the solver panel opens. Its mapping is deliberately absent
@@ -31,14 +32,17 @@
 #
 # First publish. A trusted publisher can only be attached to a package that
 # already exists, so @xochi/spec, @xochi/signer, @xochi/client,
-# @xochi/widget-lib, @xochi/widget and @xochi/provider cannot make their first publish here.
-# The conservative procedure, once per package: an npm owner with 2FA checks
-# out the reviewed release tag's commit (on main), runs the same gates this job
-# runs for that package, and runs `npm publish -w <name>` by hand (the real
-# reviewed version, never a placeholder; provenance comes only from this job's
-# `--provenance` flag, never `publishConfig`). @xochi/signer
-# goes before @xochi/client, then @xochi/widget. Publish changed dependencies
-# before pinning their real registry versions in consumers. Then attach the config above
+# @xochi/widget-lib, @xochi/widget, @xochi/provider and @xochi/recipient-core
+# cannot make their first publish here. The conservative procedure, once per
+# package: an npm owner with 2FA checks out the reviewed release tag's commit
+# (on main), runs the same gates this job runs for that package, and runs
+# `npm publish -w <name>` by hand for a workspace package or `npm publish` from
+# `packages/recipient-core` (the real reviewed version, never a placeholder;
+# provenance comes only from this job's `--provenance` flag, never
+# `publishConfig`). @xochi/signer goes before @xochi/client, then @xochi/widget;
+# @xochi/signer also goes before @xochi/recipient-core. Publish changed
+# dependencies before pinning their real registry versions in consumers. Then
+# attach the config above
 # (`npm trust github <name> --file release.yml --repo xochi-fi/xochi-sdk
 # --env npm-publish --allow-publish`) and set Settings -> Publishing access ->
 # "Require two-factor authentication and disallow tokens", so every later
@@ -55,12 +59,14 @@
 #   - npmjs.com trusted publisher requires environment `npm-publish`, so a
 #     workflow without it gets no credential;
 #   - GitHub environment `npm-publish` accepts deployments only from tags
-#     matching the approved package patterns below (widget-v* requires separate settings approval);
+#     matching the approved package patterns below (widget-v* and
+#     recipient-core-v* require separate settings approval);
 #   - GitHub tag ruleset "release tags" lets only repository admins create,
 #     move or delete those tags.
 #
-# `npm publish -w @xochi/sdk` by hand still works and runs the same gates
-# (prepublishOnly); this workflow runs them too, in CI, with provenance.
+# `npm publish -w @xochi/sdk` (workspace packages) or `npm publish` from
+# `packages/recipient-core` by hand still runs the same package gates
+# (`prepublishOnly`); this workflow runs them too, in CI, with provenance.
 #
 # The publish runs only after the gates ci.yml runs for that package, and only
 # when the tag's version is the version in that package's package.json: a tag
@@ -79,6 +85,7 @@ on:
       - "widget-lib-v*"
       - "provider-v*"
       - "widget-v*"
+      - "recipient-core-v*"
 
 permissions:
   contents: read
@@ -147,13 +154,14 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           case "$TAG" in
-            sdk-v*)        name='@xochi/sdk';        dir='packages/sdk';        version="${TAG#sdk-v}" ;;
-            spec-v*)       name='@xochi/spec';       dir='packages/spec';       version="${TAG#spec-v}" ;;
-            signer-v*)     name='@xochi/signer';     dir='packages/signer';     version="${TAG#signer-v}" ;;
-            client-v*)     name='@xochi/client';     dir='packages/client';     version="${TAG#client-v}" ;;
-            widget-lib-v*) name='@xochi/widget-lib'; dir='packages/widget-lib'; version="${TAG#widget-lib-v}" ;;
-            provider-v*)   name='@xochi/provider';   dir='packages/provider';   version="${TAG#provider-v}" ;;
-            widget-v*)     name='@xochi/widget';     dir='packages/widget';     version="${TAG#widget-v}" ;;
+            sdk-v*)            name='@xochi/sdk';            dir='packages/sdk';            version="${TAG#sdk-v}" ;;
+            spec-v*)           name='@xochi/spec';           dir='packages/spec';           version="${TAG#spec-v}" ;;
+            signer-v*)         name='@xochi/signer';         dir='packages/signer';         version="${TAG#signer-v}" ;;
+            client-v*)         name='@xochi/client';         dir='packages/client';         version="${TAG#client-v}" ;;
+            widget-lib-v*)     name='@xochi/widget-lib';     dir='packages/widget-lib';     version="${TAG#widget-lib-v}" ;;
+            provider-v*)       name='@xochi/provider';       dir='packages/provider';       version="${TAG#provider-v}" ;;
+            widget-v*)         name='@xochi/widget';         dir='packages/widget';         version="${TAG#widget-v}" ;;
+            recipient-core-v*) name='@xochi/recipient-core'; dir='packages/recipient-core'; version="${TAG#recipient-core-v}" ;;
             *) echo "tag $TAG names no publishable package" >&2; exit 1 ;;
           esac
           manifest_name="$(node -p "require('./$dir/package.json').name")"
@@ -218,11 +226,24 @@ jobs:
               }
             fi
           fi
-          echo "name=$name" >> "$GITHUB_OUTPUT"
-          echo "dist_tag=$dist_tag" >> "$GITHUB_OUTPUT"
+          {
+            echo "name=$name"
+            echo "dir=$dir"
+            echo "dist_tag=$dist_tag"
+          } >> "$GITHUB_OUTPUT"
           echo "publishing $name@$version (dist-tag ${dist_tag:-latest, if highest})"
 
-      - run: npm ci
+      - name: Install workspace dependencies
+        if: steps.pkg.outputs.name != '@xochi/recipient-core'
+        run: npm ci
+
+      # recipient-core deliberately is not a root workspace: the CLI compiles its source through a
+      # symlink and the browser consumes the package. Install only its package-local lockfile so a
+      # release cannot accidentally pass by resolving the root workspace instead.
+      - name: Install recipient-core exact dependencies
+        if: steps.pkg.outputs.name == '@xochi/recipient-core'
+        working-directory: packages/recipient-core
+        run: npm ci
 
       # @xochi/client's typecheck reads @xochi/signer's built .d.ts; the protocol
       # gate (spec, signer) also needs the built @xochi/solver-sdk (the bid-vector
@@ -267,8 +288,25 @@ jobs:
           done
           npm run check:vectors -w @xochi/spec
 
-      # Every package's prepublishOnly runs its full gate again inside npm
-      # publish: format:check, typecheck, test and build (@xochi/spec has no
-      # build; @xochi/provider's typecheck covers its daemon).
-      - name: Publish
+      # recipient-core is package-local, not a root workspace. Run every gate from that directory;
+      # prepublishOnly repeats them during publish.
+      - name: Recipient-core package gates
+        if: steps.pkg.outputs.name == '@xochi/recipient-core'
+        working-directory: packages/recipient-core
+        run: |
+          npm run format:check
+          npm run typecheck
+          npm test
+          npm run build
+
+      # Every workspace package's prepublishOnly runs its full gate again inside npm publish:
+      # format:check, typecheck, test and build (@xochi/spec has no build; @xochi/provider's
+      # typecheck covers its daemon).
+      - name: Publish workspace package
+        if: steps.pkg.outputs.name != '@xochi/recipient-core'
         run: npm publish -w ${{ steps.pkg.outputs.name }} ${{ steps.pkg.outputs.dist_tag && format('--tag {0}', steps.pkg.outputs.dist_tag) || '' }} --provenance --access public
+
+      - name: Publish recipient-core
+        if: steps.pkg.outputs.name == '@xochi/recipient-core'
+        working-directory: packages/recipient-core
+        run: npm publish ${{ steps.pkg.outputs.dist_tag && format('--tag {0}', steps.pkg.outputs.dist_tag) || '' }} --provenance --access public

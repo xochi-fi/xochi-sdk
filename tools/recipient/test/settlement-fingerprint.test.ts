@@ -5,7 +5,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { fingerprintLines, fingerprintTerms } from "../src/settlement-fingerprint.js";
+import { fingerprintLines, fingerprintTerms } from "../src/core/settlement-fingerprint.js";
 
 const vectors = JSON.parse(
   readFileSync(new URL("./vectors/pxe-bridge-settlement-v2.json", import.meta.url), "utf8"),

@@ -14,10 +14,10 @@ import {
   deriveRecipientAccount,
   signRecipientDigest,
   type RecipientAccount,
-} from "../src/account.js";
-import { HttpEnrollmentApi, type BindingProjection, type EnrollmentApi } from "../src/api.js";
-import { enrollStatus, enrollSubmit } from "../src/commands.js";
-import { OXDAI_MAINNET_REV2, type Corridor } from "../src/corridor.js";
+} from "../src/core/account.js";
+import { HttpEnrollmentApi, type BindingProjection, type EnrollmentApi } from "../src/core/api.js";
+import { enrollStatus, enrollSubmit } from "../src/core/commands.js";
+import { OXDAI_MAINNET_REV2, type Corridor } from "../src/core/corridor.js";
 import {
   bindingTypedData,
   buildBinding,
@@ -25,7 +25,7 @@ import {
   signTokenRegistrationAck,
   type EnrollmentRequest,
   type WireBinding,
-} from "../src/enrollment.js";
+} from "../src/core/enrollment.js";
 import { TEST_SECRETS, TEST_SOURCE_KEY } from "./fixtures.js";
 
 const CHALLENGE = {
@@ -90,10 +90,11 @@ async function verifyAll(
         network: OXDAI_MAINNET_REV2.network,
         expected: expected[ack.primary_type] as never,
         now: CHALLENGE.expires_at - 60,
-        consumeReplayKey: async (key) => {
-          if (consumed.has(key)) return false;
-          consumed.add(key);
-          return true;
+        lookupAcceptance: async () => null,
+        commitAcceptance: async ({ replayKey }) => {
+          if (consumed.has(replayKey)) throw new Error(`TEST ONLY replay ${replayKey}`);
+          consumed.add(replayKey);
+          return { status: "committed", result: undefined };
         },
       },
     );
@@ -220,7 +221,7 @@ describe("enrollment projection binding", () => {
         account,
         { challenge: CHALLENGE, binding, typedData, tokenRegistrationAck },
         sourceSignature,
-        COMMITMENT,
+        { mode: "sealed_file", commitment: COMMITMENT as `0x${string}` },
       ),
     ).rejects.toThrow(/different recipient descriptor/);
     await expect(enrollStatus(ctx, api, "expected-binding", account)).rejects.toThrow(
@@ -231,12 +232,28 @@ describe("enrollment projection binding", () => {
 
 describe("enrollment API origin", () => {
   it("never sends the source-wallet bearer to a caller-selected HTTPS origin", () => {
-    expect(() => new HttpEnrollmentApi("https://attacker.example", "TEST ONLY")).toThrow(
-      /must be https:\/\/api.xochi.fi/,
-    );
+    for (const refused of [
+      "https://attacker.example",
+      "http://api.xochi.fi",
+      "https://api.xochi.fi.attacker.example",
+      "https://xochi.fi",
+      "https://api-stg.xochi.fi:8443",
+      "http://localhost:8788",
+    ]) {
+      expect(() => new HttpEnrollmentApi(refused, "TEST ONLY")).toThrow(/must be one of/);
+    }
     expect(() => new HttpEnrollmentApi("https://api.xochi.fi/extra", "TEST ONLY")).toThrow(
       /must not contain a path/,
     );
-    expect(() => new HttpEnrollmentApi("https://api.xochi.fi", "TEST ONLY")).not.toThrow();
+  });
+
+  it("accepts production, staging and the fallback ingress", () => {
+    for (const allowed of [
+      "https://api.xochi.fi",
+      "https://api-stg.xochi.fi",
+      "https://api-es.xochi.fi/",
+    ]) {
+      expect(() => new HttpEnrollmentApi(allowed, "TEST ONLY")).not.toThrow();
+    }
   });
 });

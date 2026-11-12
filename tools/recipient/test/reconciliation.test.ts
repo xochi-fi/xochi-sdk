@@ -1,7 +1,7 @@
 import { TxStatus } from "@aztec-labs/stdlib/tx";
 import { describe, expect, it } from "vitest";
 
-import { durablyIncluded } from "../src/reconciliation.js";
+import { durablyIncluded } from "../src/core/reconciliation.js";
 
 describe("operation reconciliation finality", () => {
   it.each([TxStatus.DROPPED, TxStatus.PENDING, TxStatus.PROPOSED])(

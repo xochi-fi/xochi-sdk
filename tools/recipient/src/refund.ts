@@ -20,21 +20,21 @@ import {
 } from "viem";
 import { z } from "zod4";
 
-import type { RecipientAccount } from "./account.js";
-import { OXDAI_MAINNET_REV2, decimal, evm, hex32, type Corridor } from "./corridor.js";
-import { OperationJournal } from "./operation-journal.js";
-import { assertValidMigrationSignature } from "./oxide/vendor/oxide-lib-tee/migration_signature.js";
-import { SCHNORR_CHALLENGE_DST } from "./oxide/vendor/oxide-lib-tee/grumpkin_schnorr_signature.js";
+import type { RecipientAccount } from "./core/account.js";
+import { OXDAI_MAINNET_REV2, decimal, evm, hex32, type Corridor } from "./core/corridor.js";
+import type { OperationJournal } from "./core/operation-journal.js";
+import { assertValidMigrationSignature } from "./core/oxide/vendor/oxide-lib-tee/migration_signature.js";
+import { SCHNORR_CHALLENGE_DST } from "./core/oxide/vendor/oxide-lib-tee/grumpkin_schnorr_signature.js";
 import type {
   FallbackKeyMigrationSignature,
   MigrationSignature,
-} from "./oxide/vendor/oxide-lib-tee/migration_signature.js";
-import { getUserPayloadHash } from "./oxide/vendor/oxide-lib/content_hash.js";
+} from "./core/oxide/vendor/oxide-lib-tee/migration_signature.js";
+import { getUserPayloadHash } from "./core/oxide/vendor/oxide-lib/content_hash.js";
 import {
   buildPlainExecutorCall,
   decodePlainWithdrawalPayload,
-} from "./oxide/vendor/oxide-lib/plain_withdrawal_executor.js";
-import { DOM_SEP__MIGRATION } from "./oxide/vendor/oxide-lib-tee/oxide_constants.gen.js";
+} from "./core/oxide/vendor/oxide-lib/plain_withdrawal_executor.js";
+import { DOM_SEP__MIGRATION } from "./core/oxide/vendor/oxide-lib-tee/oxide_constants.gen.js";
 
 const hexBytes = z.string().regex(/^0x(?:[0-9a-f]{2})+$/);
 const nonzeroDecimal = z.string().regex(/^[1-9][0-9]*$/);
@@ -434,7 +434,7 @@ export async function submitRefund(args: {
     throw new Error("signed refund transaction does not exactly match the authorized portal call");
   }
   const txHash = keccak256(rawTransaction);
-  const operation = args.journal.beginBroadcast(
+  const operation = await args.journal.beginBroadcast(
     `refund-${bundle.evidence.kind}`,
     {
       bundleDigest: keccak256(Buffer.from(JSON.stringify(bundle))),
@@ -450,7 +450,7 @@ export async function submitRefund(args: {
       throw new Error("L1 node returned a different refund transaction hash");
     }
   } catch {
-    throw args.journal.failOrAbort(operation.id);
+    throw await args.journal.failOrAbort(operation.id);
   }
 }
 
@@ -497,13 +497,13 @@ export type RefundReconciliationObservation = {
   finalizedBlockNumber: bigint;
 };
 
-export function applyRefundReconciliation(
+export async function applyRefundReconciliation(
   journal: OperationJournal,
   corridor: Corridor,
   observation: RefundReconciliationObservation,
-): "finalized" | "finalized-failed" {
+): Promise<"finalized" | "finalized-failed"> {
   exactCorridor(corridor);
-  const operation = journal.activeUnresolved();
+  const operation = await journal.activeUnresolved();
   if (!operation || !operation.kind.startsWith("refund-")) {
     throw new Error("no exact lock-owned unresolved refund operation");
   }
@@ -531,7 +531,7 @@ export function applyRefundReconciliation(
     receiptBlockHash: observation.receipt.blockHash,
   };
   if (observation.receipt.status === "reverted") {
-    journal.update(operation.id, {
+    await journal.update(operation.id, {
       status: "failed",
       receiptStatus: "finalized-failed",
       error: "operation finalized with a reverted receipt",
@@ -539,7 +539,7 @@ export function applyRefundReconciliation(
     });
     return "finalized-failed";
   }
-  journal.update(operation.id, {
+  await journal.update(operation.id, {
     status: "complete",
     receiptStatus: "finalized",
     ...receiptEvidence,
@@ -553,7 +553,7 @@ export async function reconcileRefund(
   corridor: Corridor,
 ): Promise<"finalized" | "finalized-failed"> {
   exactCorridor(corridor);
-  const operation = journal.activeUnresolved();
+  const operation = await journal.activeUnresolved();
   if (!operation || !operation.kind.startsWith("refund-") || !operation.txHash) {
     throw new Error("no exact lock-owned unresolved refund operation");
   }
@@ -569,7 +569,7 @@ export async function reconcileRefund(
     if (canonicalBlock.hash === null) {
       throw new Error("refund transaction evidence is unavailable; keep it blocked");
     }
-    return applyRefundReconciliation(journal, corridor, {
+    return await applyRefundReconciliation(journal, corridor, {
       chainId,
       transaction: {
         hash: transaction.hash,

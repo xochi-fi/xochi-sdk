@@ -5,8 +5,8 @@ import { join } from "node:path";
 import type { ContractArtifact } from "@aztec-labs/stdlib/abi";
 import { describe, expect, it } from "vitest";
 
-import { beginExitAfterExecutorFeeCheck, type ExitRequest } from "../src/chain.js";
-import { OperationJournal } from "../src/operation-journal.js";
+import { beginExitAfterExecutorFeeCheck, type ExitRequest } from "../src/core/chain.js";
+import { openNodeJournals } from "../src/node/data-dir.js";
 
 const request = (maxExecutorFee: bigint): ExitRequest => ({
   l1Recipient: `0x${"22".repeat(20)}`,
@@ -18,14 +18,19 @@ const request = (maxExecutorFee: bigint): ExitRequest => ({
 });
 
 describe("exit executor fee ceiling", () => {
-  it("accepts the exact ceiling and calculates recipient proceeds", () => {
+  it("accepts the exact ceiling and calculates recipient proceeds", async () => {
     const directory = mkdtempSync(join(tmpdir(), "xochi-exit-fee-"));
     try {
-      const journal = new OperationJournal(directory);
-      const prepared = beginExitAfterExecutorFeeCheck(journal, "recipient", request(10n), 10n);
+      const journal = openNodeJournals(directory).operations;
+      const prepared = await beginExitAfterExecutorFeeCheck(
+        journal,
+        "recipient",
+        request(10n),
+        10n,
+      );
 
       expect(prepared.recipientAmount).toBe(85n);
-      expect(journal.get(prepared.operation.id)).toMatchObject({
+      expect(await journal.get(prepared.operation.id)).toMatchObject({
         kind: "exit",
         status: "building",
         request: {
@@ -34,22 +39,22 @@ describe("exit executor fee ceiling", () => {
           recipientAmount: "85",
         },
       });
-      journal.failOrAbort(prepared.operation.id);
+      await journal.failOrAbort(prepared.operation.id);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
   });
 
-  it("rejects ceiling plus one before creating an exit journal or reaching submission", () => {
+  it("rejects ceiling plus one before creating an exit journal or reaching submission", async () => {
     const directory = mkdtempSync(join(tmpdir(), "xochi-exit-fee-"));
     try {
-      const journal = new OperationJournal(directory);
+      const journal = openNodeJournals(directory).operations;
 
-      expect(() => beginExitAfterExecutorFeeCheck(journal, "recipient", request(10n), 11n)).toThrow(
-        "live executor fee exceeds --max-executor-fee; exit not started",
-      );
-      expect(journal.records()).toEqual([]);
-      expect(journal.activeUnresolved()).toBeNull();
+      await expect(
+        beginExitAfterExecutorFeeCheck(journal, "recipient", request(10n), 11n),
+      ).rejects.toThrow("live executor fee exceeds --max-executor-fee; exit not started");
+      expect(await journal.records()).toEqual([]);
+      expect(await journal.activeUnresolved()).toBeNull();
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
