@@ -4,8 +4,14 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+## [0.1.14] - 2026-11-12
+
 ### Added
 
+- PayPal USD (PYUSD, Paxos, 6 decimals) token metadata on Ethereum
+  (`0x6c3ea9036406852006290770BEdFcAbA0e23A0e8`) and Arbitrum
+  (`0x46850aD61C2B7d64d08c9C754F45254596696984`). Metadata only; the live
+  capability routes still decide availability.
 - Extract the widget-required MIT shared vocabulary: address maps, fee/tier
   helpers, aggregate-only referral schemas, agent event serialization, pending
   claim schema, and caller-supplied decline guidance.

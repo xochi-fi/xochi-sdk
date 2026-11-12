@@ -79,6 +79,12 @@ export const TOKENS: Readonly<Record<ChainId, readonly TokenInfo[]>> = {
       name: "Frankencoin",
       decimals: 18,
     },
+    {
+      address: "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8",
+      symbol: "PYUSD",
+      name: "PayPal USD",
+      decimals: 6,
+    },
   ],
   10: [
     {
@@ -156,6 +162,12 @@ export const TOKENS: Readonly<Record<ChainId, readonly TokenInfo[]>> = {
       symbol: "EURe",
       name: "Monerium EURe",
       decimals: 18,
+    },
+    {
+      address: "0x46850aD61C2B7d64d08c9C754F45254596696984",
+      symbol: "PYUSD",
+      name: "PayPal USD",
+      decimals: 6,
     },
   ],
   8453: [
