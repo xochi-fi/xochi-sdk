@@ -4,6 +4,8 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+## [0.1.14] - 2026-11-12
+
 ### Added
 
 - PayPal USD (PYUSD, Paxos, 6 decimals) token metadata on Ethereum
