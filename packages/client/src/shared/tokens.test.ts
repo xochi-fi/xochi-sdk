@@ -60,6 +60,23 @@ describe("public token registry", () => {
     });
     expect(getTokenInfoForChain(address, 1)).toEqual({ symbol: "EURe", decimals: 18 });
   });
+  // A missing or wrong row reads a PYUSD fill as an unknown 18-decimal token,
+  // off by 10^12 in every amount the activity feed renders.
+  it.each([
+    [1, "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8"],
+    [42161, "0x46850aD61C2B7d64d08c9C754F45254596696984"],
+  ] as const)("pins PYUSD metadata on chain %s", (chainId, address) => {
+    expect(findTokenBySymbol(chainId, "PYUSD")).toEqual({
+      address,
+      symbol: "PYUSD",
+      name: "PayPal USD",
+      decimals: 6,
+    });
+    expect(getTokenInfoForChain(address.toLowerCase(), chainId)).toEqual({
+      symbol: "PYUSD",
+      decimals: 6,
+    });
+  });
 
   it("derives address and decimal lookups from the registry", () => {
     for (const chainId of SUPPORTED_CHAIN_IDS) {
