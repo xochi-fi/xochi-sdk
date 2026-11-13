@@ -9,6 +9,7 @@
  * - The layered fee reference (SPEC.md Section 4): the published schedule, the
  *   deterministic breakdown it implies, and the reconciliation check a served
  *   `fee_breakdown` must pass.
+ * - Escrow order tracking (SPEC.md §5.2): progress, the lock read, the refund.
  */
 
 export * from "./shared/index.js";
@@ -20,10 +21,20 @@ export * from "./capabilities.js";
 export * from "./routeModel.js";
 export * from "./settlementEligibility.js";
 export * from "./trustFeatures.js";
-export type { MethodPin, PinnedPullRecipients, PreparedClaim } from "@xochi/signer";
+export * from "./escrow.js";
+export type {
+  MethodPin,
+  PinnedEscrows,
+  PinnedPullRecipients,
+  PreparedClaim,
+  VerifiedEscrowOrder,
+} from "@xochi/signer";
 export {
   advertisedConversionPairs,
   advertisedRoute,
+  CANTON_COIN_MAINNET,
+  CANTON_MAINNET_CHAIN_ID,
+  isCantonPartyId,
   parseCapabilities,
   routeSupportsPrivacyMode,
   stealthFactoryFor,

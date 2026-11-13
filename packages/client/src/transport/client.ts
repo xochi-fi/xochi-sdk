@@ -23,6 +23,7 @@ import {
 } from "../shared/index.js";
 import type { PreparedClaim } from "@xochi/signer";
 import {
+  decodeEscrowStatus,
   decodeWireStatus,
   isExecuteResponseWire,
   isQuoteResponseWire,
@@ -1166,6 +1167,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
         // unmapped one is flagged so the trade says "Still confirming", never done.
         const decoded = decodeWireStatus(d.status);
         const status = decoded.status;
+        const escrow = decodeEscrowStatus(body as Record<string, unknown>);
         return {
           intentId: d.intent_id ?? null,
           status,
@@ -1198,6 +1200,8 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
                   : {}),
               }
             : {}),
+          // An escrow order's own fields, raw status included: `escrowProgress`.
+          ...(escrow ? { escrow } : {}),
         };
       } catch (err) {
         log("warn", "[xochi-client] status poll failed (will retry):", safeErrorForLog(err));

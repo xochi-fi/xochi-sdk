@@ -4,6 +4,19 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+### Added
+
+- **Escrow execute flow** (SPEC.md §5.2; needs `@xochi/signer` with `assertEscrowQuoteMatchesRequest`). `MachineConfig.escrows` (caller-pinned `RiddlerEscrow` per origin chain) and optional `openAuthSigners` make an escrow-bearing quote signable.
+  - Ingest runs the escrow binding (`checkSignableQuote` returns the `VerifiedEscrowOrder`). The release floor is `escrowMinOut`: the signed `toAmount` less the request's slippage.
+  - The pull may name only the pinned escrow. The execute carries both signatures, and the venue relays the open.
+  - `getIntentStatus` adds `escrow` (`EscrowStatusData`, `decodeEscrowStatus`). `escrowProgress` reads it as `awaiting_open`, `awaiting_delivery`, `delivered`, `claimed`, `refundable`, `refunded`, `expired` or `unknown`.
+  - `readEscrowLock` / `parseEscrowLock` read `locks(orderId)`; `escrowRefundableAt` and `escrowRefundCall` cover the permissionless refund; `RIDDLER_ESCROW_ABI` is exported.
+- **Canton destinations in requests**: `DestinationChainId` (`SelectableChainId` plus `CantonChainId`), `isCantonDestinationChainId`, and the re-exported `CANTON_MAINNET_CHAIN_ID`, `CANTON_COIN_MAINNET` and `isCantonPartyId`. `validateSwapParams` accepts chain 253340876 with a party recipient, Canton Coin and public settlement. It refuses a party or instrument on any other chain, and names the gateway facade ids 31337 and 30337. `validateAddressForVm(_, "cvm")` validates a party id.
+
+### Changed
+
+- A quote carrying an `escrow` envelope is no longer refused outright. It is refused when no escrow is pinned for its origin chain, or when it fails the binding. `QuoteRequest.toChainId`, `Context.toChainId` and `BuildQuoteRequestInput.toChainId` are now `DestinationChainId`.
+
 ## [0.1.14] - 2026-11-12
 
 ### Added
