@@ -11,7 +11,6 @@
 import type {
   ChainId,
   SelectableChainId,
-  DestinationChainId,
   SettlementType,
   DestinationType,
   FeeBreakdown,
@@ -67,7 +66,7 @@ export interface QuoteRequest {
   allocationKey?: string;
   // Origin can be non-EVM (Tron deposit route); destination too.
   fromChainId: SelectableChainId;
-  toChainId: DestinationChainId;
+  toChainId: SelectableChainId;
   fromToken: string;
   toToken: string;
   fromAmount: string;

@@ -27,7 +27,12 @@ import {
 import type { MachineConfig } from "./machine/machine.js";
 import { escrowMinOut } from "./machine/quoteChecks.js";
 import { validateSwapParams } from "./machine/validateRequest.js";
-import { decodeEscrowStatus, type QuoteRequest, type QuoteResponse } from "./machine/wire.js";
+import {
+  decodeEscrowStatus,
+  type EscrowStatusData,
+  type QuoteRequest,
+  type QuoteResponse,
+} from "./machine/wire.js";
 import {
   AMOUNT,
   ATTACKER,
@@ -42,6 +47,7 @@ import {
   intentTypedData,
   only,
   quote,
+  statusData,
   walletCalls,
 } from "./machine/test/session.js";
 
@@ -201,7 +207,82 @@ describe("escrow quote through the machine", () => {
     s.quoteWith({ ...quote(), escrow: null });
     expect(s.intent.status).toBe("quoted");
   });
+
+  it("keeps the polled escrow fields, and an attested update id once seen", async () => {
+    const s = new Session(cantonCtx(), ESCROW_CONFIG);
+    s.quoteWith(await cantonQuote());
+    const exec = signAndExecute(s);
+    s.send({
+      type: "ExecuteReplied",
+      flow: exec.flow,
+      result: { ok: true, response: { success: true, intentId: "xi_1", status: "executing" } },
+    });
+    const reply = (escrow: EscrowStatusData | undefined) => {
+      const poll = s.model.poll;
+      if (!poll) throw new Error("no poll armed");
+      s.send({
+        type: "StatusReplied",
+        gen: poll.gen,
+        attempt: poll.polls,
+        result: { ok: true, status: statusData({ status: "executing", escrow }) },
+      });
+    };
+    const open: EscrowStatusData = {
+      address: ESCROW,
+      orderId: "0x01",
+      fillDeadline: FILL_DEADLINE,
+      wireStatus: "executing",
+      cantonUpdateId: null,
+    };
+
+    expect(s.intent.escrow).toBeNull();
+    reply(open);
+    expect(s.intent.escrow).toEqual(open);
+    reply({ ...open, cantonUpdateId: "1220ab" });
+    expect(s.intent.escrow?.cantonUpdateId).toBe("1220ab");
+    reply(undefined);
+    expect(s.intent.escrow?.cantonUpdateId).toBe("1220ab");
+    reply(open);
+    expect(s.intent.escrow).toEqual({ ...open, cantonUpdateId: "1220ab" });
+  });
 });
+
+/** Sign a held escrow quote through to its execute call. */
+function signAndExecute(s: Session) {
+  const intent = only(walletCalls(s.send({ type: "SignRequested" }), "signTypedData"));
+  const approval = only(
+    walletCalls(
+      s.send({
+        type: "SignReplied",
+        flow: intent.flow,
+        purpose: "intent",
+        result: { ok: true, signature: "0xintent" },
+      }),
+      "ensureApproval",
+    ),
+  );
+  const pull = only(
+    walletCalls(
+      s.send({
+        type: "ApprovalReplied",
+        flow: approval.flow,
+        result: { ok: true, approved: true },
+      }),
+      "signTypedData",
+    ),
+  );
+  return only(
+    apiCalls(
+      s.send({
+        type: "SignReplied",
+        flow: pull.flow,
+        purpose: "pull",
+        result: { ok: true, signature: "0xpull" },
+      }),
+      "execute",
+    ),
+  );
+}
 
 describe("Canton requests", () => {
   const base: Partial<QuoteRequest> = {

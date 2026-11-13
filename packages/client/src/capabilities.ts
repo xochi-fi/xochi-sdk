@@ -8,28 +8,30 @@ import {
   type TokenCapability,
   type VmType,
 } from "@xochi/signer";
-import { isChainId, isTronChainId, type ChainId } from "./shared/chains.js";
+import {
+  isCantonDestinationChainId,
+  isChainId,
+  isTronChainId,
+  type ChainId,
+} from "./shared/chains.js";
 import { effectiveStealthChains, TRUSTED_STEALTH_FACTORIES } from "./shared/stealth.js";
 import { validateAddressForVm } from "./shared/vmValidation.js";
 
 /**
- * The VMs this widget can address. Canton (`cvm`) is a destination it does not
- * offer: no party-id input or validator exists here, so a Canton chain is
- * unusable, the reading SPEC.md §6 requires for any VM a client cannot handle.
- */
-export type AddressableVmType = Exclude<VmType, "cvm">;
-
-/**
  * The VM a chain runs, or null when the matrix does not offer it in a VM this
- * widget handles: unadvertised, advertised twice, an unrecognised `vm_type`, or
- * Canton. Null means refuse; it never falls through to EVM.
+ * client handles: unadvertised, advertised twice, or an unrecognised
+ * `vm_type`. Null means refuse; it never falls through to EVM. `cvm` is
+ * Canton MainNet's alone (`CANTON_MAINNET_CHAIN_ID`, a destination only), and
+ * Canton is only ever `cvm`: a matrix that pairs either with anything else is
+ * malformed and refuses. A UI that does not offer Canton keeps it out through
+ * `RouteModelOptions.chainEnabledForRole`.
  */
-export function capabilityVmType(
-  caps: SolverCapabilities,
-  chainId: number,
-): AddressableVmType | null {
+export function capabilityVmType(caps: SolverCapabilities, chainId: number): VmType | null {
   const vm = chainVmType(caps, chainId);
-  return vm === "cvm" ? null : vm;
+  if (vm === "cvm" || isCantonDestinationChainId(chainId)) {
+    return vm === "cvm" && isCantonDestinationChainId(chainId) ? "cvm" : null;
+  }
+  return vm;
 }
 
 /**

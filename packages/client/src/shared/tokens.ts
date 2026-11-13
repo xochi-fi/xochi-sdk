@@ -1,5 +1,11 @@
+import { CANTON_COIN_MAINNET } from "@xochi/signer";
 import type { ChainId } from "./chains.js";
-import { SUPPORTED_CHAIN_IDS, isChainId, isTronChainId } from "./chains.js";
+import {
+  SUPPORTED_CHAIN_IDS,
+  isCantonDestinationChainId,
+  isChainId,
+  isTronChainId,
+} from "./chains.js";
 
 /** Address, symbol, name, and base-unit precision for a known token contract. */
 export interface TokenInfo {
@@ -33,6 +39,18 @@ export const TRON_TOKENS_BY_ADDRESS: Readonly<Record<string, TokenInfo | undefin
       [TRON_USDC.address]: TRON_USDC,
     }),
   );
+
+/**
+ * Canton Coin on Canton MainNet. Its `address` is the instrument id (the DSO
+ * party, SPEC.md §3.3), case-sensitive and compared verbatim. Ten decimals: a
+ * Canton Coin amount is a Daml `Decimal` with ten fractional digits.
+ */
+export const CANTON_COIN: TokenInfo = {
+  address: CANTON_COIN_MAINNET,
+  symbol: "CC",
+  name: "Canton Coin",
+  decimals: 10,
+};
 
 /**
  * Token metadata by supported EVM chain.
@@ -299,8 +317,9 @@ export function getTokenInfoByAddress(address: string): { symbol: string; decima
 
 /**
  * Resolve metadata only when the address is registered on the named chain.
- * Tron addresses remain case-sensitive; unknown chains and deployments return
- * `undefined` rather than fabricating a symbol or precision.
+ * Tron addresses and Canton instrument ids remain case-sensitive; unknown
+ * chains and deployments return `undefined` rather than fabricating a symbol
+ * or precision.
  */
 export function getTokenInfoForChain(
   address: string,
@@ -310,6 +329,11 @@ export function getTokenInfoForChain(
   if (isTronChainId(chainId)) {
     const token = TRON_TOKENS_BY_ADDRESS[address];
     return token ? { symbol: token.symbol, decimals: token.decimals } : undefined;
+  }
+  if (isCantonDestinationChainId(chainId)) {
+    return address === CANTON_COIN.address
+      ? { symbol: CANTON_COIN.symbol, decimals: CANTON_COIN.decimals }
+      : undefined;
   }
   if (!isChainId(chainId)) return undefined;
   const token = findTokenByAddress(chainId, address);

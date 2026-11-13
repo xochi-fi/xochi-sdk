@@ -894,10 +894,19 @@ describe("quote retries only a transient gateway status", () => {
   });
 
   it("tolerates an undeclared top-level field, and carries escrow through for the signer", async () => {
-    const escrow = { order_id: "0xabc" };
+    const escrow = {
+      address: "0x4438a8b3EE5AAf58343B18629040a4BCB8b0feCb",
+      order_id: "0xabc",
+      fill_deadline: "1790000000",
+      order_terms: { future_field: true },
+    };
     const { c } = client(() => okQuote({ escrow, some_future_field: 1 }));
     const quote = await c.getQuote(req);
     expect(quote.escrow).toEqual(escrow);
+
+    // A malformed envelope (SPEC.md §5.2.1 requires address and fill_deadline) fails the body.
+    const { c: bad } = client(() => okQuote({ escrow: { order_id: "0xabc" } }));
+    expect(((await rejection(bad.getQuote(req))) as Error).message).toBe("Invalid response format");
   });
 
   it("hands back a fee breakdown that passes the fee reconciliation as-is", async () => {

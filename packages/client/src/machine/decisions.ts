@@ -7,13 +7,7 @@
  * effects; these stay separately exported so each rule is assertable alone.
  */
 
-import type {
-  ChainId,
-  DestinationChainId,
-  IntentStatus,
-  SelectableChainId,
-  SettlementType,
-} from "../shared/index.js";
+import type { ChainId, IntentStatus, SelectableChainId, SettlementType } from "../shared/index.js";
 import {
   EXECUTE_RESEND_MARGIN_SECS,
   EXTENDED_CHAIN_NAMES,
@@ -271,7 +265,7 @@ export interface BuildQuoteRequestInput {
   preview?: boolean;
   allocationKey?: string;
   fromChainId: SelectableChainId;
-  toChainId: DestinationChainId;
+  toChainId: SelectableChainId;
   fromToken: string;
   toToken: string;
   fromAmount: string;

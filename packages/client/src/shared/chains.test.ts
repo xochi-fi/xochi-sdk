@@ -3,20 +3,26 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { CANTON_MAINNET_CHAIN_ID } from "@xochi/signer";
 import {
   type ChainId,
+  CHAIN_SHORT_NAMES,
+  EXTENDED_CHAIN_NAMES,
   ROBINHOOD_CHAIN_ID,
   SETTLEABLE_CHAIN_IDS,
   SUPPORTED_CHAIN_IDS,
   TRON_CHAIN_ID,
   getExplorerAddressUrl,
   getExplorerTxUrl,
+  isCantonDestinationChainId,
   isChainId,
   isExtendedChainId,
   isRobinhoodChainId,
   isRouteSupported,
+  isSelectableChainId,
   isSettleableChainId,
 } from "./chains.js";
+import { CANTON_COIN, getTokenInfoForChain } from "./tokens.js";
 
 describe("SUPPORTED_CHAIN_IDS", () => {
   it("does not include Aztec virtual chain", () => {
@@ -110,6 +116,50 @@ describe("Tron destination (non-EVM)", () => {
     expect(getExplorerAddressUrl(TRON_CHAIN_ID, TRON_ADDR)).toBe(
       `https://tronscan.org/#/address/${TRON_ADDR}`,
     );
+  });
+});
+
+describe("Canton destination (non-EVM)", () => {
+  // An update id as the ledger reports it: opaque and case-sensitive.
+  const UPDATE_ID = "1220aB9f::Upd-01";
+
+  it("is selectable and extended, but never an EVM or settleable chain", () => {
+    expect(isSelectableChainId(CANTON_MAINNET_CHAIN_ID)).toBe(true);
+    expect(isExtendedChainId(CANTON_MAINNET_CHAIN_ID)).toBe(true);
+    expect(isCantonDestinationChainId(CANTON_MAINNET_CHAIN_ID)).toBe(true);
+    expect(isChainId(CANTON_MAINNET_CHAIN_ID)).toBe(false);
+    expect(isSettleableChainId(CANTON_MAINNET_CHAIN_ID)).toBe(false);
+  });
+
+  it("never treats a gateway facade id as Canton", () => {
+    for (const facade of [31337, 30337]) {
+      expect(isCantonDestinationChainId(facade)).toBe(false);
+      expect(isSelectableChainId(facade)).toBe(false);
+    }
+  });
+
+  it("names it", () => {
+    expect(EXTENDED_CHAIN_NAMES[CANTON_MAINNET_CHAIN_ID]).toBe("Canton");
+    expect(CHAIN_SHORT_NAMES[CANTON_MAINNET_CHAIN_ID]).toBe("CANTON");
+  });
+
+  it("links an update id on ccview, verbatim and URL-escaped", () => {
+    expect(getExplorerTxUrl(CANTON_MAINNET_CHAIN_ID, UPDATE_ID)).toBe(
+      "https://ccview.io/updates/1220aB9f%3A%3AUpd-01",
+    );
+    expect(getExplorerTxUrl(CANTON_MAINNET_CHAIN_ID, "")).toBe("");
+    expect(getExplorerAddressUrl(CANTON_MAINNET_CHAIN_ID, "alice::1220ab")).toBe("");
+  });
+
+  it("resolves Canton Coin by its exact instrument id only", () => {
+    expect(getTokenInfoForChain(CANTON_COIN.address, CANTON_MAINNET_CHAIN_ID)).toEqual({
+      symbol: "CC",
+      decimals: 10,
+    });
+    expect(
+      getTokenInfoForChain(CANTON_COIN.address.toLowerCase(), CANTON_MAINNET_CHAIN_ID),
+    ).toBeUndefined();
+    expect(getTokenInfoForChain(CANTON_COIN.address, 8453)).toBeUndefined();
   });
 });
 
