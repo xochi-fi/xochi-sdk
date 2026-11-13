@@ -2,7 +2,7 @@
 // See the package LICENSE.
 
 import { getAddress } from "viem";
-import type { VmType } from "@xochi/signer";
+import { isCantonPartyId, type VmType } from "@xochi/signer";
 import { ETH_ADDRESS_REGEX, ZERO_ADDRESS, isValidTronAddress } from "./validators.js";
 import { ETH_ADDRESS_LENGTH } from "./trading.js";
 const SOLANA_ADDRESS_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -76,7 +76,10 @@ export function validateAddressForVm(
         ? { valid: true }
         : { valid: false, error: "Enter a valid Solana address" };
     case "cvm":
-      return { valid: false, error: "This address VM is not supported" };
+      // A party id is sent verbatim: never trimmed or case-folded (SPEC.md §3.3).
+      return isCantonPartyId(address)
+        ? { valid: true }
+        : { valid: false, error: "Enter a Canton party id (name::1220...)" };
     case "evm":
       return validateAddress(address);
   }

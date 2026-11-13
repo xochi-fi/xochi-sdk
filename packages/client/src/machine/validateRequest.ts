@@ -7,8 +7,10 @@
  * that stamped the request.
  */
 
-import type { SelectableChainId } from "../shared/index.js";
+import { assertCantonDestination } from "@xochi/signer";
+import type { DestinationChainId, SelectableChainId } from "../shared/index.js";
 import {
+  isCantonDestinationChainId,
   isChainId,
   isTronChainId,
   isSettlementType,
@@ -113,11 +115,11 @@ const validateFromChain = (chainId: SelectableChainId | undefined): string[] =>
       ? ["Invalid source chain"]
       : [];
 
-// Destination may be a non-EVM chain (Tron); the origin stays EVM.
-const validateToChain = (chainId: SelectableChainId | undefined): string[] =>
+// Destination may be non-EVM: Tron, or Canton (an escrow route; SPEC.md §3.3).
+const validateToChain = (chainId: DestinationChainId | undefined): string[] =>
   chainId === undefined
     ? ["Destination chain is required"]
-    : !isChainId(chainId) && !isTronChainId(chainId)
+    : !isChainId(chainId) && !isTronChainId(chainId) && !isCantonDestinationChainId(chainId)
       ? ["Invalid destination chain"]
       : [];
 
@@ -129,11 +131,36 @@ const validateFromToken = (token: string | undefined): string[] => {
 };
 
 // The destination token can be a Tron TRC-20 (base58) on a Tron destination, so
-// accept either an EVM token address or a valid Tron address.
-const validateToToken = (token: string | undefined): string[] => {
+// accept either an EVM token address or a valid Tron address. A Canton
+// instrument is held to its chain by `validateCantonDestination`.
+const validateToToken = (
+  token: string | undefined,
+  chainId: DestinationChainId | undefined,
+): string[] => {
   if (!token) return ["Destination token is required"];
+  if (isCantonDestinationChainId(chainId)) return [];
   if (validateTokenAddress(token).ok || isValidTronAddress(token)) return [];
   return [`Destination token: ${errorOf(validateTokenAddress(token))}`];
+};
+
+/**
+ * A Canton destination (or a Canton party / instrument on any other chain) is
+ * SPEC.md §3.3's one shape: Canton's chain id, a party recipient sent verbatim,
+ * that network's instrument, public settlement. A gateway facade id (31337,
+ * 30337) is never Canton's.
+ */
+const validateCantonDestination = (p: Partial<QuoteRequest>): string[] => {
+  try {
+    assertCantonDestination(
+      { toChainId: p.toChainId, recipient: p.recipientAddress, toToken: p.toToken },
+      (message) => new Error(message),
+    );
+  } catch (e) {
+    return [`Canton destination: ${e instanceof Error ? e.message : String(e)}`];
+  }
+  return isCantonDestinationChainId(p.toChainId) && p.settlementPreference !== "public"
+    ? ["Canton destination: settlement must be public"]
+    : [];
 };
 
 const validateFromAmount = (amount: string | undefined): string[] => {
@@ -214,7 +241,8 @@ export const validateSwapParams = (
     ...validateFromChain(params.fromChainId),
     ...validateToChain(params.toChainId),
     ...validateFromToken(params.fromToken),
-    ...validateToToken(params.toToken),
+    ...validateToToken(params.toToken, params.toChainId),
+    ...validateCantonDestination(params),
     ...validateFromAmount(params.fromAmount),
     ...validateDeadline(params.deadline, nowMs),
     ...validateSlippageBps(params.slippageBps),

@@ -11,6 +11,7 @@
 import type {
   ChainId,
   SelectableChainId,
+  DestinationChainId,
   SettlementType,
   DestinationType,
   FeeBreakdown,
@@ -66,7 +67,7 @@ export interface QuoteRequest {
   allocationKey?: string;
   // Origin can be non-EVM (Tron deposit route); destination too.
   fromChainId: SelectableChainId;
-  toChainId: SelectableChainId;
+  toChainId: DestinationChainId;
   fromToken: string;
   toToken: string;
   fromAmount: string;
@@ -196,10 +197,10 @@ export interface QuoteResponse {
   settlementType?: SettlementType;
   /**
    * The served `escrow` envelope, verbatim, when the quote carried the key.
-   * Not modelled: it is held only so the `@xochi/signer` checks the machine
-   * runs at ingest can see it. This client does not run the escrow binding, so
-   * a quote whose `escrow` is anything but absent or `null` is refused before
-   * it can reach the wallet.
+   * Not modelled here: the `@xochi/signer` escrow binding reads it at ingest
+   * (`checkSignableQuote` -> `assertEscrowQuoteMatchesRequest`), against the
+   * caller's `MachineConfig.escrows` pin. A quote whose `escrow` is anything but
+   * absent or `null` and does not bind is refused before it reaches the wallet.
    */
   escrow?: unknown;
   /**
@@ -481,7 +482,7 @@ export function mapQuoteResponse(
     promoNote: w.promo_note,
     minimumAmountUsd: w.minimum_amount_usd,
     minFillableUsd: w.min_fillable_usd,
-    // Passed through untouched, never interpreted: the signer refuses it.
+    // Passed through untouched: the signer's escrow binding interprets it.
     ...("escrow" in w ? { escrow: w.escrow } : {}),
   };
 }
@@ -659,6 +660,54 @@ export interface IntentStatusData {
    * `terminal`.
    */
   settlementConfirmed?: boolean;
+  /**
+   * Present when the status names an escrow order (`escrow` in the body,
+   * SPEC.md §3.4/§5.2): read it with `escrowProgress`.
+   */
+  escrow?: EscrowStatusData;
+}
+
+/** The escrow fields of a status poll, decoded by `decodeEscrowStatus`. */
+export interface EscrowStatusData {
+  /** The `RiddlerEscrow` the venue names: informational, never a pin. */
+  address: string;
+  orderId: string;
+  /** Unix seconds. */
+  fillDeadline: number;
+  /** The served status verbatim (`pending`, `executing`, `refund_pending`, ...). */
+  wireStatus: string;
+  /** The Canton update the attester verified the delivery against, once attested. */
+  cantonUpdateId: string | null;
+}
+
+/**
+ * The escrow fields of a status body, or `undefined` when it names no escrow
+ * order or names one malformed (an order this cannot read is not tracked as
+ * one). Accepts the envelope snake_case (`escrow.order_id`, `fill_deadline`)
+ * and `cantonUpdateId` in either spelling.
+ */
+export function decodeEscrowStatus(body: Record<string, unknown>): EscrowStatusData | undefined {
+  const escrow = body.escrow as Record<string, unknown> | null | undefined;
+  if (escrow === null || typeof escrow !== "object") return undefined;
+  const { address, order_id: orderId, fill_deadline: fillDeadline } = escrow;
+  const deadline = typeof fillDeadline === "string" ? Number(fillDeadline) : fillDeadline;
+  if (
+    typeof address !== "string" ||
+    typeof orderId !== "string" ||
+    typeof deadline !== "number" ||
+    !Number.isSafeInteger(deadline) ||
+    typeof body.status !== "string"
+  ) {
+    return undefined;
+  }
+  const update = body.canton_update_id ?? body.cantonUpdateId;
+  return {
+    address,
+    orderId,
+    fillDeadline: deadline,
+    wireStatus: body.status,
+    cantonUpdateId: typeof update === "string" && update.length > 0 ? update : null,
+  };
 }
 
 /**

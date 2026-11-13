@@ -1,9 +1,10 @@
-// Non-custodial escrow primitives, order v2. RESERVED / INERT at this SPEC
-// version: these compute the blinded destination commitment, the canonical
-// `orderId = keccak(OrderTerms)`, the venue's OpenAuth digest, and assert the
-// escrow pull-auth binding, but NOTHING here is wired into the live signing path
-// (signERC3009 / signPermit2 still take orderId from `quote.gasless.orderId`).
-// See @xochi/spec ESCROW-RFC.md §2/§7/§12 and SPEC.md §2.3/§5.2.
+// Non-custodial escrow primitives, order v2: the blinded destination commitment, the
+// canonical `orderId = keccak(OrderTerms)`, the venue's OpenAuth digest, and the escrow
+// pull-auth binding. `assertEscrowBinding` is LIVE: `assertEscrowQuoteMatchesRequest`
+// (intent-verify.ts) runs it on every escrow-bearing quote before the pull is signed.
+// The pull signers themselves (signERC3009 / signPermit2) are unchanged: they sign the
+// served pull, whose nonce / witness the binding has already held to the recomputed
+// orderId. See @xochi/spec ESCROW-RFC.md §2/§7/§12 and SPEC.md §2.3/§5.2.
 //
 // Every hash is keccak256 over standard (never packed) `abi.encode` of a flat
 // argument list, reproducible in Solidity and Elixir byte-for-byte.
@@ -277,7 +278,8 @@ function pinnedEscrowFor(pin: PinnedEscrows | undefined, fromChainId: UintLike):
 // key, the destCommitment and the orderId locally -- never trusting a quoted
 // value -- and asserts the quote and the pull-auth bind the user's own intent
 // and the caller's pinned escrow for `terms.fromChainId`. Returns the verified
-// orderId. RESERVED / INERT: no signer calls this yet.
+// orderId. Wired by `assertEscrowQuoteMatchesRequest`, which builds every input
+// from the request, the served envelope and the served pull.
 export function assertEscrowBinding(b: EscrowBinding): Hex {
   const { terms, opening, pullAuth } = b;
   const escrow = pinnedEscrowFor(b.expectedEscrows, terms.fromChainId);

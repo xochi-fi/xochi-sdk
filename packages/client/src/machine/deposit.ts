@@ -222,7 +222,8 @@ export function checkDepositQuote(
     );
     verifyDepositAttestation(fields, attestation, signer);
     // `escrow` is the raw served envelope: the signer refuses any deposit quote
-    // that carries one, since this client runs no escrow binding.
+    // that carries one. A deposit route has no pull to bind an `orderId` to, so
+    // the escrow binding cannot run on it.
     assertDepositQuoteMatchesRequest(params, fields, {
       recipient_address: quote.recipientAddress,
       escrow: quote.escrow,

@@ -39,7 +39,7 @@ The receive side of stealth (`stealth-receive.ts`) derives a wallet's keys from 
 - **Run the value checks before signing.** The signers check schema only (off-schema typed data refuses); `assertIntentMatchesRequest` and `assertPullMatchesIntent` check values.
 - **Keep pins where the server can't reach** (build constant, reviewed config). Never read them, or the deposit attestation signer, from `/xochi/capabilities` ([Capabilities](#capabilities)).
 - **`expectedPullRecipients` is the only recipient check**, and an absent pin skips it ([Pull verification](#pull-verification)).
-- **Quotes with an `escrow` envelope refuse** ([Pull verification](#pull-verification)).
+- **Quotes with an `escrow` envelope sign only through `assertEscrowQuoteMatchesRequest`, against your escrow pin** ([Escrow quotes](#escrow-quotes)).
 - **`exact_output` requires `max_from_amount`**, for pulls and deposit routes alike.
 - **`signERC3009` is USDC-only**; use `signPermit2` for other tokens.
 - **`signUserOpHash` signs raw** (no EIP-191 prefix); only sign a hash `assertPreparedClaimMatchesRequest` or `verifyClaimUserOp` recomputed.
@@ -53,7 +53,7 @@ The receive side of stealth (`stealth-receive.ts`) derives a wallet's keys from 
 Binding the pull to the intent:
 
 - **The pull's domain is as load-bearing as its message.** `domain.chainId` must equal `intent.fromChainId`, unconditionally: an intent missing `fromChainId` refuses with no pin at all. The check is bound to the intent, not a chain-registry lookup, so a chain the server adds does not fail closed. ERC-3009: `verifyingContract` == `intent.fromToken`. Permit2: `verifyingContract` == `PERMIT2_ADDRESS` and `permitted.token` == `intent.fromToken`. Token identity, amount and expiry are compared as well.
-- **A quote with a non-null `escrow` envelope refuses** (`assertNoEscrowEnvelope`, also run by `assertDepositQuoteMatchesRequest`). Who an escrow pays is the `orderId` the pull binds (ERC-3009 `nonce`, Permit2 witness), checked only by the SPEC §2.3 binding (`assertEscrowBinding` against a caller-pinned escrow per origin chain), which nothing here wires. A recipient pin naming the escrow is not sufficient. Lift the refusal only by wiring the binding.
+- **A quote with a non-null `escrow` envelope refuses here** (`assertNoEscrowEnvelope`, also run by `assertDepositQuoteMatchesRequest`). Who an escrow pays is the `orderId` the pull binds (ERC-3009 `nonce`, Permit2 witness), checked only by the SPEC §2.3 binding; verify such a quote with `assertEscrowQuoteMatchesRequest` ([Escrow quotes](#escrow-quotes)). A recipient pin naming the escrow is not sufficient.
 - **A pull to a caller-pinned escrow is escrow-bearing with or without the envelope** (SPEC.md §6). `expectedEscrows` (`{ [originChainId]: address }`, either spelling) refuses a `to`/`spender` naming the escrow pinned for `intent.fromChainId`; a blank pin refuses. Never merge it into `expectedPullRecipients`. One resolver, `resolvePinnedEscrow`, reads it for this guard and for `assertEscrowBinding`: keys are positive chain ids in decimal or `0x` hex, trimmed; any other key, or two keys for one chain with different escrows, refuses.
 
 Expiry bound:
@@ -68,6 +68,30 @@ The recipient pin:
 - **Absence of a pin skips the check**; an attacker can drop a field from the quote but not an entry from your pin. Drop an outgoing address once a rollover completes. The chain and method axes grade differently: a chain absent from the pin is unchecked; a chain present but missing the method in use **refuses**. The pin is keyed on `intent.fromChainId` only, never the pull's `domain.chainId`; an intent with no chain refuses, as does a blank pin entry.
 - **A method may name a set of accepted values** (`erc3009: [outgoing, incoming]`; `MethodPin`, `pinAccepts`, `describePin`) to cross a solver rollover (Riddler rotates the ERC-3009 EOA per chain). A set is a window, not a configuration: the outgoing value keeps verifying until removed, so a long-lived two-value pin is weaker. An empty list, blank entry or non-string entry refuses, like `{}` and `""`; `pinnedFor` refuses a `null` method too.
 - **An ERC-3009 `to` is the payee; a Permit2 `spender` only _may_ pull.** `SignatureTransferDetails.to` is not in the signed struct (`OriginPullWitness` binds an `orderId`), so the refusals say different things.
+
+## Escrow quotes
+
+On an escrow corridor (SPEC.md §5.2) the origin pull opens a `RiddlerEscrow` lock: its `to`/`spender` is the escrow and its ERC-3009 `nonce` / Permit2 witness is the order's `orderId`. `assertEscrowQuoteMatchesRequest(request, quote, opts)` is the only check that admits such a quote. It returns the `VerifiedEscrowOrder` (orderId, terms, opening, fill deadline, OpenAuth signer); keep it as recovery evidence.
+
+```ts
+const order = assertEscrowQuoteMatchesRequest(request, quote, {
+  expectedEscrows: { 8453: "0x4438a8b3EE5AAf58343B18629040a4BCB8b0feCb" }, // your reviewed manifest
+  minOut, // your own floor: the signed toAmount less your slippage, never min_to_amount
+  expectedOpenAuthSigners, // optional
+});
+const pullSignature = await signPullAuthorization(quote.pull_authorization, privateKey);
+```
+
+- **The escrow is a pin, never a quoted value.** `expectedEscrows` comes from a deployment manifest you reviewed (the example is Base MainNet's `RiddlerEscrow` proxy), never from `escrow.address`, `order_terms.escrow` or `/xochi/capabilities`. An absent pin, or an origin chain it does not cover, refuses.
+- **What it runs, in order:**
+  - `assertIntentMatchesRequest`, with `wallet`, `to_chain_id`, `to_token` and the recipient required;
+  - the Canton destination rule (below);
+  - the pull held to the intent: chain, token, amount, Permit2 contract, expiry;
+  - `assertEscrowBinding`: recipient, token, chain and `minOut` against the request; `destCommitment` and `orderId` recomputed; `terms.escrow` == pull `to`/`spender` == pin; depositor == `wallet`; nonce / witness == `orderId`;
+  - `order_terms.from_chain_id` == the intent's, envelope `fill_deadline` == the terms', the opening's `intent_id` == the signed `intentId`;
+  - a 65-byte `open_auth` recovering over the pinned escrow's domain, to one of `expectedOpenAuthSigners` when given.
+- **Canton is reached through its synthetic chain id only** (`CANTON_MAINNET_CHAIN_ID`, 253340876), with a party recipient (`isCantonPartyId`, never case-folded) and that network's instrument (`CANTON_INSTRUMENTS`; Canton Coin today). A party or instrument on any other chain id refuses, and the gateway facade ids 31337 and 30337 are named as such (`assertCantonDestination`).
+- **A refund needs no one.** Without an attested delivery, anyone may call `refund(orderId)` once `refundableAt = fillDeadline + claimWindow` passes; the principal returns to the depositor.
 
 ## Deposit-address routes
 

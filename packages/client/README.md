@@ -198,7 +198,7 @@ Lifecycle rules the machine enforces, beyond the signer checks under [Fund safet
 The machine checks every quote against the request (via `@xochi/signer`), the pull against your pins, the payout against what was rendered, and deposit attestations against your signer; claims are checked before signing. All fail closed: a failing quote is never signable, a failing deposit address never shown.
 
 - **Pins are yours.** Never derive `pullRecipients` or `depositAttestationSigner` from `/api/capabilities` (same channel as the quote).
-- **Quotes with an `escrow` envelope are refused.**
+- **A quote with an `escrow` envelope is signable only against your escrow pin** (`MachineConfig.escrows`; [Escrow](#escrow)). With no pin, or one the quote does not bind to, it is refused.
 - **A tag quote is held to its echo.** When the request carried `recipientTag`, the quote is signable only if it echoes that exact tag and names a `recipientAddress`; that address is then the expected intent recipient for the signer check and the sign-time payout pin, read off the held quote and never off the context or the wallet. A request without a tag is checked against the wallet (or its `recipientAddress`) exactly as before.
 - **A deposit address is never revealed with under 60 s of its attested window left.**
 - **On resume, run stored deposits through `verifyStoredDeposit`** and render and re-persist `result.stored`, not your input.
@@ -209,6 +209,37 @@ The machine checks every quote against the request (via `@xochi/signer`), the pu
 - **Only a not-accepted refusal is resent, and only the same signed request.** Set `ErrorReport.notAccepted` from `error instanceof ApiError && error.notAccepted` and nothing else, with `value.retryAfter` the `ApiError`'s absolute `retryAfter`. The machine resends the identical `ExecuteRequest` at most `MAX_EXECUTE_RESENDS` times, each landing at least `EXECUTE_RESEND_MARGIN_SECS` before the earliest signed deadline (`decideExecuteResend`, `executeDeadline`). Meanwhile the signing slot reads `{ kind: "busy", retryAt, resend, of }` (phase `submitting`). Suggested copy: "Solver busy. Resending in Ns (retry r of n)." and "Keep this tab open. If it closes, this tab will not resend the order."
 - **When resending stops, the order is "not sent yet"** (`IntentState.notSent`, phase `not-sent`): no Retry, since the signed request stays executable until it expires. The poll runs on until the Worker ends the intent; `failed` with `not_executed`, or a 404 past `unexecutedFinishAt(quote)`, then offers Retry (`NOT_SENT_SWEPT_ERROR`). Deadlines are compared with the host's clock (`now`). Suggested copy: "Not sent yet. The solver was busy. You can try again once this order expires."
 - **A host that can replay a signed request (a relay, a retry queue) should not offer Reset while "not sent yet"**: the dropped request stays executable, so a new order could execute both.
+
+## Escrow
+
+On an escrow corridor (SPEC.md §5.2; the Base USDC -> Canton Coin corridor is one) the origin pull opens a `RiddlerEscrow` lock instead of paying a solver. The taker's principal leaves the lock only to an attested delivery, or back to the depositor through a permissionless refund.
+
+```ts
+const model = init(
+  {
+    ...config,
+    escrows: { 8453: "0x4438a8b3EE5AAf58343B18629040a4BCB8b0feCb" }, // your reviewed manifest
+    openAuthSigners: [...], // optional
+  },
+  context, // Canton: toChainId CANTON_MAINNET_CHAIN_ID, toToken CANTON_COIN_MAINNET, recipientAddress a party id
+);
+```
+
+- **Quote.** At ingest the machine runs `@xochi/signer`'s `assertEscrowQuoteMatchesRequest` against `escrows`. The binding is SPEC.md §2.3. The release floor is the signed `toAmount` less the request's slippage (`escrowMinOut`), never the served `min_to_amount`. A host that keeps the order as evidence (orderId, terms, opening) takes it from `checkSignableQuote(request, quote, pullRecipients, { escrows })`, whose `escrow` is the `VerifiedEscrowOrder`.
+- **Sign and execute.** The intent and the pull are signed as on any pull route. The pull may name only the pinned escrow, for either method. `execute` carries both signatures, and the venue submits the open (`/xochi/execute`, relayed).
+- **Canton.** `validateSwapParams` accepts chain `253340876` with a party recipient sent verbatim, Canton Coin and `public` settlement. It refuses a party or instrument on any other chain id, the gateway facade ids `31337` / `30337` included. The widget does not offer Canton yet (#116): `capabilityVmType` still reads `cvm` as unaddressable.
+- **Recipient preapproval.** The recipient party needs a Canton Coin `TransferPreapproval` valid until at least an hour past the order's fill deadline. Without one, or with one naming another party or network, the venue refuses the quote with `422 escrow_refused`, `details.reason: recipient_not_preapproved`: create or renew it, then quote again. A preapproval the venue cannot read is `503 escrow_unavailable`, `details.reason: recipient_preapproval_unverified`: retry on your own backoff. Both come before any lock (SPEC.md §5.2.4).
+- **Track.** `getIntentStatus` adds `escrow` (`EscrowStatusData`: order id, fill deadline, the raw served status, `cantonUpdateId`) when the status body names an escrow order. `escrowProgress(status.escrow, { refundableAt, nowSec })` reads it as one of the following:
+  - `awaiting_open`;
+  - `awaiting_delivery`;
+  - `delivered` (attested: a `cantonUpdateId` or a fill receipt, never a balance read);
+  - `claimed`;
+  - `refundable`;
+  - `refunded`;
+  - `expired` (nothing locked);
+  - `unknown` (keep polling).
+- **Refund.** `refundableAt` is the lock's: `readEscrowLock(publicClient, pinnedEscrow, orderId)`, or `escrowRefundableAt(fillDeadline, claimWindow)`. Read the lock from your pinned escrow, never `escrow.address`. From `refundableAt` on, `claim` reverts, and anyone may send `escrowRefundCall(pinnedEscrow, orderId)`; the principal goes to the depositor.
+- **A status read without `escrow`** (a Worker that does not forward Riddler's escrow fields) still has `status`; the lock read covers the rest, by the verified order's `orderId`.
 
 ## Fee reference
 

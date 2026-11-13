@@ -11,6 +11,8 @@
  * compile until they carry a new registry entry.
  */
 
+import { CANTON_MAINNET_CHAIN_ID } from "@xochi/signer";
+
 /**
  * One supported EVM chain. `explorer` is an origin with no trailing path.
  * `nativeCurrency` is the gas token symbol (defaults to "ETH" if omitted).
@@ -147,6 +149,22 @@ export function isTronChainId(value: unknown): value is TronChainId {
 export function isSelectableChainId(value: unknown): value is SelectableChainId {
   return isChainId(value) || isTronChainId(value);
 }
+
+/**
+ * Canton MainNet (`CANTON_MAINNET_CHAIN_ID`, SPEC.md §3.3): a destination only,
+ * reached through escrow (`escrow.ts`), never through a gateway facade's id
+ * (31337, 30337; `@xochi/signer` `assertCantonDestination`). Kept out of
+ * `SelectableChainId` until the widget offers it (xochi-sdk#116).
+ */
+export type CantonChainId = typeof CANTON_MAINNET_CHAIN_ID;
+
+/** Type guard for the Canton MainNet chain id. */
+export function isCantonDestinationChainId(value: unknown): value is CantonChainId {
+  return value === CANTON_MAINNET_CHAIN_ID;
+}
+
+/** A chain a quote may deliver to: anything selectable, plus Canton. */
+export type DestinationChainId = SelectableChainId | CantonChainId;
 
 /**
  * Robinhood Chain (4663): an Arbitrum Orbit L2 whose native stablecoin is USDG

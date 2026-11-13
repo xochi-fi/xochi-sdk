@@ -8,6 +8,7 @@ export * from "./stealth";
 export * from "./stealth-receive";
 export * from "./erc4337";
 export * from "./escrow";
+export * from "./canton";
 export * from "./xsp";
 export * from "./shielded";
 export * from "./shielded-recipient";
