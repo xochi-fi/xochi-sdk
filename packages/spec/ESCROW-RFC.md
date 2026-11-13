@@ -1313,6 +1313,10 @@ preimage. The `canton-mainnet-destination` vector in `order-id.json` (§2.4)
 is this route's: a party `recipient`, Canton Coin's instrument as `toToken`,
 and `toChainId` `253340876`.
 
+- **Recipient preapproval.** The recipient party must hold a Canton Coin
+  `TransferPreapproval` valid until at least an hour past the order's
+  `fillDeadline`; the venue checks it before any `OpenAuth` (§12) is issued
+  (`SPEC.md` §5.2.4), so a refusal locks nothing.
 - **Float gate.** The solver delivers from a capped Canton Coin float. A quote
   the float cannot cover is declined before any `OpenAuth` (§12) is issued
   (`SPEC.md` §5.2.4), so nothing locks.

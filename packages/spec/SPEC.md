@@ -766,6 +766,16 @@ same.
   no reserve fill and no FillAuth. Text elsewhere (`SOLVER-RFC.md` §2.5, §4.2)
   that has a bonded panel solver bid on Canton is superseded for this
   corridor.
+- **Recipient preapproval.** The recipient party MUST hold a Canton Coin
+  `TransferPreapproval`: without one, the solver's transfer is a pending offer,
+  not a delivery. The venue reads it once the order's fill deadline is fixed,
+  ahead of the float gate and before any OpenAuth is issued, so nothing locks.
+  A missing, mismatched or expiring preapproval is the permanent
+  `422 escrow_refused` `recipient_not_preapproved` below. On a `503`,
+  `escrow_unavailable` with
+  `details.reason: recipient_preapproval_unverified` means the recipient's
+  Canton Coin `TransferPreapproval` could not be read. Nothing was locked;
+  retry on your own backoff.
 - **Float gate.** The solver delivers Canton Coin from a capped float. A quote
   the float cannot cover is declined before any OpenAuth is issued, so nothing
   can lock: `503 insufficient_liquidity`, `details.reason`
@@ -774,6 +784,10 @@ same.
   Permanent refusals are `422 escrow_refused`, with `details.reason`:
   - `above_solver_fill_cap`: the fill is above the solver's per-fill cap;
   - `recipient_is_solver`: the recipient is the solver's own party;
+  - `recipient_not_preapproved`: the recipient party holds no Canton Coin
+    `TransferPreapproval` valid until at least an hour past the order's fill
+    deadline, or one naming another party or network; create or renew it,
+    then quote again;
   - `canton_solver_requires_escrow`: non-public settlement, or a credential
     that may only quote;
   - `canton_destination_not_live`: the corridor is switched off.

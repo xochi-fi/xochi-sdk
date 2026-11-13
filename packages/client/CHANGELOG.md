@@ -12,6 +12,7 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
   - `getIntentStatus` adds `escrow` (`EscrowStatusData`, `decodeEscrowStatus`). `escrowProgress` reads it as `awaiting_open`, `awaiting_delivery`, `delivered`, `claimed`, `refundable`, `refunded`, `expired` or `unknown`.
   - `readEscrowLock` / `parseEscrowLock` read `locks(orderId)`; `escrowRefundableAt` and `escrowRefundCall` cover the permissionless refund; `RIDDLER_ESCROW_ABI` is exported.
 - **Canton destinations in requests**: `DestinationChainId` (`SelectableChainId` plus `CantonChainId`), `isCantonDestinationChainId`, and the re-exported `CANTON_MAINNET_CHAIN_ID`, `CANTON_COIN_MAINNET` and `isCantonPartyId`. `validateSwapParams` accepts chain 253340876 with a party recipient, Canton Coin and public settlement. It refuses a party or instrument on any other chain, and names the gateway facade ids 31337 and 30337. `validateAddressForVm(_, "cvm")` validates a party id.
+- README "Escrow" notes that a Canton recipient party needs a Canton Coin `TransferPreapproval` (`422 escrow_refused` `recipient_not_preapproved`; unreadable: `503 escrow_unavailable` `recipient_preapproval_unverified`).
 
 ### Changed
 

@@ -16,13 +16,14 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
   - `refund` is permissionless at `refundableAt = fill_deadline + claimWindow`.
   - `ESCROW-RFC.md` §7 is `[IMPLEMENTED]` (client guard). The legend gains `[DEPLOYED, INERT]`, used for the Base MainNet `RiddlerEscrow` proxy and tier-0 verifier, which no corridor enables yet.
 - `SPEC.md` §0.2 compatibility runs through `0.14.0`; the XochiIntent domain version stays `3`.
-- **Wire: unchanged.** `wire/openapi.json` is not refreshed here. Riddler's direct-award PR (axol-io/riddler#1381) changes only prose (the `/xochi/quote` 422 and 503 descriptions), which `verify:openapi` does not compare; the next refresh from prod picks it up.
+- **Wire: unchanged.** `wire/openapi.json` is not refreshed here. Riddler's direct-award PR (axol-io/riddler#1469, for #1381) changes only prose (the `/xochi/quote` 422 and 503 descriptions), which `verify:openapi` does not compare; the next refresh from prod picks it up. Both codes it newly names a Canton reason for, `escrow_refused` and `escrow_unavailable`, are already in the vendored `ErrorCode` enum.
 
 ### Added
 
 - **Canton direct award** (`SPEC.md` §5.2.4, `ESCROW-RFC.md` §7.1; Riddler ADR-0018). The Base USDC -> Canton Coin corridor is awarded at quote time to one configured Riddler-run solver, with no auction, quote-through, `SolverBond`, FillAuth or reserve fill. The new sections cover:
+  - the recipient preapproval check, ahead of the float gate and before any OpenAuth: the recipient party must hold a Canton Coin `TransferPreapproval` valid until at least an hour past the order's fill deadline. Missing, naming another party or network, or expiring sooner is permanent `422 escrow_refused` `recipient_not_preapproved` (create or renew it, then quote again); an unreadable preapproval is transient `503 escrow_unavailable` `recipient_preapproval_unverified` (nothing locked; retry on your own backoff);
   - the float gate: `503 insufficient_liquidity` with `details.reason` `solver_float_insufficient`, `solver_float_unverified` or `solver_halted`, transient and before any OpenAuth, so nothing locks;
-  - permanent `422 escrow_refused` reasons: `above_solver_fill_cap`, `recipient_is_solver`, `canton_solver_requires_escrow`, `canton_destination_not_live`;
+  - permanent `422 escrow_refused` reasons: `above_solver_fill_cap`, `recipient_is_solver`, `recipient_not_preapproved`, `canton_solver_requires_escrow`, `canton_destination_not_live`;
   - delivery: attested, `cantonUpdateId`, then claim;
   - the refund at `refundableAt`;
   - the five ADR-0018 disclosures.
