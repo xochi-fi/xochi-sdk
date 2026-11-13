@@ -4,6 +4,8 @@ All notable changes to `@xochi/signer` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-13
+
 ### Added
 
 - **The escrow path is live** (`@xochi/spec` 0.14.0, SPEC.md §2.3/§5.2, ESCROW-RFC.md §7). `assertEscrowQuoteMatchesRequest(request, quote, { expectedEscrows, minOut, expectedOpenAuthSigners? })` verifies an escrow-bearing quote and returns its `VerifiedEscrowOrder`. In order, it runs:

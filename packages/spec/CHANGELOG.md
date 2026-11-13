@@ -4,7 +4,7 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 
 ## [Unreleased]
 
-## [0.14.0] - 2026-11-12
+## [0.14.0] - 2026-11-13
 
 **Riddler lockstep:** `Riddler.Integrations.Xochi.Config` `@spec_version` MUST move from `0.13.0` to `0.14.0` (and Riddler's pinned `test/support/vectors/XOCHI_SPEC_VERSION`) in the Riddler vendor PR that follows this release's publication. Until then `verify:spec-version` reports drift. No wire byte, signed struct, fee artifact or vector moves: the bump records a normative change to what a client must do (the escrow binding is live), not a served-shape change.
 
@@ -31,6 +31,7 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
   `SOLVER-RFC.md` §2.5 and §4.2 mark their Canton panel text superseded for this corridor; the SOLVER-RFC version does not move.
 - **Canton chain identity** (`SPEC.md` §3.3): Canton is reached only through `253340876`. The gateway facade chain ids `31337` and `30337` are never Canton's, and a party recipient or Canton instrument on another chain id is refused. The CC route's token identity is Canton Coin's MainNet instrument id, and `conformance/order-id.json` `canton-mainnet-destination` is its `orderId` vector (unchanged).
 - [PROPOSED] A second Canton instrument (cBTC) follows with its own `to_token` encoding.
+- `SPEC.md` §5.2.1 documents a top-level `refundable_at` (integer unix seconds) beside `escrow` on quote, execute and status: informational `fill_deadline + claimWindow` as the server computed it. A client acts on the lock's own on-chain `refundableAt`, never on this field.
 
 ## [0.13.0] - 2026-11-09
 

@@ -4,6 +4,10 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+## [0.1.15] - 2026-11-13
+
+Requires `@xochi/signer` `^0.9.0` (was `^0.8.0`): the escrow binding and Canton helpers below are new in signer 0.9.0.
+
 ### Added
 
 - **Escrow execute flow** (SPEC.md §5.2; needs `@xochi/signer` with `assertEscrowQuoteMatchesRequest`). `MachineConfig.escrows` (caller-pinned `RiddlerEscrow` per origin chain) and optional `openAuthSigners` make an escrow-bearing quote signable.
