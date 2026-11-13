@@ -4,6 +4,23 @@ All notable changes to `@xochi/signer` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+### Added
+
+- **The escrow path is live** (`@xochi/spec` 0.14.0, SPEC.md §2.3/§5.2, ESCROW-RFC.md §7). `assertEscrowQuoteMatchesRequest(request, quote, { expectedEscrows, minOut, expectedOpenAuthSigners? })` verifies an escrow-bearing quote and returns its `VerifiedEscrowOrder`. In order, it runs:
+  - `assertIntentMatchesRequest`;
+  - the Canton destination rule;
+  - the pull held to the intent;
+  - `assertEscrowBinding`, against the caller's escrow pin;
+  - envelope consistency (`from_chain_id`, `fill_deadline`, the opening's `intent_id`);
+  - `open_auth` recovery over the pinned escrow's domain.
+
+  An envelope that fails any of these, an unpinned origin chain and an absent pin all refuse.
+- `canton.ts`: `CANTON_MAINNET_CHAIN_ID` (253340876), `CANTON_TESTNET_CHAIN_ID`, `CANTON_FACADE_CHAIN_IDS` (31337, 30337), `CANTON_COIN_MAINNET` / `CANTON_COIN_TESTNET`, `CANTON_INSTRUMENTS` (per network, extensible for a second instrument), `CANTON_PARTY_ID`, `isCantonPartyId`, `isCantonChainId` and `assertCantonDestination`. The last refuses a party or instrument on a non-Canton chain id, names the gateway facade ids, and holds each Canton network to its own instrument and a party recipient.
+
+### Changed
+
+- `assertPullMatchesIntent` and `assertNoEscrowEnvelope` still refuse an escrow envelope, and their message now points at `assertEscrowQuoteMatchesRequest`. `assertEscrowBinding` is no longer INERT.
+
 ## [0.8.0] - 2026-11-09
 
 ### Added
