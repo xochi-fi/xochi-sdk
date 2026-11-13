@@ -9,6 +9,7 @@
 - Accept explicit immutable deployment settings and own the iframe bridge through widget mount/unmount, preserving signing consent, security pins and storage formats.
 - Preserve the existing host's live theme updates with public loader `0.5.0`, including wallet dialogs and auto resolution, without resetting the frame or trading state.
 - Replace the private shared-package dependency with public client and signer exports. Add isolated packed-consumer and published-dependency release gates.
+- Canton Coin destination (xochi-sdk#116), behind `CANTON_DESTINATION_LIVE` (off): Base USDC -> Canton Coin to a Canton party, offered only while the live matrix advertises Canton (`cvm`) with an exact route, as a destination only, Canton Coin only, public only (Stealth and Shielded disabled). The party is validated with the client parser and sent byte for byte as typed. Recipient readiness copy and an actionable `recipient_not_preapproved` refusal. The escrow panel reads Riddler's attested `cantonUpdateId` and the Base lock (never a gateway completion or a balance), shows `refundableAt`, links the lock, the escrow and the Canton update (`https://ccview.io/updates/<id>`), and sends the taker's `refund(orderId)` from the injected wallet once it opens. New deployment setting `escrows` (the reviewed `RiddlerEscrow` per origin chain), passed to the machine only while the flag is on. Resume, local activity and embed parameters refuse Canton while it is off.
 
 ### Fixed
 

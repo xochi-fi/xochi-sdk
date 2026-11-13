@@ -69,12 +69,18 @@ class FallbackServedError extends Error {
  * The served matrix, or null when the trade UI could not render it and should
  * degrade to `FALLBACK_CAPABILITIES`. The signer parses any object, reading a
  * body that says nothing as an empty matrix; a matrix with no token list, or no
- * chain in a VM this widget handles, would leave every selector dead.
+ * chain in a VM this widget can trade from, would leave every selector dead.
+ * Canton (`cvm`) does not count: it is a destination only.
  */
 export function parseWidgetCapabilities(raw: unknown): SolverCapabilities | null {
   const caps = parseCapabilities(raw);
   if (caps === null || !Array.isArray(caps.raw.tokens)) return null;
-  return caps.chains.some((chain) => capabilityVmType(caps, chain.chainId) !== null) ? caps : null;
+  return caps.chains.some((chain) => {
+    const vm = capabilityVmType(caps, chain.chainId);
+    return vm !== null && vm !== "cvm";
+  })
+    ? caps
+    : null;
 }
 
 async function fetchCapabilities(): Promise<{

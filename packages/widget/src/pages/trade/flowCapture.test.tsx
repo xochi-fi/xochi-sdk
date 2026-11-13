@@ -42,6 +42,7 @@ const intentAt = (status: IntentStatus, legsWithheld: boolean | null): UseIntent
   settlementChainId: null,
   substatus: null,
   legsWithheld,
+  escrow: null,
   reconciling: false,
   intentId: INTENT_ID,
   quoteId: "xq_flow_capture",
