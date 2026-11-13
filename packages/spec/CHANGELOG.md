@@ -4,6 +4,33 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-12
+
+**Riddler lockstep:** `Riddler.Integrations.Xochi.Config` `@spec_version` MUST move from `0.13.0` to `0.14.0` (and Riddler's pinned `test/support/vectors/XOCHI_SPEC_VERSION`) in the Riddler vendor PR that follows this release's publication. Until then `verify:spec-version` reports drift. No wire byte, signed struct, fee artifact or vector moves: the bump records a normative change to what a client must do (the escrow binding is live), not a served-shape change.
+
+### Changed
+
+- **Escrow is live, not reserved** (`SPEC.md` §2.3, §3.4, §5.2, §6, Appendix B; `ESCROW-RFC.md` 0.6.0-draft, §7).
+  - The §5.2 envelope is what Riddler serves on advertised corridors: quote `{address, order_id, fill_deadline, order_terms, dest_opening, open_auth}`; execute `{address, order_id, fill_deadline}`; status adds `dest_opening`, and `slash` only for a bonded panel solver. `proof_receipt` stays reserved and is not served.
+  - The §2.3 binding is a client MUST before signing an escrow pull. `@xochi/signer`'s reference guard is now `assertEscrowQuoteMatchesRequest`.
+  - `refund` is permissionless at `refundableAt = fill_deadline + claimWindow`.
+  - `ESCROW-RFC.md` §7 is `[IMPLEMENTED]` (client guard). The legend gains `[DEPLOYED, INERT]`, used for the Base MainNet `RiddlerEscrow` proxy and tier-0 verifier, which no corridor enables yet.
+- `SPEC.md` §0.2 compatibility runs through `0.14.0`; the XochiIntent domain version stays `3`.
+- **Wire: unchanged.** `wire/openapi.json` is not refreshed here. Riddler's direct-award PR (axol-io/riddler#1381) changes only prose (the `/xochi/quote` 422 and 503 descriptions), which `verify:openapi` does not compare; the next refresh from prod picks it up.
+
+### Added
+
+- **Canton direct award** (`SPEC.md` §5.2.4, `ESCROW-RFC.md` §7.1; Riddler ADR-0018). The Base USDC -> Canton Coin corridor is awarded at quote time to one configured Riddler-run solver, with no auction, quote-through, `SolverBond`, FillAuth or reserve fill. The new sections cover:
+  - the float gate: `503 insufficient_liquidity` with `details.reason` `solver_float_insufficient`, `solver_float_unverified` or `solver_halted`, transient and before any OpenAuth, so nothing locks;
+  - permanent `422 escrow_refused` reasons: `above_solver_fill_cap`, `recipient_is_solver`, `canton_solver_requires_escrow`, `canton_destination_not_live`;
+  - delivery: attested, `cantonUpdateId`, then claim;
+  - the refund at `refundableAt`;
+  - the five ADR-0018 disclosures.
+
+  `SOLVER-RFC.md` §2.5 and §4.2 mark their Canton panel text superseded for this corridor; the SOLVER-RFC version does not move.
+- **Canton chain identity** (`SPEC.md` §3.3): Canton is reached only through `253340876`. The gateway facade chain ids `31337` and `30337` are never Canton's, and a party recipient or Canton instrument on another chain id is refused. The CC route's token identity is Canton Coin's MainNet instrument id, and `conformance/order-id.json` `canton-mainnet-destination` is its `orderId` vector (unchanged).
+- [PROPOSED] A second Canton instrument (cBTC) follows with its own `to_token` encoding.
+
 ## [0.13.0] - 2026-11-09
 
 ### Changed

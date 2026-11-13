@@ -1,11 +1,12 @@
 # Riddler Non-Custodial Escrow — RFC
 
-- **RFC version:** `0.5.0-draft`
-- **Status:** Proposed / Reserved. The settlement-layer companion to `SPEC.md`
-  §5.2 (the reserved escrow envelope) and §2.3 (the reserved pull-auth binding),
-  and to `SOLVER-RFC.md` §7 (the `EscrowGateway` boundary). **None of this is
-  served or deployed today**: the venue settles via direct origin-pull (P0). It
-  is the design contract the M6 contracts + server implement against.
+- **RFC version:** `0.6.0-draft`
+- **Status:** Partially live. The settlement-layer companion to `SPEC.md`
+  §5.2 (the escrow envelope) and §2.3 (the escrow pull binding), and to
+  `SOLVER-RFC.md` §7 (the `EscrowGateway` boundary). Riddler serves the §5.2
+  envelope on the corridors it advertises, and the §7 client guard is live in
+  `@xochi/signer` (`assertEscrowQuoteMatchesRequest`). Each section's tag says
+  how much of the rest is built; Appendix A summarizes.
 - **Normative language:** MUST, MUST NOT, SHOULD, SHOULD NOT, MAY per RFC 2119.
 - **Scope:** the on-chain escrow (`RiddlerEscrow`/`RiddlerFiller`), the
   proof-of-fill verifier tiers, the canonical `OrderTerms`/`destCommitment`/`orderId` preimage, the
@@ -13,7 +14,7 @@
   the **confidentiality** properties the settlement layer does and does not
   provide (§9), and the **activation semantics** that flip `SPEC.md`'s reserved
   fields on. The taker byte-contract (`SPEC.md` §2, conformance suite) is
-  **unchanged until activation**: pinning this design alters no signed struct.
+  **unchanged**: an escrow pull is the same signed struct as a direct pull.
 
 ### Implementation-status legend
 
@@ -21,6 +22,8 @@ Tags as defined in the `SOLVER-RFC.md` legend, plus:
 
 - **`[BUILT, UNDEPLOYED]`**: code exists in Riddler, is not deployed and is
   gated off; a section header keeps the status of its least-built part.
+- **`[DEPLOYED, INERT]`**: deployed on a production chain, with no corridor
+  enabled yet, so nothing can lock.
 
 History: [CHANGELOG.md](CHANGELOG.md).
 
@@ -218,7 +221,7 @@ double-fill). The destination never takes or emits `orderId`: that would be
 the cross-chain join of §9.2 (C1, §9.3). The solver spends its own inventory
 here; it is made whole only by a later `claim` on the origin escrow (§3).
 
-## 5. Proof-of-fill `[PROPOSED]` (tier-0 attesters `[BUILT, UNDEPLOYED]`; tiers 1, 1s and 2 unbuilt; Appendix A)
+## 5. Proof-of-fill `[PROPOSED]` (tier-0 attesters `[DEPLOYED, INERT]`; tiers 1, 1s and 2 unbuilt; Appendix A)
 
 A pluggable `IProofOfFill` verifier, tiered per corridor and swapped via
 `setProofVerifier(destChainId, …)` **with zero change to the user signature**.
@@ -227,7 +230,7 @@ Tiers map onto the `ProofReceipt.proof_tier` (`SPEC.md` §5.2.3) and the
 
 | Tier | `proof_tier`           | `FillProof.kind`                               | Trust                                                                                                                       |
 | ---- | ---------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| 0    | `attested`             | `tx_hash` / `oracle_attestation`               | venue oracle watch (attesters `[BUILT, UNDEPLOYED]`; Appendix A)                                                            |
+| 0    | `attested`             | `tx_hash` / `oracle_attestation`               | venue oracle watch (Appendix A; Canton disclosure: §7.1)                                                                    |
 | 1    | `optimistic`           | `oracle_attestation` + bonded challenge window | bonded claim, challengeable                                                                                                 |
 | 1s   | `optimistic_disclosed` | `aztec_note_preimage`                          | venue verifies note inclusion on its own node from a solver-disclosed preimage; bonded; recipient hold (§5.1, `[PROPOSED]`) |
 | 2    | `verified`             | `light_client` / `zk`                          | trust-minimized                                                                                                             |
@@ -1226,25 +1229,25 @@ the operator's grounds for removing the solver from the panel directory
 
 ---
 
-## 7. Activation semantics `[RESERVED]`
+## 7. Activation semantics `[IMPLEMENTED]` (client guard)
 
-M6 ships the above **behind the escrow capability** (`SPEC.md` §6:
-`escrow.enabled`). The fields are already reserved (M5), so activation is a
-capability flip. When active:
+Escrow ships **behind the escrow capability** (`SPEC.md` §6:
+`escrow.enabled`), per corridor. On a listed corridor:
 
 1. **Envelope populated.** Quote/execute/status carry the `SPEC.md` §5.2 envelope
    (`escrow.address`, `order_id`, `order_terms`, `dest_opening`, `open_auth`,
-   `fill_deadline`, `proof_receipt`).
+   `fill_deadline`; `proof_receipt` stays reserved).
 2. **Pull-auth binding activates (`SPEC.md` §2.3).** The pull `to` (ERC-3009) /
    `spender` (Permit2) MUST equal the `RiddlerEscrow` on the origin chain, and
    the Permit2 witness `orderId` and the ERC-3009 nonce MUST equal the v2
    `orderId` (§2.3). The venue reports that escrow as `escrow.address`, but a
    client MUST NOT take it from there (step 3).
 3. **Client guard (MUST).** Before signing, the SDK runs `@xochi/signer`'s
-   `assertEscrowBinding(...)` over the user's own intent (signer, recipient,
-   toToken, toChainId, minOut), the caller's **escrow pin** (`expectedEscrows`,
-   origin chain id -> `RiddlerEscrow`), the quote (`OrderTerms`, `DestOpening`,
-   quoted `orderId`) and the pull-auth it is about to sign.
+   `assertEscrowBinding(...)` (through `assertEscrowQuoteMatchesRequest`) over
+   the user's own intent (signer, recipient, toToken, toChainId, minOut), the
+   caller's **escrow pin** (`expectedEscrows`, origin chain id ->
+   `RiddlerEscrow`), the quote (`OrderTerms`, `DestOpening`, quoted `orderId`)
+   and the pull-auth it is about to sign.
 
    **The escrow is a pin, never a quoted value.** `escrow.address`,
    `order_terms.escrow`, the pull `to`/`spender` and the `/capabilities`
@@ -1289,10 +1292,47 @@ capability flip. When active:
    client MUST abort before signing. The client keeps the opening: it is its
    dispute and recovery evidence.
 
-Until activation, a client MUST NOT call the guard on a legacy quote and MUST NOT
-expect any envelope field (`SPEC.md` §5.2). Reserving this design changes no
-digest: `@xochi/signer`'s escrow primitives are **not** wired into
-`signERC3009`/`signPermit2`, so the conformance suite stays byte-identical.
+A quote without the envelope is a direct-pull quote: a client MUST NOT call the
+guard on it and MUST NOT expect any envelope field (`SPEC.md` §5.2). The guard
+adds no digest: `signERC3009`/`signPermit2` sign the served pull unchanged, so
+the conformance suite stays byte-identical. The reference is `@xochi/signer`
+`assertEscrowQuoteMatchesRequest`, which also requires the taker's own
+`minOut`, checks the envelope's `fill_deadline` and the opening's `intent_id`
+against the signed intent, and recovers the `open_auth` signer (§12).
+
+### 7.1 Canton corridor: direct award (Riddler ADR-0018)
+
+The Canton corridor (`SPEC.md` §5.2.4) uses this escrow with one venue-side
+change: the order is awarded at quote time to one configured Riddler-run
+solver. There is no panel auction, no quote-through bid, no `SolverBond`, no
+FillAuth or `FillAcceptance`, and no reserve fill, so §6 (bonds, slash,
+backstop) does not apply to it. Text that has a bonded panel solver bid on
+Canton (`SOLVER-RFC.md` §2.5, §4.2) is superseded for this corridor. The taker
+side is unchanged: the same envelope, the same §7 guard and `orderId`
+preimage. The `canton-mainnet-destination` vector in `order-id.json` (§2.4)
+is this route's: a party `recipient`, Canton Coin's instrument as `toToken`,
+and `toChainId` `253340876`.
+
+- **Float gate.** The solver delivers from a capped Canton Coin float. A quote
+  the float cannot cover is declined before any `OpenAuth` (§12) is issued
+  (`SPEC.md` §5.2.4), so nothing locks.
+- **Proof.** Tier 0 (§5): the venue's attester signs a `FillAttestation` once
+  it has verified the delivery on Canton. One rule is added: the transfer
+  must come from the configured solver party.
+- **Exits.** `claim` against that attestation before `refundableAt`, or
+  `refund` by anyone from `refundableAt = fillDeadline + claimWindow` (§3).
+  There is no slash payment.
+- **Disclosure (tier 0 on this corridor):**
+  - the venue's attester attests deliveries by a Riddler-affiliated solver;
+  - during the canary, that solver signs through a gateway it cannot verify,
+    and its float is capped at $50;
+  - the refund opens at `refundableAt`, not at `fillDeadline`;
+  - a no-show earns no slash compensation, because there is no bond;
+  - Riddler commits to make the taker whole off-chain if a claim is paid
+    without a delivery.
+- **[PROPOSED] Registry instruments.** A second Canton instrument (cBTC)
+  follows with its own `toToken` encoding and vectors when it launches.
+  `canonicalKey` (§2.1) already keys any instrument string.
 
 ## 8. Cross-VM composition `[RESERVED]`
 
@@ -1720,11 +1760,13 @@ nothing is deployed), vendored byte-identical by the Riddler server as
 | ----------------------------------------------- | --------------- | --------------------------------------------------------------------------------------------------------- |
 | Third-party fill oracles (`oracle_attestation`) | `[PROPOSED]`    | deleted by riddler #766; only orphaned `Integrations.{Polymer,Wormhole,Hyperlane}` clients remain, with zero callers |
 | `OrderTerms` / `orderId` / `OpenAuth` reference | `[RESERVED]`    | `@xochi/signer` `computeDestCommitment`, `computeOrderId`, `openAuthDigest` + §2, §12                   |
-| Escrow-binding client guard                     | `[RESERVED]`    | `@xochi/signer` `assertEscrowBinding` + §7                                                              |
+| Escrow-binding client guard                     | `[IMPLEMENTED]` | `@xochi/signer` `assertEscrowQuoteMatchesRequest` / `assertEscrowBinding`, `@xochi/client` `MachineConfig.escrows` + §7 |
 | `EscrowGateway` stub (fund-safety)              | `[RESERVED]`    | `@xochi/solver-sdk` `StubEscrowGateway` + §1/§5                                                         |
 | Solver-side gateway (verify, final, fill, claim) | `[RESERVED]`   | `@xochi/solver-sdk` `OnchainEscrowGateway` + `SOLVER-RFC.md` §7.1                                       |
-| `RiddlerEscrow` / `RiddlerFiller`               | `[BUILT, UNDEPLOYED]` | gated off (Riddler `contracts/riddler-escrow/src/*.sol`; §3, §4)                                    |
-| `IProofOfFill` tier 0 (venue attesters)         | `[BUILT, UNDEPLOYED]` | gated off (Riddler `lib/riddler/solver/escrow/*`; §5); nothing deployed verifies a fill             |
+| `RiddlerEscrow` (Base MainNet)                  | `[DEPLOYED, INERT]` | proxy `0x4438a8b3EE5AAf58343B18629040a4BCB8b0feCb` (Riddler `contracts/riddler-escrow/src/RiddlerEscrow.sol`, §3); no Canton verifier is set until the timelocked corridor batch executes |
+| `RiddlerFiller`                                 | `[BUILT, UNDEPLOYED]` | gated off (Riddler `contracts/riddler-escrow/src/RiddlerFiller.sol`, §4)                         |
+| Canton direct award (configured solver)         | `[PROPOSED]`    | Riddler ADR-0018, axol-io/riddler#1381 (§7.1); taker wire unchanged                                       |
+| `IProofOfFill` tier 0 (venue attesters)         | `[DEPLOYED, INERT]` | Riddler `lib/riddler/solver/escrow/*` (§5); the Base MainNet verifier `0xAA058Ce587dF1a1ae2749b3c2B971aB5bEA3C1bC` has code and is not yet set for the Canton corridor |
 | `IProofOfFill` tiers 1–2                        | `[PROPOSED]`    | — (unbuilt; §5)                                                                                           |
 | `IProofOfFill` tier 1s (shielded-Aztec preimage) | `[PROPOSED]`   | — (unbuilt; §5.1, xochi `shielded-execution.md` D9; no verifier, registry, fill tag or recipient hold exists) |
 | `SolverBond` / slashing                         | `[BUILT, UNDEPLOYED]` | gated off (Riddler `contracts/riddler-escrow/src/SolverBond.sol`; §6)                               |

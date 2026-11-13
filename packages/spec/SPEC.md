@@ -1,9 +1,10 @@
 # Riddler Xochi Protocol — SPEC
 
-- **Spec version:** `0.13.0`
+- **Spec version:** `0.14.0`
 - **Status:** Draft (signature and fee layers are substantive and
-  conformance-tested; transport defers to the server OpenAPI; escrow/solver
-  sections are reserved)
+  conformance-tested; transport defers to the server OpenAPI; the escrow
+  envelope (§5.2) and its §2.3 pull binding are live on advertised corridors;
+  solver sections are reserved)
 - **Normative language:** the key words MUST, MUST NOT, SHOULD, SHOULD NOT, MAY
   are to be interpreted as in RFC 2119.
 
@@ -39,7 +40,7 @@
 
 | SPEC | XochiIntent domain.version |
 |---|---|
-| `0.1.0-draft` to `0.13.0` | `3` |
+| `0.1.0-draft` to `0.14.0` | `3` |
 
 History: [CHANGELOG.md](CHANGELOG.md).
 
@@ -52,7 +53,8 @@ History: [CHANGELOG.md](CHANGELOG.md).
   settlement, runs its own solver. MUST NOT custody user funds (§5.2).
 - **Solver**: discovers, bids on, and fills intents. *(Protocol reserved, §7.)*
 - **Settlement layer**: origin-pull → on-chain escrow → release on
-  proof-of-fill. *(Reserved — §5.2, Appendix B.)*
+  proof-of-fill, on the corridors the venue advertises (§5.2, §6); every other
+  route settles by direct origin-pull.
 
 **Custody statement (normative intent):** user principal MUST move only from the
 user's wallet, into a non-custodial escrow, and out to either a proven filler or
@@ -143,7 +145,7 @@ Domain: `name` = `"Permit2"`, `chainId`, `verifyingContract` =
 comes from `quote.gasless.orderId`. The `signed_object` is the ABI-encoded tuple
 with the offset pointer stripped.
 
-> Escrow evolution: when non-custodial escrow ships (§5.2), the pull-auth `to`
+> **Escrow binding.** On an escrow quote (§5.2), the pull-auth `to`
 > (ERC-3009) / `spender` (Permit2) MUST equal the origin chain's escrow contract,
 > the ERC-3009 `nonce` MUST equal `orderId`, and the Permit2 witness MUST bind the v2
 > `orderId` (`keccak256(abi.encode(ORDER_TYPEHASH, OrderTerms))`, whose
@@ -168,7 +170,11 @@ with the offset pointer stripped.
 > from the user's own recipient, token and minimum output and assert all of this
 > before signing — the preimage and the guard are pinned in
 > [`ESCROW-RFC.md`](ESCROW-RFC.md) §2/§7 (reference guard: `@xochi/signer`
-> `assertEscrowBinding`, `expectedEscrows`). *(Reserved.)*
+> `assertEscrowQuoteMatchesRequest`, which runs `assertEscrowBinding` against
+> `expectedEscrows`). The "minimum output" is the taker's own: a floor derived
+> from the quote's `min_to_amount` alone is the venue's choice, not the taker's.
+> No signed struct changes: the taker signs the served pull exactly as on a
+> direct-pull route, and the binding only decides whether it may.
 
 ### 2.4 Stealth (ERC-5564)
 
@@ -222,7 +228,7 @@ server-parity list in §2.1.
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/xochi/quote` | Quote an intent; returns `eip712`, `pull_authorization`, `fee_breakdown` (+ reserved `escrow` envelope when advertised, §5.2) |
+| POST | `/xochi/quote` | Quote an intent; returns `eip712`, `pull_authorization`, `fee_breakdown` (+ the `escrow` envelope on an advertised escrow corridor, §5.2) |
 | POST | `/xochi/execute` | Submit signed intent + `pull_signature` (the declared `aztec_proof` is unused; see below); MAY echo `escrow.address`/`order_id` (§5.2). Only the `kid` that requested the quote may execute it (§3.5). `200` execution initiated; `202` accepted but not finished (an async execute resting at `pull_pending`, or an escrow open broadcast with no receipt inside the server's wait) — poll status, and a retried execute answers status and never resends the open; `404` unknown, expired or foreign quote; `429` rate limit; `503` not accepted or in doubt (§3.5) |
 | GET | `/xochi/status/:intent_id` | Poll settlement status |
 | POST | `/xochi/claim/prepare` | Build the stealth-claim userOp; body `{counterfactual_address, recipient_address}` plus an optional `chain_id` (the chain the payment settled on; see below) → returns `userOpHash` |
@@ -286,8 +292,12 @@ else. Canton is **destination-only**: no route originates there, `recipient_addr
 is the party (the server trims and otherwise refuses any spelling Canton would not
 render rather than normalizing it), `to_token` is Canton Coin's instrument id
 `DSO::1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc`, and
-settlement is `public` only. It is served only behind `ENABLE_CANTON_DESTINATION`;
-a deploy with it off answers `unsupported_chain`.
+settlement is `public` only. Canton is reached only through its synthetic chain
+id `253340876`: a client MUST NOT use a Canton gateway's facade chain ids
+(`31337` MainNet, `30337` testnet) as Canton's, and MUST refuse a party
+recipient or a Canton instrument on any chain id other than a Canton one. It is
+served only behind `ENABLE_CANTON_DESTINATION`, and only as an escrow quote
+(§5.2.4); a deploy with it off answers `unsupported_chain`.
 
 ### 3.4 Status
 
@@ -308,9 +318,12 @@ Status MAY carry
 `refundReason`/`substatus`, and stealth (`stealthAddress`, `ephemeralPubKey`,
 `counterfactualAddress`) / shielded (scalars `noteCommitment`, `nullifierHash`,
 `l2TxHash`; §5.1)
-fields. When escrow is active (§5.2, M6) status MAY also carry the reserved
-`escrow.address`/`order_id` and a `proof_receipt` (§5.2.3); until then these are
-absent.
+fields. An escrow intent (one whose quote carried `escrow`) reads its status
+off the escrow order and carries `escrow` (§5.2.1: `address`, `order_id`,
+`fill_deadline`, and on `/status` the re-derived `dest_opening`). A Canton
+destination adds `cantonUpdateId`, the Canton update the venue's attester
+verified the delivery against, once attested, beside `settlementChainId`.
+`proof_receipt` (§5.2.3) stays reserved and is not served.
 
 ### 3.5 Error envelope & retry
 
@@ -652,25 +665,32 @@ note, so it is not the nullifier for the note the taker receives. A
 transaction-centric receipt replaces these scalars, with no scalar aliases, when
 Riddler serves it; it is written here then, not before.
 
-### 5.2 Non-custodial escrow envelope — RESERVED
+### 5.2 Non-custodial escrow envelope
 
-When non-custodial escrow ships (`ESCROW-RFC.md`), quote/execute/status
-responses carry an escrow-reference envelope: which escrow holds the taker's
-principal, what terms release it, and how a fill was proven. Reserving those
-fields **now** makes M6 a capability flip rather than a wire break.
-They are **additive, capability-flagged, and inert** at this SPEC version:
+On a corridor the venue advertises (§6 `escrow.corridors`), quote, execute and
+status responses carry an escrow-reference envelope: which escrow holds the
+taker's principal, what terms release it, and how the order stands.
 
 - **Absent by default.** A server MUST NOT emit any envelope field unless it
   advertises the escrow capability (§6). A client MUST treat their absence as
-  "escrow not active" (today's direct-pull settlement, §2.3), never as an error.
-- **Not signed.** No envelope field enters any signed struct at this version.
-  The §2.1 `XochiIntent` stays exactly 12 fields; the §2.3 escrow pull-auth
-  binding (pull `to`/`spender` = escrow, ERC-3009 nonce and witness = the v2 `orderId`) stays
-  **RESERVED** and is **NOT** activated here. Reserving the envelope changes no
-  digest: the conformance suite (§8.1) is unchanged.
+  "escrow not active" (direct-pull settlement, §2.3), never as an error.
+  `escrow: null` means the same.
+- **No new signed struct.** No envelope field enters the §2.1 `XochiIntent`,
+  which stays exactly 12 fields. On an escrow quote the pull the taker signs
+  (§2.3) is the escrow open: its `to`/`spender` is the escrow and its nonce /
+  witness is the v2 `orderId`. A client MUST run the §2.3 escrow binding before
+  signing it, and MUST refuse an escrow quote it cannot bind. The conformance
+  suite (§8.1) is unchanged.
+- **Self-submitted or relayed.** The depositor MAY call `openWith*` itself with
+  `open_auth` and its pull signature; or it sends the pull signature to
+  `/xochi/execute`, and the venue submits the open from its relayer.
+  `/xochi/execute` without a `pull_signature` answers the order's escrow status.
+- **Refund needs no one.** Principal leaves the lock only by `claim` against a
+  fill proof, before `refundableAt = fill_deadline + claimWindow`, or by
+  `refund`, which anyone MAY call from `refundableAt` on. `claimWindow` is the
+  escrow's (read it on chain, with the lock's own `refundableAt`).
 - **Forward-tolerant.** A client SHOULD ignore unknown envelope fields (the
-  canonical `OrderTerms`/`destCommitment` encoding is pinned in `ESCROW-RFC.md` §2; activated at
-  M6).
+  canonical `OrderTerms`/`destCommitment` encoding is pinned in `ESCROW-RFC.md` §2).
 
 #### 5.2.1 Envelope fields
 
@@ -680,13 +700,14 @@ All optional; snake_case on the wire; base-unit amounts are integer strings.
 |---|---|---|---|
 | `escrow.address` | `string` (address) | quote, execute, status | The `RiddlerEscrow` (origin chain) the venue says will hold / holds the principal. Informational: a client MUST compare the pull-auth `to`/`spender` and `order_terms.escrow` to its own caller-pinned escrow for the origin chain, never to this field (§2.3, `ESCROW-RFC.md` §7). |
 | `escrow.order_id` | `string` (`bytes32` hex) | quote, execute, status | `orderId = keccak256(abi.encode(ORDER_TYPEHASH, OrderTerms))` — the escrow key the ERC-3009 nonce and the Permit2 witness carry. Same value as the solver-side `Award.escrow.intentRef` (SOLVER-RFC §5.2). |
-| `escrow.fill_deadline` | `string` (uint seconds) | quote, execute | The fill boundary. `refund()` to the depositor becomes **permissionless** at `fill_deadline + claimWindow` (the escrow's claim window), not at `fill_deadline`. |
+| `escrow.fill_deadline` | `string` (uint seconds) | quote, execute, status | The fill boundary. `refund()` to the depositor becomes **permissionless** at `fill_deadline + claimWindow` (the escrow's claim window), not at `fill_deadline`. |
 | `escrow.order_terms` | `OrderTerms` (§5.2.2) | quote | The origin terms `order_id` hashes over. |
 | `escrow.dest_opening` | `DestOpening` (§5.2.2) | quote, status | The opening of `order_terms.dest_commitment`, so a client recomputes the commitment from its own recipient, token and minimum output (never trusting a quoted commitment) and keeps it as dispute evidence. |
 | `escrow.open_auth` | `{ expiry, signature }` | quote | The venue's EIP-712 `OpenAuth(bytes32 orderId,uint256 expiry)` on domain `RiddlerEscrow`/`1` (`ESCROW-RFC.md` §12), required by every `open*`. |
-| `escrow.proof_receipt` | `ProofReceipt` (§5.2.3) | status | How the fill was proven and at what tier; present once a fill is claimed. |
+| `escrow.slash` | `EscrowSlashStatus` | status | Present only on a refunded order a bonded panel solver won and never filled, once a slash is proposed on its `SolverBond`. Never on a direct award (§5.2.4): there is no bond. |
+| `escrow.proof_receipt` | `ProofReceipt` (§5.2.3) | status | Reserved, not served. How the fill was proven and at what tier. |
 
-#### 5.2.2 `OrderTerms` and `DestOpening` (reserved shapes)
+#### 5.2.2 `OrderTerms` and `DestOpening`
 
 `OrderTerms` holds the origin side only; the destination enters through
 `dest_commitment`:
@@ -714,8 +735,7 @@ All optional; snake_case on the wire; base-unit amounts are integer strings.
 The canonical encoding (keys, `destCommitment`, `orderId`) is pinned in
 [`ESCROW-RFC.md`](ESCROW-RFC.md) §2 (reference: `@xochi/signer`
 `computeDestCommitment`/`computeOrderId`; vectors `conformance/order-id.json`).
-It is still **RESERVED**: no signer derives a digest from it until escrow
-activates (§2.3, `ESCROW-RFC.md` §7).
+A client recomputes both before signing an escrow pull (§2.3, `ESCROW-RFC.md` §7).
 
 #### 5.2.3 `ProofReceipt` (reserved shape)
 
@@ -732,6 +752,53 @@ verifier strength for the corridor (`attested → optimistic → verified`;
 
 A `proof_receipt` is descriptive, not authoritative: the escrow contract is the
 source of truth for release. A client MUST NOT release-gate on it.
+
+#### 5.2.4 Canton: direct award to the configured solver (ADR-0018)
+
+The Canton corridor (Base USDC to Canton Coin, chain `253340876`) is served as
+an escrow quote under Riddler ADR-0018. Nothing on the taker wire differs from
+any other escrow quote: the envelope (§5.2.1) and the binding (§2.3) are the
+same.
+
+- **Award at quote time, no auction.** The venue awards the order when it
+  quotes, to one configured Riddler-run solver, at a price sealed into the
+  order. There is no panel auction, no quote-through bidding, no `SolverBond`,
+  no reserve fill and no FillAuth. Text elsewhere (`SOLVER-RFC.md` §2.5, §4.2)
+  that has a bonded panel solver bid on Canton is superseded for this
+  corridor.
+- **Float gate.** The solver delivers Canton Coin from a capped float. A quote
+  the float cannot cover is declined before any OpenAuth is issued, so nothing
+  can lock: `503 insufficient_liquidity`, `details.reason`
+  `solver_float_insufficient`, `solver_float_unverified` or `solver_halted`.
+  Each is transient and carries no `Retry-After`; retry on your own backoff.
+  Permanent refusals are `422 escrow_refused`, with `details.reason`:
+  - `above_solver_fill_cap`: the fill is above the solver's per-fill cap;
+  - `recipient_is_solver`: the recipient is the solver's own party;
+  - `canton_solver_requires_escrow`: non-public settlement, or a credential
+    that may only quote;
+  - `canton_destination_not_live`: the corridor is switched off.
+- **Delivery and claim.** The venue's tier-0 attester verifies the delivery on
+  Canton (`cantonUpdateId` on status) and signs the `FillAttestation` that
+  lets the solver `claim`. The status then reads `completed`.
+- **Refund.** With no attested delivery, the lock refunds at `refundableAt`
+  (`fill_deadline + claimWindow`), not at `fill_deadline`. Status reads
+  `refund_pending`, then `refunded`. Anyone MAY call `refund`.
+- **Token identity.** `to_token` and `dest_opening.to_token` are Canton Coin's
+  MainNet instrument id (§3.3). `recipient_address` and
+  `dest_opening.recipient` are the party id, byte for byte. Both key through
+  `ESCROW-RFC.md` §2.1's hashed path; `conformance/order-id.json`
+  `canton-mainnet-destination` is this route's `orderId` vector.
+- **Disclosure** (ADR-0018 decision 15):
+  - the venue's attester attests deliveries by a Riddler-affiliated solver;
+  - during the canary, that solver signs through a gateway it cannot verify,
+    and its float is capped at $50;
+  - the refund opens at `refundableAt`, not at `fill_deadline`;
+  - a no-show earns no slash compensation, because there is no bond;
+  - Riddler commits to make the taker whole off-chain if a claim is paid
+    without a delivery.
+- **[PROPOSED] A second Canton instrument** (cBTC, a registry instrument)
+  follows with its own `to_token` encoding, defined when it launches. Nothing
+  above assumes Canton Coin is the only one.
 
 ---
 
@@ -823,7 +890,9 @@ escrow address rather than `pull_recipients[chain].erc3009`/`permit2`.
 Every escrow address this document advertises (`chains[].escrow_address`,
 `pull_recipients[chain].escrow`) is discovery only, never a pin; the §2.3
 escrow binding applies.
-The TypeScript SDK does not run the escrow binding yet and refuses every
+`@xochi/signer` runs the binding in `assertEscrowQuoteMatchesRequest`, against
+the caller's `expectedEscrows`; `@xochi/client` against
+`MachineConfig.escrows`. Without a pin for the origin chain both refuse an
 escrow-bearing quote before signing.
 
 ---
@@ -1969,7 +2038,8 @@ configuration (a smaller deployment maximum, its own nodes) instead.
 
 Added as additive MINOR bumps behind capability flags:
 
-- **Escrow envelope:** §5.2, §6.
+- **Escrow envelope:** live behind the §6 capability (§5.2); `proof_receipt`
+  (§5.2.3) is still reserved.
 - **ZK-attestation fields**, **multi-solver fee attribution (§4).**
 
 ## Appendix C — Glossary
