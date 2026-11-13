@@ -23,13 +23,14 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   EXTENDED_CHAIN_NAMES,
+  isCantonDestinationChainId,
   isSelectableChainId,
   isTronChainId,
   type SelectableChainId,
 } from "@xochi/client";
 import { thinDestinationWarning, type ThinDestination } from "@xochi/client";
-import type { SolverCapabilities } from "@xochi/signer";
-import { capabilityVmType, type AddressableVmType } from "@xochi/client";
+import type { SolverCapabilities, VmType } from "@xochi/signer";
+import { capabilityVmType } from "@xochi/client";
 import { type Token, isChainId } from "../../types/intent.js";
 import { useCapabilities } from "../../hooks/useCapabilities.js";
 import type { PairAvailability } from "../../lib/pairAvailability.js";
@@ -49,6 +50,7 @@ import {
   policyAdmits,
   type EmbedPolicy,
 } from "./embedParams.js";
+import { CANTON_PUBLIC_ONLY_LINE } from "./canton.js";
 import {
   resolveRouteModel,
   type CapabilityState,
@@ -65,10 +67,7 @@ import {
 // construction. A chain none of them classifies resolves to null and is treated
 // as non-EVM: it can never take the EVM path (connected wallet as payout) by
 // default, and `validateDestinationAddress` / `refundAddressError` refuse it.
-export function legVmType(
-  capabilities: SolverCapabilities,
-  chainId: number,
-): AddressableVmType | null {
+export function legVmType(capabilities: SolverCapabilities, chainId: number): VmType | null {
   return isTronChainId(chainId)
     ? "tvm"
     : (capabilityVmType(capabilities, chainId) ?? (isChainId(chainId) ? "evm" : null));
@@ -754,17 +753,23 @@ export function useSwapRoute({
       symbol: toToken.symbol,
     }) &&
     legTokenAllowed(policy, "buy", zkMoneyToken, toChainId);
+  // Canton settles public only (SPEC.md §3.3): with it the destination, the
+  // Shielded rail is not offered either.
+  const cantonDestination = !zkMoneyDestination && isCantonDestinationChainId(toChainId);
   const zkMoneyOffered =
+    !cantonDestination &&
     routeModel.zkMoneyDestination !== null &&
     zkMoneyRoute?.status === "available" &&
     zkMoneyPolicyAllowed;
   const zkMoneyBlockedReason = zkMoneyOffered
     ? null
-    : routeModel.zkMoneyDestination === null
-      ? "zk.money is not advertised."
-      : zkMoneyRoute?.status !== "available"
-        ? (zkMoneyRoute?.reason ?? "zk.money route unavailable.")
-        : "This site doesn't offer zk.money for this route.";
+    : cantonDestination
+      ? CANTON_PUBLIC_ONLY_LINE
+      : routeModel.zkMoneyDestination === null
+        ? "zk.money is not advertised."
+        : zkMoneyRoute?.status !== "available"
+          ? (zkMoneyRoute?.reason ?? "zk.money route unavailable.")
+          : "This site doesn't offer zk.money for this route.";
 
   const selectZkMoneyDestination = (): void => {
     if (!zkMoneyOffered || zkMoneyToken === null || !isSelectableToken(zkMoneyToken)) return;

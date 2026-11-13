@@ -83,6 +83,8 @@
  */
 
 import {
+  CANTON_MAINNET_CHAIN_ID,
+  isCantonDestinationChainId,
   isSelectableChainId,
   EXTENDED_CHAIN_NAMES,
   originTokenSymbols,
@@ -334,17 +336,22 @@ export function embedOffer(
   };
 }
 
-/** Catalog continuity for explicit Stealth display, never route authorization. */
+/**
+ * Catalog continuity for explicit Stealth display, never route authorization.
+ * Canton settles public only, so it is never part of a Stealth catalog.
+ */
 function stealthDisplayOffer(full: EmbedOffer): EmbedOffer {
   const inventory = (role: "origin" | "destination") => {
     const advertised =
       role === "origin" ? full.routeModel.originTokens : full.routeModel.destinationTokens;
     const tokensByChain = new Map(advertised);
+    tokensByChain.delete(CANTON_MAINNET_CHAIN_ID);
     for (const tokens of Object.values(TOKENS)) {
       const chainId = tokens[0]?.chainId;
       if (
         chainId === undefined ||
         !isSelectableChainId(chainId) ||
+        isCantonDestinationChainId(chainId) ||
         !chainEnabledForRole(chainId, role)
       )
         continue;

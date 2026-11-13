@@ -26,6 +26,7 @@ import {
   LOADING_STATES,
   POLL_INFLIGHT_STATES,
   type Context,
+  type EscrowStatusData,
   type Effect,
   type Model,
   type MsgBody,
@@ -41,7 +42,8 @@ import { reportError } from "../lib/errorReport.js";
 import { prepareTypedDataForSigning } from "../lib/eip712.js";
 import { hostBridge } from "../lib/hostBridge.js";
 import { tradeEvents } from "../lib/tradeLifecycle.js";
-import { SOLVER_PIN, PULL_RECIPIENTS, DEPOSIT_ATTESTATION_PIN } from "../config.js";
+import { SOLVER_PIN, PULL_RECIPIENTS, DEPOSIT_ATTESTATION_PIN, ESCROW_PINS } from "../config.js";
+import { CANTON_DESTINATION_LIVE } from "../pages/trade/config.js";
 import { usePermit } from "./usePermit.js";
 import { useTierInfo } from "./useTierInfo.js";
 import { useWalletSession } from "./useWalletSession.js";
@@ -145,6 +147,12 @@ export interface UseIntentReturn {
    * Null before any status read of this intent: there is no verdict yet.
    */
   legsWithheld: boolean | null;
+  /**
+   * The latest status poll's escrow fields (`IntentState.escrow`), on an
+   * escrow order; null elsewhere. A Canton order's progress is read off these
+   * and the lock, never off `status` alone.
+   */
+  escrow: EscrowStatusData | null;
 
   /** What the user is told about this trade: `view(model)`. */
   receipt: Receipt;
@@ -541,6 +549,8 @@ export function useIntent(params: UseIntentParams): UseIntentReturn {
           solverPin: SOLVER_PIN,
           pullRecipients: PULL_RECIPIENTS,
           depositAttestationSigner: DEPOSIT_ATTESTATION_PIN.signer || null,
+          // Off, no escrow quote can bind: every one is refused at ingest.
+          ...(CANTON_DESTINATION_LIVE && ESCROW_PINS ? { escrows: ESCROW_PINS } : {}),
         },
         ctx,
         document.hidden,
@@ -731,6 +741,7 @@ export function useIntent(params: UseIntentParams): UseIntentReturn {
     attestedDeposit: state.attestedDeposit,
     pollExhausted: state.pollExhausted,
     legsWithheld: state.legsWithheld,
+    escrow: state.escrow,
     receipt,
 
     // Derived state

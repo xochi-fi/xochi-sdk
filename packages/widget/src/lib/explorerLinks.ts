@@ -8,7 +8,7 @@
  * cross (the fill hash must not point at the source explorer, and vice versa).
  */
 
-import { getExplorerTxUrl, isSelectableChainId } from "@xochi/client";
+import { getExplorerTxUrl, isCantonDestinationChainId, isSelectableChainId } from "@xochi/client";
 import type { SelectableChainId } from "../types/intent.js";
 
 /**
@@ -59,6 +59,11 @@ export interface SwapExplorerLinkInput {
   settlementChainId?: SelectableChainId | null;
   /** True for a refunded order: the settlement tx is on `fromChainId`. */
   isRefunded?: boolean;
+  /**
+   * A Canton destination's attested update id (`escrow.cantonUpdateId`). Canton
+   * has no transaction hash, so its destination link is this update on ccview.
+   */
+  cantonUpdateId?: string | null;
 }
 
 export interface SwapExplorerLinks {
@@ -73,6 +78,17 @@ export interface SwapExplorerLinks {
 }
 
 export function swapExplorerLinks(input: SwapExplorerLinkInput): SwapExplorerLinks {
+  // Canton: the origin hash is the Base escrow leg, and the destination is the
+  // attested Canton update, or nothing until Riddler attests one. No EVM-shaped
+  // hash is ever linked as a Canton delivery.
+  if (isCantonDestinationChainId(input.toChainId)) {
+    return {
+      source: input.txHash ? getExplorerTxUrl(input.fromChainId, input.txHash) : null,
+      destination: input.cantonUpdateId
+        ? getExplorerTxUrl(input.toChainId, input.cantonUpdateId)
+        : null,
+    };
+  }
   // Riddler #632 authoritative path: the fill receipt is on an explicit chain, so
   // link it directly -- no inference. Skipped for refunds (a refund is not a
   // settlement; its tx is on the origin chain, handled by the legacy branch) and

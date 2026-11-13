@@ -14,6 +14,7 @@
 
 import type { SettlementType } from "../../types/index.js";
 import type { SettlementFix } from "../../lib/settlementAvailability.js";
+import { CANTON_PUBLIC_ONLY_LINE } from "./canton.js";
 
 /**
  * The one description of each mode: the line under its button. Nothing else in
@@ -47,6 +48,7 @@ export const SETTLEMENT_FIX_LINE: Record<SettlementFix, string> = {
   unavailable: "Unavailable",
   route_loading: "Loading routes",
   route_unavailable: "Route data unavailable",
+  public_only: CANTON_PUBLIC_ONLY_LINE,
 };
 
 /**

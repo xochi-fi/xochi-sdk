@@ -1,4 +1,4 @@
-import { SUPPORTED_CHAIN_IDS, type PinnedPullRecipients } from "@xochi/client";
+import { SUPPORTED_CHAIN_IDS, type PinnedEscrows, type PinnedPullRecipients } from "@xochi/client";
 
 /** Deployment settings only. Trading policy and security checks remain in the public packages. */
 export interface WidgetSettings {
@@ -25,6 +25,13 @@ export interface WidgetSettings {
     requirePin: boolean;
   };
   depositAttestationSigner: string;
+  /**
+   * The deploy's `RiddlerEscrow` per origin chain, from a deployment manifest
+   * the operator reviewed (Base MainNet: `{ 8453: "0x4438...feCb" }`), never
+   * from API capabilities or a quote. Only escrow quotes bind to it, and only
+   * while `CANTON_DESTINATION_LIVE` is on; absent, every escrow quote is refused.
+   */
+  escrows?: PinnedEscrows;
 }
 
 export let API_URL = "https://api.xochi.fi";
@@ -45,6 +52,7 @@ export let SOLVER_PIN: {
 } = { erc3009Allowlist: [], permit2Allowlist: [], requirePin: false };
 export let PULL_RECIPIENTS: PinnedPullRecipients | undefined;
 export let DEPOSIT_ATTESTATION_PIN = { signer: "" };
+export let ESCROW_PINS: PinnedEscrows | undefined;
 
 let configured = false;
 
@@ -87,6 +95,14 @@ export function configureWidget(settings: WidgetSettings): void {
   DEPOSIT_ATTESTATION_PIN = Object.freeze({
     signer: settings.depositAttestationSigner.trim().toLowerCase(),
   });
+  ESCROW_PINS =
+    settings.escrows === undefined
+      ? undefined
+      : Object.freeze(
+          Object.fromEntries(
+            Object.entries(settings.escrows).map(([chainId, escrow]) => [chainId, escrow.trim()]),
+          ),
+        );
   configured = true;
 }
 

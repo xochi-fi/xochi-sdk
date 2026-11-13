@@ -38,7 +38,11 @@
  * partially-attested screen, which is the failure mode this module removes.
  */
 
-import { getTokenInfoForChain, isSelectableChainId } from "@xochi/client";
+import {
+  getTokenInfoForChain,
+  isCantonDestinationChainId,
+  isSelectableChainId,
+} from "@xochi/client";
 import type { SelectableChainId } from "@xochi/client";
 import { formatTokenAmount } from "../../utils/format.js";
 import type { DepositAttestationFields } from "@xochi/client";
@@ -88,6 +92,10 @@ export function buildDepositScreen(
   if (!attested?.deposit_address) return null;
   if (!isSelectableChainId(attested.from_chain_id)) return null;
   if (!isSelectableChainId(attested.to_chain_id)) return null;
+  // Canton is reached only through the escrow pull route, never a deposit
+  // route, so a binding naming it on either leg is refused, flag or no flag.
+  if (isCantonDestinationChainId(attested.from_chain_id)) return null;
+  if (isCantonDestinationChainId(attested.to_chain_id)) return null;
 
   const fromChainId = attested.from_chain_id;
   const toChainId = attested.to_chain_id;

@@ -22,6 +22,7 @@ import {
 const CANTON_CHAIN_ID = 253340876;
 const TRON_USDC = "TEkxiTehnzSmSe2XqrBj4w32RUN966rdz8";
 const EVM_ADDRESS = "0x1111111111111111111111111111111111111111";
+const PARTY = "user_5ABd4A02::1220e610231e7aef0de077733b3afb8a413f6784c8f2bb5c6607d311d3ddad2c3f4d";
 
 function served(body: Record<string, unknown>): SolverCapabilities {
   const caps = parseCapabilities(body);
@@ -55,10 +56,23 @@ describe("capabilityVmType", () => {
     expect(capabilityVmType(MATRIX, TRON_CHAIN_ID)).toBe("tvm");
   });
 
-  it("refuses Canton, an unrecognised VM and an unadvertised chain", () => {
-    expect(capabilityVmType(MATRIX, CANTON_CHAIN_ID)).toBeNull();
+  it("reads Canton as cvm, and refuses an unrecognised VM and an unadvertised chain", () => {
+    expect(capabilityVmType(MATRIX, CANTON_CHAIN_ID)).toBe("cvm");
     expect(capabilityVmType(MATRIX, 42161)).toBeNull();
     expect(capabilityVmType(MATRIX, 10)).toBeNull();
+  });
+
+  it("refuses cvm on any chain but Canton, and Canton in any VM but cvm", () => {
+    const swapped = served({
+      chains: [
+        { chain_id: 8453, chain_name: "Base", vm_type: "cvm" },
+        { chain_id: CANTON_CHAIN_ID, chain_name: "Canton", vm_type: "evm" },
+        { chain_id: 31337, chain_name: "Canton facade", vm_type: "cvm" },
+      ],
+    });
+    expect(capabilityVmType(swapped, 8453)).toBeNull();
+    expect(capabilityVmType(swapped, CANTON_CHAIN_ID)).toBeNull();
+    expect(capabilityVmType(swapped, 31337)).toBeNull();
   });
 });
 
@@ -66,7 +80,7 @@ describe("renderableDestinationChainIds", () => {
   it("narrows the static list to offered chains, in the static order", () => {
     expect(
       renderableDestinationChainIds(MATRIX, [1, 42161, TRON_CHAIN_ID, 10, 8453, CANTON_CHAIN_ID]),
-    ).toEqual([1, TRON_CHAIN_ID, 8453]);
+    ).toEqual([1, TRON_CHAIN_ID, 8453, CANTON_CHAIN_ID]);
   });
 });
 
@@ -106,10 +120,12 @@ describe("address validation by the matrix's VM", () => {
     expect(validateDestinationAddress(TRON_USDC, TRON_CHAIN_ID, MATRIX).valid).toBe(true);
     expect(validateDestinationAddress(EVM_ADDRESS, TRON_CHAIN_ID, MATRIX).valid).toBe(false);
     expect(validateDestinationAddress(EVM_ADDRESS, 8453, MATRIX).valid).toBe(true);
+    expect(validateDestinationAddress(PARTY, CANTON_CHAIN_ID, MATRIX).valid).toBe(true);
+    expect(validateDestinationAddress(EVM_ADDRESS, CANTON_CHAIN_ID, MATRIX).valid).toBe(false);
   });
 
-  it("refuses a destination the matrix does not offer in a VM this widget handles", () => {
-    for (const chainId of [CANTON_CHAIN_ID, 42161, 10]) {
+  it("refuses a destination the matrix does not offer in a VM this client handles", () => {
+    for (const chainId of [42161, 10]) {
       expect(validateDestinationAddress(EVM_ADDRESS, chainId, MATRIX)).toEqual({
         valid: false,
         error: "This destination chain is not currently supported",

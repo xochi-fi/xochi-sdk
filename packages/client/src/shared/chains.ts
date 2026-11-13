@@ -109,11 +109,12 @@ export type AztecChainId = 0;
 
 /**
  * Extended chain ID: every UI-renderable chain beyond the core EVM `ChainId`.
- * Includes the Aztec virtual source chain (0) and non-EVM destinations (Tron).
- * Used for `Token.chainId` and the display maps (`EXTENDED_CHAIN_NAMES`,
- * `CHAIN_ICONS`). EVM-only code (viem/wagmi/RPC) must never receive these.
+ * Includes the Aztec virtual source chain (0) and non-EVM destinations (Tron,
+ * Canton). Used for `Token.chainId` and the display maps
+ * (`EXTENDED_CHAIN_NAMES`, `CHAIN_ICONS`). EVM-only code (viem/wagmi/RPC) must
+ * never receive these.
  */
-export type ExtendedChainId = ChainId | AztecChainId | TronChainId;
+export type ExtendedChainId = ChainId | AztecChainId | TronChainId | CantonChainId;
 
 /**
  * Tron mainnet chain id. Tron is non-EVM (base58 addresses, TronWeb signing,
@@ -129,42 +130,46 @@ export const TRON_CHAIN_NAME = "Tron";
 export const TRON_SHORT_NAME = "TRON";
 
 /**
- * Chains a user can pick in the trade UI: every EVM chain plus Tron. Components
- * that only do chain *selection* (selectors, route display) accept this wider
- * union; anything that touches an EVM RPC stays on `ChainId`.
+ * Canton MainNet (`CANTON_MAINNET_CHAIN_ID`, SPEC.md §3.3): a destination only,
+ * reached through escrow (`escrow.ts`), never through a gateway facade's id
+ * (31337, 30337; `@xochi/signer` `assertCantonDestination`). Non-EVM (a party
+ * recipient, an instrument id for a token, no transaction hash), so it is kept
+ * out of `ChainId` like Tron. Never an origin: `validateSwapParams` refuses it
+ * as a source and `resolveRouteModel` never lists it as one.
  */
-export type SelectableChainId = ChainId | TronChainId;
+export type CantonChainId = typeof CANTON_MAINNET_CHAIN_ID;
+
+/** Canton display names (Canton is outside CHAIN_REGISTRY, being non-EVM). */
+export const CANTON_CHAIN_NAME = "Canton";
+export const CANTON_SHORT_NAME = "CANTON";
+
+/**
+ * Chains a user can pick in the trade UI: every EVM chain plus Tron and
+ * Canton. Components that only do chain *selection* (selectors, route display)
+ * accept this wider union; anything that touches an EVM RPC stays on `ChainId`.
+ * A UI that offers Canton gates it itself (`RouteModelOptions.chainEnabledForRole`).
+ */
+export type SelectableChainId = ChainId | TronChainId | CantonChainId;
 
 /** Type guard for the Tron mainnet chain id. */
 export function isTronChainId(value: unknown): value is TronChainId {
   return value === TRON_CHAIN_ID;
 }
 
-/**
- * Type guard for any chain the UI can render a link/name for (every EVM `ChainId`
- * plus Tron). Guards raw `settlementChainId` values from Riddler -- which adds
- * chains on its own cadence -- so an unknown id falls back to inference instead of
- * producing a dead `href=""` or a `View undefined tx` label.
- */
-export function isSelectableChainId(value: unknown): value is SelectableChainId {
-  return isChainId(value) || isTronChainId(value);
-}
-
-/**
- * Canton MainNet (`CANTON_MAINNET_CHAIN_ID`, SPEC.md §3.3): a destination only,
- * reached through escrow (`escrow.ts`), never through a gateway facade's id
- * (31337, 30337; `@xochi/signer` `assertCantonDestination`). Kept out of
- * `SelectableChainId` until the widget offers it (xochi-sdk#116).
- */
-export type CantonChainId = typeof CANTON_MAINNET_CHAIN_ID;
-
 /** Type guard for the Canton MainNet chain id. */
 export function isCantonDestinationChainId(value: unknown): value is CantonChainId {
   return value === CANTON_MAINNET_CHAIN_ID;
 }
 
-/** A chain a quote may deliver to: anything selectable, plus Canton. */
-export type DestinationChainId = SelectableChainId | CantonChainId;
+/**
+ * Type guard for any chain the UI can render a link/name for (every EVM `ChainId`
+ * plus Tron and Canton). Guards raw `settlementChainId` values from Riddler --
+ * which adds chains on its own cadence -- so an unknown id falls back to
+ * inference instead of producing a dead `href=""` or a `View undefined tx` label.
+ */
+export function isSelectableChainId(value: unknown): value is SelectableChainId {
+  return isChainId(value) || isTronChainId(value) || isCantonDestinationChainId(value);
+}
 
 /**
  * Robinhood Chain (4663): an Arbitrum Orbit L2 whose native stablecoin is USDG
@@ -237,13 +242,14 @@ export const CHAIN_NAMES: Record<ChainId, string> = byChainId((chain) => chain.n
 
 /**
  * Short chain names for compact display. Keyed by `SelectableChainId` so the
- * non-EVM Tron destination (base58) has a short name too -- the tx-link/name
+ * non-EVM destinations (Tron, Canton) have a short name too -- the tx-link/name
  * helpers in the trade result surfaces index this with a destination chain id
- * that can be Tron.
+ * that can be either.
  */
 export const CHAIN_SHORT_NAMES: Record<SelectableChainId, string> = {
   ...byChainId((chain) => chain.shortName),
   [TRON_CHAIN_ID]: TRON_SHORT_NAME,
+  [CANTON_MAINNET_CHAIN_ID]: CANTON_SHORT_NAME,
 };
 
 /**
@@ -270,19 +276,35 @@ export const CHAIN_NATIVE_CURRENCY: Record<ChainId, string> = byChainId(
 export const TRON_EXPLORER = "https://tronscan.org";
 
 /**
+ * Canton has no transaction hash: a delivery is a ledger update, named by its
+ * update id (`cantonUpdateId` on status, SPEC.md §3.4), which ccview renders at
+ * `/updates/<id>`. The id is opaque and case-sensitive, so it is linked
+ * verbatim (only URL-escaped), never case-folded or trimmed.
+ */
+export const CANTON_EXPLORER = "https://ccview.io";
+
+/**
  * Build a transaction URL on the given chain's explorer (empty if unknown).
- * Accepts a `SelectableChainId` so a Tron destination fill can be linked; Tron
- * routes to tronscan's hash-route form.
+ * Accepts a `SelectableChainId` so a non-EVM destination can be linked: Tron
+ * routes to tronscan's hash-route form, and Canton takes an update id (there is
+ * no Canton transaction hash) and routes to ccview's update page.
  */
 export function getExplorerTxUrl(chainId: SelectableChainId, txHash: string): string {
   if (isTronChainId(chainId)) return `${TRON_EXPLORER}/#/transaction/${txHash}`;
+  if (isCantonDestinationChainId(chainId)) {
+    return txHash ? `${CANTON_EXPLORER}/updates/${encodeURIComponent(txHash)}` : "";
+  }
   const base = CHAIN_EXPLORERS[chainId];
   return base ? `${base}/tx/${txHash}` : "";
 }
 
-/** Build an address URL on the given chain's explorer (empty if unknown). */
+/**
+ * Build an address URL on the given chain's explorer (empty if unknown). A
+ * Canton party has no explorer page this client links, so Canton is empty.
+ */
 export function getExplorerAddressUrl(chainId: SelectableChainId, address: string): string {
   if (isTronChainId(chainId)) return `${TRON_EXPLORER}/#/address/${address}`;
+  if (isCantonDestinationChainId(chainId)) return "";
   const base = CHAIN_EXPLORERS[chainId];
   return base ? `${base}/address/${address}` : "";
 }
@@ -296,6 +318,7 @@ export const EXTENDED_CHAIN_NAMES: Record<ExtendedChainId, string> = {
   ...CHAIN_NAMES,
   0: "Xochi",
   [TRON_CHAIN_ID]: TRON_CHAIN_NAME,
+  [CANTON_MAINNET_CHAIN_ID]: CANTON_CHAIN_NAME,
 };
 
 /** Supported chain IDs as array */
@@ -326,11 +349,14 @@ export function isSettleableChainId(value: unknown): value is SettleableChainId 
   return typeof value === "number" && SETTLEABLE_CHAIN_IDS.includes(value as SettleableChainId);
 }
 
-/** Type guard for ExtendedChainId (EVM chains + Aztec source + Tron destination). */
+/** Type guard for ExtendedChainId (EVM chains + Aztec source + Tron and Canton destinations). */
 export function isExtendedChainId(value: unknown): value is ExtendedChainId {
   return (
     typeof value === "number" &&
-    (value === 0 || value === TRON_CHAIN_ID || SUPPORTED_CHAIN_IDS.includes(value as ChainId))
+    (value === 0 ||
+      value === TRON_CHAIN_ID ||
+      value === CANTON_MAINNET_CHAIN_ID ||
+      SUPPORTED_CHAIN_IDS.includes(value as ChainId))
   );
 }
 

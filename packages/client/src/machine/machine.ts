@@ -22,7 +22,6 @@
 
 import type {
   ChainId,
-  DestinationChainId,
   Eip712TypedData,
   IntentStatus,
   SelectableChainId,
@@ -154,7 +153,7 @@ export interface WalletContext {
 export interface Context {
   /** Origin can be non-EVM (a Tron deposit route); destination too. */
   fromChainId: SelectableChainId;
-  toChainId: DestinationChainId;
+  toChainId: SelectableChainId;
   fromToken: string;
   toToken: string;
   settlementPreference: SettlementType;
@@ -2185,6 +2184,27 @@ function onStatus(
     const legsWithheld = s.legsWithheld === true;
     if (next.intent.intentId === id && next.intent.legsWithheld !== legsWithheld) {
       next = patch(next, { legsWithheld });
+    }
+    // An escrow order's own fields (`escrowProgress` reads them). A poll that
+    // omits them leaves the last ones, and an attested `cantonUpdateId` is kept
+    // once seen: a later read without it (a stored-row answer) is not a
+    // withdrawal of the attestation.
+    if (s.escrow !== undefined && next.intent.intentId === id) {
+      const prev = next.intent.escrow;
+      const escrow = {
+        ...s.escrow,
+        cantonUpdateId: s.escrow.cantonUpdateId ?? prev?.cantonUpdateId ?? null,
+      };
+      if (
+        prev === null ||
+        prev.address !== escrow.address ||
+        prev.orderId !== escrow.orderId ||
+        prev.fillDeadline !== escrow.fillDeadline ||
+        prev.wireStatus !== escrow.wireStatus ||
+        prev.cantonUpdateId !== escrow.cantonUpdateId
+      ) {
+        next = patch(next, { escrow });
+      }
     }
     // The server owns the active-polling decision; a phase change refills the
     // give-up budget, so the ceiling bounds a swap that is not moving. A

@@ -8,7 +8,7 @@
  */
 
 import { assertCantonDestination } from "@xochi/signer";
-import type { DestinationChainId, SelectableChainId } from "../shared/index.js";
+import type { SelectableChainId } from "../shared/index.js";
 import {
   isCantonDestinationChainId,
   isChainId,
@@ -107,7 +107,8 @@ const validateWallet = (wallet: string | undefined): string[] =>
       ? [`Wallet: ${errorOf(validateAddress(wallet))}`]
       : [];
 
-// Origin may be a non-EVM chain (Tron deposit route) as well as EVM.
+// Origin may be a non-EVM chain (Tron deposit route) as well as EVM; never
+// Canton, which is destination-only (SPEC.md §3.3).
 const validateFromChain = (chainId: SelectableChainId | undefined): string[] =>
   chainId === undefined
     ? ["Source chain is required"]
@@ -116,7 +117,7 @@ const validateFromChain = (chainId: SelectableChainId | undefined): string[] =>
       : [];
 
 // Destination may be non-EVM: Tron, or Canton (an escrow route; SPEC.md §3.3).
-const validateToChain = (chainId: DestinationChainId | undefined): string[] =>
+const validateToChain = (chainId: SelectableChainId | undefined): string[] =>
   chainId === undefined
     ? ["Destination chain is required"]
     : !isChainId(chainId) && !isTronChainId(chainId) && !isCantonDestinationChainId(chainId)
@@ -135,7 +136,7 @@ const validateFromToken = (token: string | undefined): string[] => {
 // instrument is held to its chain by `validateCantonDestination`.
 const validateToToken = (
   token: string | undefined,
-  chainId: DestinationChainId | undefined,
+  chainId: SelectableChainId | undefined,
 ): string[] => {
   if (!token) return ["Destination token is required"];
   if (isCantonDestinationChainId(chainId)) return [];

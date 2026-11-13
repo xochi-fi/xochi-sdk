@@ -4,6 +4,21 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+### Added
+
+- Quote and execute contracts on the Canton corridor: `recipient_address` accepts a Canton party (`cantonParty`, the signer's `isCantonPartyId`, verbatim); `QuoteResponseSchema` and `ExecuteResponseSchema` declare `escrow` (`EscrowEnvelopeSchema`: `address`, `order_id`, `fill_deadline` decimal string or integer, other envelope keys passed through; `null` = escrow off) and `refundable_at` (unix seconds). A malformed envelope now fails the body.
+- **Canton as a selectable destination** (#116). `SelectableChainId` and `ExtendedChainId` include Canton MainNet (`CantonChainId`, 253340876); it is never a valid source. `CHAIN_SHORT_NAMES` / `EXTENDED_CHAIN_NAMES` name it, `CANTON_COIN` (instrument id, 10 decimals) is its token metadata and `getTokenInfoForChain` resolves it verbatim. `getExplorerTxUrl(253340876, updateId)` links a Canton update id on ccview (`https://ccview.io/updates/<id>`); `getExplorerAddressUrl` has no Canton page and answers empty.
+- `IntentState.escrow`: the latest status poll's `EscrowStatusData`, kept across polls that omit it; an attested `cantonUpdateId` is never dropped once seen.
+
+### Changed
+
+- `capabilityVmType` reads Canton MainNet as `cvm` when the matrix serves it as `cvm` (any other pairing of `cvm` and Canton refuses). `resolveRouteModel` offers Canton only as a destination, only when `chainEnabledForRole(253340876, "destination")` answers true, with Canton Coin as its only token and `public` as its only privacy mode. A caller whose `chainEnabledForRole` answers true for unknown chains must answer false for Canton until it has a party-recipient input.
+- `QuoteRequest.toChainId`, `Context.toChainId` and `BuildQuoteRequestInput.toChainId` are `SelectableChainId`, which now includes Canton.
+
+### Removed
+
+- **BREAKING:** `DestinationChainId` (0.1.15); use `SelectableChainId`. `AddressableVmType`; use `VmType`.
+
 ## [0.1.15] - 2026-11-13
 
 Requires `@xochi/signer` `^0.9.0` (was `^0.8.0`): the escrow binding and Canton helpers below are new in signer 0.9.0.
