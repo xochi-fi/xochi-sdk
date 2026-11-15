@@ -4,8 +4,11 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+## [0.1.16] - 2026-11-15
+
 ### Added
 
+- Circle EURC (6 decimals, EUR-referenced) token metadata on Ethereum (`0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c`), Base (`0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42`) and Arc (`0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1`, listed after USDC), tagged EUR in `currencyOf`. Metadata only; the live capability routes still decide availability.
 - Quote and execute contracts on the Canton corridor: `recipient_address` accepts a Canton party (`cantonParty`, the signer's `isCantonPartyId`, verbatim); `QuoteResponseSchema` and `ExecuteResponseSchema` declare `escrow` (`EscrowEnvelopeSchema`: `address`, `order_id`, `fill_deadline` decimal string or integer, other envelope keys passed through; `null` = escrow off) and `refundable_at` (unix seconds). A malformed envelope now fails the body.
 - **Canton as a selectable destination** (#116). `SelectableChainId` and `ExtendedChainId` include Canton MainNet (`CantonChainId`, 253340876); it is never a valid source. `CHAIN_SHORT_NAMES` / `EXTENDED_CHAIN_NAMES` name it, `CANTON_COIN` (instrument id, 10 decimals) is its token metadata and `getTokenInfoForChain` resolves it verbatim. `getExplorerTxUrl(253340876, updateId)` links a Canton update id on ccview (`https://ccview.io/updates/<id>`); `getExplorerAddressUrl` has no Canton page and answers empty.
 - `IntentState.escrow`: the latest status poll's `EscrowStatusData`, kept across polls that omit it; an attested `cantonUpdateId` is never dropped once seen.

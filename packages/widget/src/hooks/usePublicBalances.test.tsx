@@ -17,6 +17,28 @@ import { apiStub, makeTestConfig, renderTrade, TEST_ACCOUNT } from "../pages/tra
 import { WAIT } from "../test/waitBudget.js";
 import { usePublicBalances } from "./usePublicBalances.js";
 
+/**
+ * The same hook configured with Arc on: settings are immutable per document,
+ * so this is a fresh module graph configured before the hook loads, as
+ * `config.runtime.test.ts` does.
+ */
+vi.resetModules();
+const arcConfig = await import("../config.js");
+arcConfig.configureWidget({
+  apiUrl: "https://api.example.test",
+  arcLive: true,
+  arcRpcUrl: "https://arc.example.test",
+  solverPin: { erc3009Allowlist: [], permit2Allowlist: [], requirePin: true },
+  depositAttestationSigner: "",
+});
+const arcLive = {
+  ARC_BROWSER_ENABLED: arcConfig.ARC_BROWSER_ENABLED,
+  usePublicBalances: (await import("./usePublicBalances.js")).usePublicBalances,
+};
+
+const ARC_USDC = "0x3600000000000000000000000000000000000000";
+const ARC_EURC = "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1";
+
 const clients: QueryClient[] = [];
 
 beforeEach(() => {
@@ -197,5 +219,70 @@ describe("public wallet balance consumers", () => {
     fireEvent.click(screen.getByRole("button", { name: "Toggle holdings detail" }));
     expect(screen.getByText("No balances")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("Arc wallet balances", () => {
+  function ArcReadout() {
+    const { readBalanceOf } = arcLive.usePublicBalances();
+    return (
+      <>
+        <output aria-label="Arc USDC">
+          {readBalanceOf(5042, ARC_USDC)?.toString() ?? "unknown"}
+        </output>
+        <output aria-label="Arc EURC">
+          {readBalanceOf(5042, ARC_EURC)?.toString() ?? "unknown"}
+        </output>
+      </>
+    );
+  }
+
+  // Every Arc ERC-20 goes through the token-agnostic worker endpoint, not just
+  // USDC; otherwise an Arc EURC holding reads as unknown ("--").
+  it("reads Arc USDC and EURC through the balance endpoint", async () => {
+    expect(arcLive.ARC_BROWSER_ENABLED).toBe(true);
+    vi.stubGlobal(
+      "fetch",
+      apiStub({
+        [`chain_id=5042&token=${ARC_USDC}`]: {
+          body: { success: true, available: true, balance: "2000000" },
+        },
+        [`chain_id=5042&token=${ARC_EURC}`]: {
+          body: { success: true, available: true, balance: "3500000" },
+        },
+      }),
+    );
+    const config = makeTestConfig(0n, false, [mainnet]);
+    await connect(config, { connector: config.connectors[0] });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: Infinity } },
+    });
+    clients.push(client);
+    // EURC on Arc as the live matrix advertises it, whether or not the
+    // client registry already lists it.
+    const template = FALLBACK_CAPABILITIES.tokens[0];
+    if (!template) throw new Error("Fallback capabilities list no tokens");
+    client.setQueryData(["capabilities"], {
+      caps: {
+        ...FALLBACK_CAPABILITIES,
+        tokens: [
+          ...FALLBACK_CAPABILITIES.tokens,
+          { ...template, symbol: "EURC", decimals: 6, addresses: { 5042: ARC_EURC } },
+        ],
+      },
+      source: "live",
+      features: TRUST_FEATURES_OFF,
+    });
+    render(
+      <WagmiProvider config={config}>
+        <QueryClientProvider client={client}>
+          <ArcReadout />
+        </QueryClientProvider>
+      </WagmiProvider>,
+    );
+    await waitFor(() => {
+      expect(screen.getByLabelText("Arc USDC").textContent).toBe("2000000");
+      expect(screen.getByLabelText("Arc EURC").textContent).toBe("3500000");
+    }, WAIT);
   });
 });

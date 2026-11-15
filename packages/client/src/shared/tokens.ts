@@ -103,6 +103,12 @@ export const TOKENS: Readonly<Record<ChainId, readonly TokenInfo[]>> = {
       name: "PayPal USD",
       decimals: 6,
     },
+    {
+      address: "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
+      symbol: "EURC",
+      name: "Euro Coin",
+      decimals: 6,
+    },
   ],
   10: [
     {
@@ -219,6 +225,12 @@ export const TOKENS: Readonly<Record<ChainId, readonly TokenInfo[]>> = {
       name: "Frankencoin",
       decimals: 18,
     },
+    {
+      address: "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42",
+      symbol: "EURC",
+      name: "EURC",
+      decimals: 6,
+    },
   ],
   4663: [
     {
@@ -245,6 +257,12 @@ export const TOKENS: Readonly<Record<ChainId, readonly TokenInfo[]>> = {
       address: "0x3600000000000000000000000000000000000000",
       symbol: "USDC",
       name: "USDC",
+      decimals: 6,
+    },
+    {
+      address: "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1",
+      symbol: "EURC",
+      name: "EURC",
       decimals: 6,
     },
   ],

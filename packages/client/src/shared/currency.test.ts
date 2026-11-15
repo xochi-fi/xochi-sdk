@@ -35,8 +35,9 @@ describe("currencyOf", () => {
     }
   });
 
-  it("tags EURe EUR and ZCHF CHF", () => {
+  it("tags EURe and EURC EUR and ZCHF CHF", () => {
     expect(currencyOf("EURe")).toBe("EUR");
+    expect(currencyOf("EURC")).toBe("EUR");
     expect(currencyOf("ZCHF")).toBe("CHF");
   });
 
@@ -49,6 +50,7 @@ describe("currencyOf", () => {
 
   it("compares symbols verbatim, like every other symbol lookup", () => {
     expect(currencyOf("EURE")).toBeNull();
+    expect(currencyOf("EURc")).toBeNull();
     expect(currencyOf("zchf")).toBeNull();
   });
 
@@ -59,8 +61,9 @@ describe("currencyOf", () => {
 
   // The FX tokens are worth their market/FX price, not $1. A currency tag must
   // never leak into the "worth a dollar" list.
-  it("keeps EURe and ZCHF out of STABLE_SYMBOLS", () => {
+  it("keeps EURe, EURC and ZCHF out of STABLE_SYMBOLS", () => {
     expect(STABLE_SYMBOLS).not.toContain("EURe");
+    expect(STABLE_SYMBOLS).not.toContain("EURC");
     expect(STABLE_SYMBOLS).not.toContain("ZCHF");
   });
 });
@@ -72,6 +75,7 @@ describe("sameCurrency", () => {
     expect(sameCurrency("USDC", "DAI")).toBe(true);
     expect(sameCurrency("DAI", "DAI")).toBe(true);
     expect(sameCurrency("EURe", "EURe")).toBe(true);
+    expect(sameCurrency("EURe", "EURC")).toBe(true);
     expect(sameCurrency("ZCHF", "ZCHF")).toBe(true);
   });
 
@@ -79,6 +83,8 @@ describe("sameCurrency", () => {
     expect(sameCurrency("USDC", "EURe")).toBe(false);
     expect(sameCurrency("USDC", "ZCHF")).toBe(false);
     expect(sameCurrency("EURe", "ZCHF")).toBe(false);
+    expect(sameCurrency("USDC", "EURC")).toBe(false);
+    expect(sameCurrency("EURC", "ZCHF")).toBe(false);
   });
 
   // Riddler's same_currency?/2: an unreferenced asset shares no unit with

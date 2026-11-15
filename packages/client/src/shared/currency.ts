@@ -21,10 +21,12 @@ export type FiatCurrency = "USD" | "EUR" | "CHF";
 
 /**
  * Non-USD fiat tokens, by symbol as spelled. Case-sensitive like every other
- * symbol comparison here. EURe is Monerium EUR e-money; ZCHF is Frankencoin.
+ * symbol comparison here. EURe is Monerium EUR e-money; EURC is Circle's EUR
+ * e-money; ZCHF is Frankencoin.
  */
 const NON_USD_CURRENCY: Readonly<Record<string, FiatCurrency>> = {
   EURe: "EUR",
+  EURC: "EUR",
   ZCHF: "CHF",
 };
 

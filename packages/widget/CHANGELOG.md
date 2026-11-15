@@ -13,6 +13,7 @@
 
 ### Fixed
 
+- Read every Arc ERC-20 wallet balance (Circle EURC as well as USDC, and any token the live matrix advertises on Arc) through the balance endpoint, so an Arc EURC holding no longer shows as unknown.
 - Preserve Tron USDT tag/refund retry prefills without allocating or signing on
   mount. Keep the accepted tag through funding, history refresh and recovery;
   stored deposit facts still require the independently pinned attestation.
