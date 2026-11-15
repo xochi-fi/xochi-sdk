@@ -4,6 +4,8 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+## [0.1.16] - 2026-11-15
+
 ### Added
 
 - Circle EURC (6 decimals, EUR-referenced) token metadata on Ethereum (`0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c`), Base (`0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42`) and Arc (`0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1`, listed after USDC), tagged EUR in `currencyOf`. Metadata only; the live capability routes still decide availability.
