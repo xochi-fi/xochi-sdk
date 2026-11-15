@@ -78,6 +78,31 @@ describe("public token registry", () => {
     });
   });
 
+  // Circle EURC: 6 decimals everywhere. Names follow on-chain name(), which
+  // differs on Ethereum ("Euro Coin") from Base and Arc ("EURC").
+  it.each([
+    [1, "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c", "Euro Coin"],
+    [8453, "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42", "EURC"],
+    [5042, "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1", "EURC"],
+  ] as const)("pins EURC metadata on chain %s", (chainId, address, name) => {
+    expect(findTokenBySymbol(chainId, "EURC")).toEqual({
+      address,
+      symbol: "EURC",
+      name,
+      decimals: 6,
+    });
+    expect(getTokenInfoForChain(address.toLowerCase(), chainId)).toEqual({
+      symbol: "EURC",
+      decimals: 6,
+    });
+  });
+
+  // Consumers read Arc USDC as the first Arc row (gas and balance).
+  it("lists Arc USDC first, then EURC", () => {
+    expect(TOKENS[5042].map((token) => token.symbol)).toEqual(["USDC", "EURC"]);
+    expect(USDC_ADDRESSES[5042]).toBe("0x3600000000000000000000000000000000000000");
+  });
+
   it("derives address and decimal lookups from the registry", () => {
     for (const chainId of SUPPORTED_CHAIN_IDS) {
       for (const token of TOKENS[chainId]) {

@@ -81,6 +81,11 @@ describe("feeAssetClass", () => {
     expect(feeAssetClass("USDC", "EURe")).toBe("volatile");
     expect(feeAssetClass("EURe", "EURe")).toBe("stable");
     expect(feeAssetClass("ZCHF", "ZCHF")).toBe("stable");
+    expect(feeAssetClass("EURe", "EURC")).toBe("stable");
+    expect(feeAssetClass("EURC", "EURe")).toBe("stable");
+    expect(feeAssetClass("USDC", "EURC")).toBe("volatile");
+    expect(feeAssetClass("EURC", "PYUSD")).toBe("volatile");
+    expect(feeAssetClass("EURC", "ZCHF")).toBe("volatile");
   });
 
   it("keeps unreferenced assets volatile even against themselves", () => {
