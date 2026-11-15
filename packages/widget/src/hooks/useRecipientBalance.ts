@@ -53,34 +53,40 @@ async function fetchBalance(
 }
 
 /**
- * Balance of `address` in `token` on `chainId`. Disabled (and returns
- * unavailable) until all three are present, so a half-typed recipient never
- * fires a request.
+ * The `/api/balance` query for `address` in `token` on `chainId`. Shared by the
+ * recipient hint and the wallet's Arc reads, so one chain/token/address pair is
+ * one cache entry. Disabled until all three are present, so a half-typed
+ * recipient never fires a request.
  */
-export function useRecipientBalance(
+export function recipientBalanceQuery(
   chainId: number | undefined,
   token: string | undefined,
   address: string | undefined,
-): UseRecipientBalanceReturn {
-  const enabled = Boolean(chainId && token && address);
-
-  const {
-    data,
-    isLoading,
-    isError: queryFailed,
-    error: queryError,
-    refetch,
-  } = useQuery({
-    queryKey: ["recipient-balance", chainId, token, address],
+) {
+  return {
+    queryKey: ["recipient-balance", chainId, token, address] as const,
     queryFn: () => fetchBalance(chainId!, token!, address!),
-    enabled,
+    enabled: Boolean(chainId && token && address),
     staleTime: TIMEOUTS.balanceRefresh,
     // A hint is not worth hammering a provider for. One retry absorbs a blip;
     // beyond that the UI simply shows nothing.
     retry: 1,
     refetchOnWindowFocus: false,
-  });
+  };
+}
 
+/** Read a `recipientBalanceQuery` result as a balance, or unknown. */
+export function recipientBalanceResult(
+  query: {
+    data: BalanceResponse | undefined;
+    isLoading: boolean;
+    isError: boolean;
+    error: unknown;
+    refetch: () => Promise<unknown>;
+  },
+  enabled: boolean,
+): UseRecipientBalanceReturn {
+  const { data, isLoading, isError: queryFailed, error: queryError, refetch } = query;
   const retry = () => {
     void refetch();
   };
@@ -150,4 +156,14 @@ export function useRecipientBalance(
       refetch: retry,
     };
   }
+}
+
+/** Balance of `address` in `token` on `chainId` (see `recipientBalanceQuery`). */
+export function useRecipientBalance(
+  chainId: number | undefined,
+  token: string | undefined,
+  address: string | undefined,
+): UseRecipientBalanceReturn {
+  const options = recipientBalanceQuery(chainId, token, address);
+  return recipientBalanceResult(useQuery(options), options.enabled);
 }
