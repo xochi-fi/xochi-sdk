@@ -1,6 +1,10 @@
 import { atomic, type RampIntent } from "@xochi/client";
 import { getContracts, type PreparedTransaction } from "@zkp2p/sdk";
 import {
+  createPublicClient,
+  http,
+  fallback,
+  type Transport,
   decodeEventLog,
   decodeFunctionData,
   erc20Abi,
@@ -11,7 +15,7 @@ import {
 } from "viem";
 import { z } from "zod";
 import { digest } from "./normalization.js";
-import { peerConfiguration } from "./discovery.js";
+import { boundedPeerRead, checkPeerAbort, peerConfiguration } from "./discovery.js";
 import type {
   MakerDepositFacts,
   MakerReadiness,
@@ -35,13 +39,43 @@ export interface MakerChainReceipt {
   transactionHash: Hex;
   logs: readonly { address: string; topics: readonly Hex[]; data: Hex }[];
 }
-export type MakerPublicClient = Pick<
-  PublicClient,
-  "getChainId" | "getBlockNumber" | "readContract" | "call"
-> & {
-  getTransaction(input: { hash: Hex }): Promise<MakerChainTransaction>;
-  getTransactionReceipt(input: { hash: Hex }): Promise<MakerChainReceipt>;
-};
+interface MakerRPCTransport {
+  type?: string;
+  url?: string;
+  fetchOptions?: RequestInit;
+  transports?: readonly { config: { type: string }; value?: MakerRPCTransport }[];
+}
+function abortableTransport(source: MakerRPCTransport | undefined, signal: AbortSignal): Transport {
+  if (source?.type === "http" && source.url)
+    return http(source.url, { fetchOptions: { ...source.fetchOptions, signal }, retryCount: 0 });
+  if (source?.type === "fallback" && source.transports?.length)
+    return fallback(
+      source.transports.map((entry) =>
+        abortableTransport({ ...entry.value, type: entry.config.type }, signal),
+      ),
+      { retryCount: 0 },
+    );
+  return broken();
+}
+export type MakerPublicClient = {
+  /** Custom transports must bind cancellation to their underlying requests. */
+  withSignal?(signal: AbortSignal): MakerPublicClient;
+  transport?: MakerRPCTransport;
+} & Pick<PublicClient, "getChainId" | "getBlockNumber" | "readContract" | "call"> & {
+    getTransaction(input: { hash: Hex }): Promise<MakerChainTransaction>;
+    getTransactionReceipt(input: { hash: Hex }): Promise<MakerChainReceipt>;
+  };
+/** Bind a read/simulation to an independent transport scope. */
+export function makerClientWithSignal(
+  source: MakerPublicClient,
+  signal?: AbortSignal,
+): MakerPublicClient {
+  checkPeerAbort(signal);
+  return signal
+    ? (source.withSignal?.(signal) ??
+        createPublicClient({ transport: abortableTransport(source.transport, signal) }))
+    : source;
+}
 const uint = z
   .string()
   .max(78)
@@ -94,17 +128,25 @@ export function createMakerIndexer(options: {
       : "https://indexer.zkp2p.xyz/v1/graphql";
   let blockedUntil = 0;
   const now = options.now ?? Date.now;
-  return async (query: string, variables: Record<string, string>): Promise<unknown> => {
+  return async (
+    query: string,
+    variables: Record<string, string>,
+    signal?: AbortSignal,
+  ): Promise<unknown> => {
+    checkPeerAbort(signal);
     if (now() < blockedUntil) broken();
     try {
       const response = await (options.fetch ?? fetch)(endpoint, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ query, variables }),
-        signal: AbortSignal.timeout(10_000),
+        signal: signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(10_000)])
+          : AbortSignal.timeout(10_000),
         credentials: "omit",
         redirect: "error",
       });
+      checkPeerAbort(signal);
       if (response.status === 429) {
         const after = response.headers.get("Retry-After");
         const seconds = after && /^\d+$/.test(after) ? Number(after) : undefined;
@@ -123,15 +165,20 @@ export function createMakerIndexer(options: {
       const body = z
         .object({ data: z.record(z.string(), z.unknown()), errors: z.unknown().optional() })
         .parse(await response.json());
+      checkPeerAbort(signal);
       if (body.errors !== undefined) broken();
       return body.data;
     } catch {
+      checkPeerAbort(signal);
       broken();
     }
   };
 }
 export function createDefaultMakerReads(options: {
   publicClient: MakerPublicClient;
+  /** Internal request scope, propagated by the public read wrappers below. */
+  signal?: AbortSignal;
+  indexer?: ReturnType<typeof createMakerIndexer>;
   wallet: string;
   environment?: PeerDiscoveryOptions["environment"];
   fetch?: typeof fetch;
@@ -147,10 +194,26 @@ export function createDefaultMakerReads(options: {
   const orchestratorAbi: Abi = contracts.abis.orchestratorV4 ?? broken();
   if (!escrowAbi || !orchestratorAbi) broken();
   const now = options.now ?? Date.now;
-  const query = createMakerIndexer(options);
+  const indexer = options.indexer ?? createMakerIndexer(options);
+  const query = (text: string, variables: Record<string, string>) =>
+    indexer(text, variables, options.signal);
+  const client = makerClientWithSignal(options.publicClient, options.signal);
+  async function scoped<T>(
+    signal: AbortSignal | undefined,
+    run: (scope: typeof result) => Promise<T>,
+  ): Promise<T> {
+    if (!signal) return run(result);
+    return boundedPeerRead(
+      (bound) => run(createDefaultMakerReads({ ...options, indexer, signal: bound })),
+      signal,
+    ) as Promise<T>;
+  }
+
   async function block() {
-    if ((await options.publicClient.getChainId()) !== 8453) broken();
-    return options.publicClient.getBlockNumber();
+    checkPeerAbort(options.signal);
+    if ((await client.getChainId()) !== 8453) broken();
+    checkPeerAbort(options.signal);
+    return client.getBlockNumber();
   }
   async function read(
     address: Address,
@@ -159,7 +222,8 @@ export function createDefaultMakerReads(options: {
     args: readonly unknown[],
     blockNumber: bigint,
   ): Promise<unknown> {
-    return options.publicClient.readContract({
+    checkPeerAbort(options.signal);
+    return client.readContract({
       address,
       abi,
       functionName: name,
@@ -278,14 +342,15 @@ export function createDefaultMakerReads(options: {
         validUntil: new Date(now() + 20_000).toISOString(),
       };
     } catch {
+      checkPeerAbort(options.signal);
       broken();
     }
   }
   async function receipt(hash: string, owner: string, expected?: PreparedTransaction) {
     const height = await block();
     const [tx, result] = await Promise.all([
-      options.publicClient.getTransaction({ hash: hash as Hex }),
-      options.publicClient.getTransactionReceipt({ hash: hash as Hex }),
+      client.getTransaction({ hash: hash as Hex }),
+      client.getTransactionReceipt({ hash: hash as Hex }),
     ]);
     if (
       !same(tx.from, owner) ||
@@ -362,6 +427,7 @@ export function createDefaultMakerReads(options: {
         );
         return typeof value === "bigint" && value >= BigInt(atomic(amount));
       } catch {
+        checkPeerAbort(options.signal);
         broken();
       }
     },
@@ -373,6 +439,7 @@ export function createDefaultMakerReads(options: {
           ? { state: "confirmed", ...creationId(result.logs, owner) }
           : { state: "confirmed" };
       } catch {
+        checkPeerAbort(options.signal);
         return { state: "pending" };
       }
     },
@@ -505,11 +572,12 @@ export function createDefaultMakerReads(options: {
           closed: index.status !== "ACTIVE",
         };
       } catch {
+        checkPeerAbort(options.signal);
         throw new Error("peer_in_doubt");
       }
     },
   };
-  return {
+  const result = {
     reads,
     executionTerms: terms,
     async makerEvidence(intent: RampIntent, rail: string) {
@@ -561,6 +629,7 @@ export function createDefaultMakerReads(options: {
           )
             broken();
         } catch {
+          checkPeerAbort(options.signal);
           return { state: "pending" as const };
         }
       }
@@ -574,8 +643,43 @@ export function createDefaultMakerReads(options: {
         if (mapping.depositId !== null && mapping.depositId !== creation.depositId) broken();
         return { state: "confirmed" as const, ...creation };
       } catch {
+        checkPeerAbort(options.signal);
         return { state: "pending" as const };
       }
     },
+  };
+  return {
+    reads: {
+      readiness: (intent: RampIntent, rail: string, signal?: AbortSignal) =>
+        scoped(signal, (s) => s.reads.readiness(intent, rail)),
+      allowance: (owner: string, amount: string, signal?: AbortSignal) =>
+        scoped(signal, (s) => s.reads.allowance(owner, amount)),
+      reconcile: (
+        hash: string,
+        action: Parameters<PeerMakerIO["reconcile"]>[1],
+        owner: string,
+        expected: PreparedTransaction,
+        signal?: AbortSignal,
+      ) => scoped(signal, (s) => s.reads.reconcile(hash, action, owner, expected)),
+      deposit: (id: string, owner: string, signal?: AbortSignal) =>
+        scoped(signal, (s) => s.reads.deposit(id, owner)),
+    },
+    executionTerms: (
+      intent: RampIntent,
+      rail: string,
+      signal?: AbortSignal,
+    ): Promise<MakerExecutionTerms> => scoped(signal, (s) => s.executionTerms(intent, rail)),
+    makerEvidence: (
+      intent: RampIntent,
+      rail: string,
+      signal?: AbortSignal,
+    ): ReturnType<typeof result.makerEvidence> =>
+      scoped(signal, (s) => s.makerEvidence(intent, rail)),
+    rebuild: (
+      mapping: ProtectedMakerMapping,
+      hash?: string,
+      signal?: AbortSignal,
+    ): ReturnType<NonNullable<PeerMakerIO["rebuild"]>> =>
+      scoped(signal, (s) => s.rebuild(mapping, hash)),
   };
 }

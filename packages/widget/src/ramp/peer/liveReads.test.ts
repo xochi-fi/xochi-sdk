@@ -99,6 +99,7 @@ class MemoryPublicChain {
     logs: [creation().log],
   };
   client: MakerPublicClient = {
+    withSignal: () => this.client,
     getChainId: async () => this.chainId,
     getBlockNumber: async () => this.height,
     readContract: (async (args: { functionName: string; address: string }) => {
@@ -226,6 +227,59 @@ function setup() {
   };
 }
 describe("default public maker reads", () => {
+  it("aborts in-flight indexer requests and never returns their data", async () => {
+    const controller = new AbortController();
+    let started!: () => void;
+    const reading = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let requestSignal: AbortSignal | null | undefined;
+    const query = createMakerIndexer({
+      fetch: async (_url, init) => {
+        requestSignal = init?.signal;
+        started();
+        return new Promise<Response>((_resolve, reject) => {
+          requestSignal?.addEventListener(
+            "abort",
+            () => reject(new Error("synthetic_transport_abort")),
+            { once: true },
+          );
+        });
+      },
+    });
+    const pending = query("query PublicRead { value }", {}, controller.signal);
+    await reading;
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(requestSignal?.aborted).toBe(true);
+  });
+  it("binds cancellation to in-flight chain reads", async () => {
+    const s = setup();
+    const controller = new AbortController();
+    let started!: () => void;
+    const reading = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let rpcSignal: AbortSignal | undefined;
+    s.chain.client.withSignal = (signal) => ({
+      ...s.chain.client,
+      getChainId: async () => {
+        rpcSignal = signal;
+        started();
+        return new Promise<number>((_resolve, reject) =>
+          signal.addEventListener("abort", () => reject(new Error("synthetic_transport_abort")), {
+            once: true,
+          }),
+        );
+      },
+    });
+    const pending = s.defaults.executionTerms(intent, "revolut", controller.signal);
+    await reading;
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(rpcSignal?.aborted).toBe(true);
+  });
+
   it("reads live balance, rail/range, protocol pause and effective oracle price", async () => {
     const { chain, defaults } = setup();
     chain.adapter = "0x0000000000000000000000000000000000000001";
