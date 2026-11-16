@@ -473,6 +473,24 @@ describe("resumable ramp commands", () => {
     expect(result.allowed_actions).toEqual(["check_status"]);
   });
 
+  it("reconciles an in-doubt submission back to its pending user step without resubmitting", async () => {
+    const { client, peer, store } = await setup();
+    peer.script.push(new Error("provider_timeout"));
+    const doubt = await client.approve("op_test", "quote_test", accepted, ctx("0", "approve_test"));
+    expect(doubt.peer.state).toBe("in_doubt");
+    peer.script.push("action_required");
+    const reloaded = createRampClient({ peer, xochi: peer.route(), store });
+    const resumed = await reloaded.recover(
+      "op_test",
+      "peer",
+      "check_status",
+      ctx(doubt.revision, "status_test"),
+    );
+    expect(resumed.peer.state).toBe("action_required");
+    expect(resumed.allowed_actions).toEqual(["interact", "check_status"]);
+    expect(peer.calls).toMatchObject({ approve: 1, status: 1 });
+  });
+
   it("rejects an already expired preview without persisting an operation", async () => {
     const peer = new FakeProvider();
     const store = createMemoryRampOperationStore();

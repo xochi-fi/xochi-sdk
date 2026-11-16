@@ -374,10 +374,13 @@ export function createRampClient(options: {
       const next = safe[cmd.leg];
       if (!next || ["not_started", "quoted", "approval_required"].includes(next.state))
         throw new Error("invalid_request");
+      // Processing never regresses. Reconciling an in-doubt leg may find the same
+      // submitted operation waiting on the user (e.g. a signaled, unpaid intent).
       if (
         cmd.action === "check_status" &&
         ["processing", "in_doubt"].includes(before[cmd.leg]!.state) &&
-        !["processing", "completed", "failed", "refunded", "in_doubt"].includes(next.state)
+        !["processing", "completed", "failed", "refunded", "in_doubt"].includes(next.state) &&
+        !(before[cmd.leg]!.state === "in_doubt" && next.state === "action_required")
       )
         throw new Error("invalid_request");
       if (cmd.action === "execute_route" && next.state === "action_required")
