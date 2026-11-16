@@ -6,7 +6,8 @@
  * `available` offer can be chosen, and choosing one starts nothing yet.
  */
 
-import { useAccount } from "wagmi";
+import { useAccount, useWalletClient, usePublicClient, useSwitchChain } from "wagmi";
+import { BuyOnramp } from "../../ramp/peer/BuyOnramp.js";
 import { RampRails } from "../../ramp/availability/RampRails.js";
 
 interface BuyPanelProps {
@@ -16,11 +17,35 @@ interface BuyPanelProps {
 }
 
 export function BuyPanel({ active, fiatCurrency }: BuyPanelProps) {
-  const { address } = useAccount();
+  const { address, chainId } = useAccount();
+  const { switchChain, isPending } = useSwitchChain();
+  const { data: wallet } = useWalletClient();
+  const publicClient = usePublicClient({ chainId: 8453 });
   return (
     <div className="send-card">
       <h2 className="send-card__title">Buy</h2>
-      <RampRails direction="onramp" account={address} fiatCurrency={fiatCurrency} active={active} />
+      {address && chainId !== 8453 && (
+        <button type="button" disabled={isPending} onClick={() => switchChain({ chainId: 8453 })}>
+          Switch wallet to Base for Peer purchase
+        </button>
+      )}
+      <RampRails
+        direction="onramp"
+        account={address}
+        fiatCurrency={fiatCurrency}
+        active={active}
+        renderSelected={(intent, offer, lock) => (
+          <BuyOnramp
+            key={offer.capability_revision}
+            intent={intent}
+            offer={offer}
+            wallet={chainId === 8453 ? wallet : undefined}
+            publicClient={publicClient}
+            onSubmit={() => lock()}
+            onReset={() => lock(false)}
+          />
+        )}
+      />
     </div>
   );
 }

@@ -17,7 +17,7 @@ import { buildRampIntent, nextExpiry } from "./model.js";
 import { TIMEOUTS } from "../../config.js";
 
 export interface RampDiscoveryPort {
-  discover(intent: RampIntent, user: string): Promise<PeerDiscoveryResult>;
+  discover(intent: RampIntent, user: string, signal?: AbortSignal): Promise<PeerDiscoveryResult>;
   /** Validated Base USDC settlement, or undefined when the SDK config fails validation. */
   settlement(): RampSettlement | undefined;
   now(): number;
@@ -33,7 +33,7 @@ function liveSettlement(): RampSettlement | undefined {
 }
 
 export const LIVE_RAMP_DISCOVERY: RampDiscoveryPort = {
-  discover: (intent, user) => fetchPeerCapabilities(intent, { user }),
+  discover: (intent, user, signal) => fetchPeerCapabilities(intent, { user, signal }),
   settlement: liveSettlement,
   now: () => Date.now(),
   debounceMs: TIMEOUTS.quoteDebounce,
@@ -79,11 +79,11 @@ export function useRampDiscovery({
     setState({ status: "loading" });
     const intent = buildRampIntent({ direction, amount, currency, recipient: account, settlement });
     const timer = setTimeout(() => {
-      // fetchPeerCapabilities takes no signal: abort discards the result instead.
       void port
-        .discover(intent, account)
+        .discover(intent, account, controller.signal)
         .catch(
           (): PeerDiscoveryResult => ({
+            estimates: [],
             offers: [],
             availability: {
               state: "temporarily_unavailable",

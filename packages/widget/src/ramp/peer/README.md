@@ -144,3 +144,46 @@ The Peer entry imports its declared `reflect-metadata` dependency before the SDK
 its side effect is preserved in package metadata. After building the widget, run
 `node scripts/verify-peer-consumer.mjs` at the repository root to verify the public
 entry builds and executes in a fresh browser realm without consumer polyfills.
+
+## Buyer execution (W2)
+
+Trade/Buy uses `createRampClient` with a provider-private `createPeerOnrampProvider`
+and SDK-backed `createPeerBuyerDriver`. Discovery/preview share the explicit widget
+Peer environment setting. Chrome/Brave desktop readiness comes from extension
+`getState()` plus the per-platform minimum extension version. Mobile web cannot
+signal an intent. Installing, connecting, signaling, capture, and fulfillment each
+require their own named user action; the extension opens synchronously from the
+capture button, before asynchronous S4 reservation work.
+
+Review binds the quote, exact economics, expiry, rail, currency and recipient.
+Changing a bound field clears the review and approval; expiration also clears
+approval. Submitted purchases stay pinned and freeze their input fields. Curator
+signing runs before the wallet transaction, and its payee information stays in the
+provider interaction. Buyer TEE capture is restricted to one active operation and
+matched to its platform, lifetime, exact amount, currency and maker recipient;
+fulfillment then checks the live on-chain intent binding again. The only attestor
+origin is `https://attestation-service.zkp2p.xyz`, with no fallback endpoints.
+
+Only a successful, confirmed fulfillment receipt with the exact reviewed USDC
+transfer can complete a direct payout. Deferred payouts remain `processing` with
+`payout_state: "held"`. A closed StakeVault lock is ambiguous (release or dispute),
+so release additionally requires a confirmed protocol `ProtectionReleased` receipt
+and the exact vault-to-recipient USDC transfer. No optional route can start while
+held. Long-range RPC log limitations produce uncertainty instead of completion.
+
+The provider retains payee data, intent hashes, encrypted captures and proofs only
+in transient memory. S4 stores sanitized summaries and receipts; S3 emits only
+frame-minted `rampRef` and bounded lifecycle states. Reload recovery of the private
+provider interaction belongs to W3; an interrupted operation must be reconciled,
+never recreated automatically. No Peer credentials, Privy login or wallet keys are
+accepted by this integration.
+
+A Curator authentication or linked-wallet requirement becomes bounded
+`setup_required` / `peer_wallet_linked_session`. The optional read-only probe is
+`node packages/widget/scripts/probe-peer-sign.mjs --live`; it uses a public burn
+address and a 1 USDC quote, never submits a transaction, and emits only bounded
+HTTP/auth observations. On 2026-11-16 production returned quote HTTP 200 and sign
+HTTP 401 without credentials. This demonstrates that wallet-only unauthenticated
+signing was denied for that request; no Privy login or funded end-to-end run was
+attempted. A live run needs desktop Chrome/Brave, the connected Peer extension, a
+Peer account, and explicitly approved Base mainnet funds (Peer has no testnet).
