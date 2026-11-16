@@ -104,8 +104,8 @@ restart processing, completed, refunded or skipped legs, regardless of their
 Retain idempotency receipts for the operation lifetime; after uncertain submission,
 reconcile rather than invent another key or operation. Replays return the stored
 receipt snapshot; revision conflicts return the latest sanitized snapshot.
-Persisted orchestration, transitions, atomic command reservation and execution
-remain #171. Every signature and transaction approval remains caller-owned.
+The operation engine below owns persisted orchestration, transitions, atomic
+command reservation and execution. Every signature and transaction approval remains caller-owned.
 
 ## Secret boundary
 
@@ -123,3 +123,52 @@ provider. Public errors contain bounded codes, not raw provider messages.
 The contract contains no wallet signer, browser dependency, provider transport,
 new bridge, or hosted implementation. Peer adapters belong in `@xochi/widget`;
 the existing iframe/wallet bridge remains in `@xochi/widget-lib`.
+
+## Operation engine
+
+`createRampClient({ peer, xochi?, store })` drives the contract with a trusted
+`RampProvider` and optional independently approved `XochiRampLeg`. The API retains
+the canonical snake_case command context (`expected_revision`, `idempotency_key`).
+`get()` reads an immutable local snapshot; `recover(..., "check_status", context)`
+explicitly reconciles it. Reads never submit or poll automatically.
+
+Use `createMemoryRampOperationStore()` for a single runtime, or
+`createBrowserRampOperationStore({ storage: localStorage, locks: navigator.locks })`
+for browser persistence. Web Locks are mandatory for atomic reservation across
+clients and tabs; do not implement this with an unlocked localStorage read/write.
+Custom stores must serialize each operation's synchronous transaction callback and
+commit it durably before returning. Do not clear receipts during an operation's
+lifetime. Storage failures prevent provider submission; a failure to commit a
+provider result leaves the durable reservation available for status reconciliation.
+
+Before each external command the engine commits an incremented revision with an
+`in_doubt` reservation and a receipt. Completion commits another revision. Exact
+replays return their historical receipt, including after reload; changed key content
+or stale revisions return the current snapshot without applying. Keys and command
+content are retained only as SHA-256 digests, with the locally minted quote
+reference when needed for execution replay. Receipts contain sanitized snapshots,
+never the intent, recipient, preview, disclosures accepted by a particular user,
+provider payload, or private handle. References supplied by adapters must be locally
+minted and non-authorizing; schema validation cannot identify a secret disguised as
+a reference.
+
+Provider errors, deadlines (60 seconds by default; configurable with
+`commandTimeoutMs`), aborted submitted interactions, malformed results, and unsafe
+state regressions leave the affected leg `in_doubt` with status reconciliation
+only. Late provider promises cannot update the store. A crash between reservation
+and submission is also conservatively reconciled. Adapters must reconcile their
+existing operation reference and must not treat a missing response as permission
+to submit again. A live capability or quote expiry detected before submission
+instead invalidates that unsubmitted leg. Completed legs survive the other leg's
+failure, and dependent legs cannot start after a failed prerequisite.
+
+The injected adapter instance remains pinned for the client lifetime. On resume,
+provide the same provider implementation with its private operation lookup restored
+through its own trusted runtime dependencies. Browser summaries deliberately cannot
+restore provider-private state. Quotes and intents stay in memory: an unsubmitted
+preview lost on reload needs a fresh preview; a submitted operation can still be
+reconciled without that preview. Route approval/execution and recovery belong to
+the optional route adapter, which owns fresh independent route quotes and explicit
+wallet approvals. Its `quoteId()` returns the non-authorizing reference for an
+approved route; `execute()` receives that reference to prevent quote substitution.
+The engine never supplies a wallet signer or provider launch URL.
