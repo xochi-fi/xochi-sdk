@@ -1,0 +1,169 @@
+{
+  "success": true,
+  "statusCode": 200,
+  "responseObject": {
+    "fiat": {
+      "currencyCode": "0xc4ae21aac0c6549d71dd96035b7e0bdb6c79ebdba8891b666115bc976d16a29e",
+      "countryCode": "us"
+    },
+    "token": {
+      "token": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "decimals": 6,
+      "chainId": 8453
+    },
+    "quoteExpiresAt": "2026-11-16T12:43:21.393Z",
+    "orchestratorAddress": "0x74c55679268fafb493864915ad16a320ab8c40ba",
+    "platformQuotes": [
+      {
+        "platform": "venmo",
+        "supported": true,
+        "available": false
+      },
+      {
+        "platform": "cashapp",
+        "supported": true,
+        "available": false
+      },
+      {
+        "platform": "chime",
+        "supported": true,
+        "available": true,
+        "bestQuote": {
+          "fiatAmount": "31581303",
+          "tokenAmount": "25000000",
+          "conversionRate": "1251251251251251251",
+          "zkp2pFeeAmount": "239777",
+          "managerFeeAmount": "25266",
+          "totalFeeAmount": "265043",
+          "signalIntentAmount": "25239777",
+          "paymentMethod": "chime",
+          "disputeProtectionRequiresStake": false,
+          "intent": {
+            "processorName": "chime",
+            "fiatCurrencyCode": "0xc4ae21aac0c6549d71dd96035b7e0bdb6c79ebdba8891b666115bc976d16a29e",
+            "chainId": "8453",
+            "toAddress": "0x000000000000000000000000000000000000dEaD"
+          }
+        }
+      },
+      {
+        "platform": "revolut",
+        "supported": true,
+        "available": true,
+        "bestQuote": {
+          "fiatAmount": "25744573",
+          "tokenAmount": "25000000",
+          "conversionRate": "1020000000000000000",
+          "zkp2pFeeAmount": "239777",
+          "managerFeeAmount": "0",
+          "totalFeeAmount": "239777",
+          "signalIntentAmount": "25239777",
+          "paymentMethod": "revolut",
+          "disputeProtectionRequiresStake": false,
+          "intent": {
+            "processorName": "revolut",
+            "fiatCurrencyCode": "0xc4ae21aac0c6549d71dd96035b7e0bdb6c79ebdba8891b666115bc976d16a29e",
+            "chainId": "8453",
+            "toAddress": "0x000000000000000000000000000000000000dEaD"
+          }
+        }
+      },
+      {
+        "platform": "wise",
+        "supported": true,
+        "available": true,
+        "bestQuote": {
+          "fiatAmount": "25996971",
+          "tokenAmount": "25000000",
+          "conversionRate": "1030000000000000000",
+          "zkp2pFeeAmount": "239777",
+          "managerFeeAmount": "0",
+          "totalFeeAmount": "239777",
+          "signalIntentAmount": "25239777",
+          "paymentMethod": "wise",
+          "disputeProtectionRequiresStake": false,
+          "intent": {
+            "processorName": "wise",
+            "fiatCurrencyCode": "0xc4ae21aac0c6549d71dd96035b7e0bdb6c79ebdba8891b666115bc976d16a29e",
+            "chainId": "8453",
+            "toAddress": "0x000000000000000000000000000000000000dEaD"
+          }
+        }
+      },
+      {
+        "platform": "paypal",
+        "supported": true,
+        "available": false
+      },
+      {
+        "platform": "mercadopago",
+        "supported": false,
+        "available": false
+      },
+      {
+        "platform": "monzo",
+        "supported": false,
+        "available": false
+      },
+      {
+        "platform": "monobank",
+        "supported": false,
+        "available": false
+      },
+      {
+        "platform": "alipay",
+        "supported": false,
+        "available": false
+      },
+      {
+        "platform": "zelle",
+        "supported": true,
+        "available": true,
+        "bestQuote": {
+          "fiatAmount": "25492175",
+          "tokenAmount": "25000000",
+          "conversionRate": "1010000000000000000",
+          "zkp2pFeeAmount": "239777",
+          "managerFeeAmount": "0",
+          "totalFeeAmount": "239777",
+          "signalIntentAmount": "25239777",
+          "paymentMethod": "zelle",
+          "disputeProtectionRequiresStake": false,
+          "intent": {
+            "processorName": "zelle",
+            "fiatCurrencyCode": "0xc4ae21aac0c6549d71dd96035b7e0bdb6c79ebdba8891b666115bc976d16a29e",
+            "chainId": "8453",
+            "toAddress": "0x000000000000000000000000000000000000dEaD"
+          }
+        }
+      },
+      {
+        "platform": "upi",
+        "supported": false,
+        "available": false
+      },
+      {
+        "platform": "xmoney",
+        "supported": true,
+        "available": true,
+        "bestQuote": {
+          "fiatAmount": "19726460",
+          "tokenAmount": "25000000",
+          "conversionRate": "750000000000000000",
+          "zkp2pFeeAmount": "1301946",
+          "managerFeeAmount": "0",
+          "totalFeeAmount": "1301946",
+          "signalIntentAmount": "26301946",
+          "paymentMethod": "xmoney",
+          "disputeProtectionRequiresStake": false,
+          "intent": {
+            "processorName": "xmoney",
+            "fiatCurrencyCode": "0xc4ae21aac0c6549d71dd96035b7e0bdb6c79ebdba8891b666115bc976d16a29e",
+            "chainId": "8453",
+            "toAddress": "0x000000000000000000000000000000000000dEaD"
+          }
+        }
+      }
+    ]
+  }
+}
