@@ -312,6 +312,8 @@ export function useSwapPanel(
     clearRecipient: gating.clearRecipient,
     restoreRecipientTag: gating.setRecipientTag,
     restoreRefundAddress: gating.setRefundAddress,
+    stealthPayee: gating.stealthRecipient ? "other" : "self",
+    restoreStealthRecipient: gating.restoreStealthRecipient,
     flowOpen,
     setFlowOpen,
     resumed,
@@ -622,6 +624,10 @@ export function useSwapPanel(
     // while one is in flight, the live form's otherwise. Never the live
     // toggle for an executed order (see executedDestination in useSwapFlow).
     flowDestination: flow.flowDestination,
+    flowStealthPayee: flow.flowStealthPayee,
+    // Someone else's meta-address from Send, shown on the card while it holds.
+    stealthRecipient: gating.stealthRecipient,
+    clearStealthRecipient: () => gating.restoreStealthRecipient(null),
     // The host's locks and allow-lists, for the selectors and the amount field.
     policy,
     executionStartTime: flow.executionStartTime,

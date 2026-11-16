@@ -170,6 +170,8 @@ interface SwapFlowModalProps {
   fromChainId: SelectableChainId;
   toChainId: SelectableChainId;
   destination: IntentDestination;
+  /** On a Stealth destination: `"other"` paid someone else's keys, so the ending has no claim. */
+  stealthPayee?: "self" | "other";
   isCrossChain: boolean;
   estimatedDuration: number;
   startTime?: number;
@@ -636,6 +638,7 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
               settlementChainId={settlementChainId}
               substatus={substatus}
               isStealth={props.destination.type === "stealth"}
+              stealthPayee={props.stealthPayee}
               // Same signal DepositInstructions branches on, so both surfaces
               // agree about whether a signature was ever part of this route.
               // Reads `depositView` rather than the quote directly: a RESUMED
@@ -715,6 +718,7 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
               <SwapResult
                 variant={phase}
                 isStealth={props.destination.type === "stealth"}
+                stealthPayee={props.stealthPayee}
                 recipientTag={props.destination.recipientTag}
                 fromChainId={props.fromChainId}
                 toChainId={props.toChainId}

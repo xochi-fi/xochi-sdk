@@ -35,6 +35,10 @@ export const STEALTH_NEEDS_WALLET_CAPTION =
  * unavailable). No launch promise: "coming soon" was dropped with the spec's
  * "launch-pending".
  */
+/** What Stealth does and does not hide, stated wherever someone else is paid. */
+export const STEALTH_PRIVACY_LIMITS =
+  "Stealth hides the link between this payment and the recipient's address. It does not hide your funding transaction, the amount or when you send it.";
+
 export const SHIELDED_UNAVAILABLE_CAPTION =
   "Shielded is unavailable. It hides the recipient; the amount, token, solver and timing stay public.";
 

@@ -337,6 +337,8 @@ function FlowAuthorityProbe({
     clearRecipient: noop,
     restoreRecipientTag: noop,
     restoreRefundAddress: noop,
+    stealthPayee: "self",
+    restoreStealthRecipient: noop,
     flowOpen: open,
     setFlowOpen: setOpen,
     resumed: null,

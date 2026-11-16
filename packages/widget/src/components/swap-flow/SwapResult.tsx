@@ -49,6 +49,11 @@ interface SwapResultProps {
   /** Stealth settlement: funds land at a one-time address the user must claim. */
   isStealth?: boolean;
   /**
+   * `"other"`: the Stealth payout went to someone else's meta-address. The
+   * recipient claims it with their own keys, so no ending offers a claim here.
+   */
+  stealthPayee?: "self" | "other";
+  /**
    * The zk.money tag the DAI was sent for. Our side ends at the confirmed L1
    * transfer; the credit shows up in zk.money, so the ending links there.
    */
@@ -124,6 +129,7 @@ function TxLink({
 export function SwapResult({
   variant,
   isStealth,
+  stealthPayee,
   recipientTag,
   substatus,
   fromChainId,
@@ -243,7 +249,9 @@ export function SwapResult({
         </div>
         <h3 className="swap-result__title">
           {isStealth
-            ? "Landed at the private address"
+            ? stealthPayee === "other"
+              ? "Landed at the recipient's private address"
+              : "Landed at the private address"
             : recipientTag !== undefined
               ? `Sent to @${recipientTag}`
               : "Swap complete"}
@@ -269,7 +277,16 @@ export function SwapResult({
         {/* The stealth ending is not the end: the payout waits at a one-time
             address until the recipient claims it, so the receipt names that as
             the next step and its button opens the stealth claim flow. */}
-        {isStealth && (
+        {isStealth && stealthPayee === "other" && (
+          <div className="swap-result__claim-step">
+            <h4 className="swap-result__claim-title">Next: the recipient claims it</h4>
+            <p className="swap-result__claim-note">
+              The funds wait at a one-time address derived from the recipient's meta-address. They
+              find and claim it with their own stealth keys; there is nothing left for you to do.
+            </p>
+          </div>
+        )}
+        {isStealth && stealthPayee !== "other" && (
           <div className="swap-result__claim-step">
             <h4 className="swap-result__claim-title">Next: claim the payment</h4>
             <p className="swap-result__claim-note">
@@ -314,7 +331,7 @@ export function SwapResult({
             )}
           </div>
         )}
-        {isStealth && onGoToClaims ? (
+        {isStealth && stealthPayee !== "other" && onGoToClaims ? (
           <div className="swap-result__actions">
             <button className="modal-btn modal-btn--cancel" onClick={onClose}>
               Done
@@ -365,32 +382,38 @@ export function SwapResult({
         <h3 className="swap-result__title">
           {isStealth
             ? stealthDelivered
-              ? "Preparing the claim"
+              ? stealthPayee === "other"
+                ? "Delivered privately"
+                : "Preparing the claim"
               : "Settling privately"
             : useReceipt
               ? "Funds delivered"
               : "Still confirming"}
         </h3>
         <p className="swap-result__desc">
-          {isStealth
+          {isStealth && stealthPayee === "other"
             ? stealthDelivered
-              ? tabsShown
-                ? "The funds landed at a one-time private address that only the connected wallet can spend from. The claim is still being set up; there is nothing to do. Safe to close this. It will show up in Stealth Payments when it is ready."
-                : claimInXochiApp
-                  ? `The funds landed at a one-time private address that only the connected wallet can spend from. The claim is still being set up; there is nothing to do. Safe to close this. When it is ready: ${CLAIM_IN_XOCHI_APP}`
-                  : "The funds landed at a one-time private address that only the connected wallet can spend from. The claim is still being set up; there is nothing to do. Safe to close this, then claim it on the full widget when it is ready."
-              : tabsShown
-                ? "Private swaps route to a one-time address only the connected wallet controls. When it lands, claim it in the Claims tab to move it into the wallet. The funds are safe -- safe to close this."
-                : claimInXochiApp
-                  ? `Private swaps route to a one-time address only the connected wallet controls. When it lands: ${CLAIM_IN_XOCHI_APP} The funds are safe -- safe to close this.`
-                  : "Private swaps route to a one-time address only the connected wallet controls. When it lands, claim it on the full widget, which opens in a new tab, to move it into the wallet. The funds are safe -- safe to close this."
-            : useReceipt
-              ? tabsShown
-                ? "Funds arrived. Finalizing the last step. Safe to close this and check Activity."
-                : "Funds arrived. Finalizing the last step. Safe to close this."
-              : tabsShown
-                ? "This can take a moment. Safe to close this. Track it in the Activity tab."
-                : "This can take a moment. Safe to close this."}
+              ? "The funds landed at a one-time private address only the recipient can spend from. They claim it with their own stealth keys; there is nothing to do. Safe to close this."
+              : "Private payouts route to a one-time address only the recipient controls. When it lands, they claim it with their own stealth keys. Safe to close this."
+            : isStealth
+              ? stealthDelivered
+                ? tabsShown
+                  ? "The funds landed at a one-time private address that only the connected wallet can spend from. The claim is still being set up; there is nothing to do. Safe to close this. It will show up in Stealth Payments when it is ready."
+                  : claimInXochiApp
+                    ? `The funds landed at a one-time private address that only the connected wallet can spend from. The claim is still being set up; there is nothing to do. Safe to close this. When it is ready: ${CLAIM_IN_XOCHI_APP}`
+                    : "The funds landed at a one-time private address that only the connected wallet can spend from. The claim is still being set up; there is nothing to do. Safe to close this, then claim it on the full widget when it is ready."
+                : tabsShown
+                  ? "Private swaps route to a one-time address only the connected wallet controls. When it lands, claim it in the Claims tab to move it into the wallet. The funds are safe -- safe to close this."
+                  : claimInXochiApp
+                    ? `Private swaps route to a one-time address only the connected wallet controls. When it lands: ${CLAIM_IN_XOCHI_APP} The funds are safe -- safe to close this.`
+                    : "Private swaps route to a one-time address only the connected wallet controls. When it lands, claim it on the full widget, which opens in a new tab, to move it into the wallet. The funds are safe -- safe to close this."
+              : useReceipt
+                ? tabsShown
+                  ? "Funds arrived. Finalizing the last step. Safe to close this and check Activity."
+                  : "Funds arrived. Finalizing the last step. Safe to close this."
+                : tabsShown
+                  ? "This can take a moment. Safe to close this. Track it in the Activity tab."
+                  : "This can take a moment. Safe to close this."}
         </p>
         {/* Same rule as the success ending: no explorer link on a stealth
             surface, the sweep hash is privacy-sensitive (pass-1 4.6). */}

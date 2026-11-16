@@ -40,6 +40,8 @@ interface IntentTimelineProps {
    * delivered copy must not read like a public fill (xochi#376).
    */
   isStealth?: boolean;
+  /** `"other"`: the Stealth payout is someone else's to claim, not this wallet's. */
+  stealthPayee?: "self" | "other";
   /**
    * Deposit route (Tron origin): the user sends from an external wallet and
    * nothing is signed, so the timeline opens on the deposit rather than a
@@ -111,6 +113,7 @@ export function IntentTimeline({
   settlementChainId,
   substatus,
   isStealth,
+  stealthPayee,
   isDeposit,
   startTime,
   estimatedDuration = ESTIMATED_CROSS_CHAIN_SEC,
@@ -261,7 +264,9 @@ export function IntentTimeline({
         <span className="timeline-status-text">
           {delivered
             ? isStealth
-              ? "Landed at the private address. Preparing the claim."
+              ? stealthPayee === "other"
+                ? "Landed at the recipient's private address."
+                : "Landed at the private address. Preparing the claim."
               : "Funds delivered. Finalizing the swap."
             : getStatusMessage(status, isCrossChain)}
         </span>
@@ -273,7 +278,9 @@ export function IntentTimeline({
       {delivered && (
         <p className="timeline-overdue">
           {isStealth
-            ? "The funds landed at a one-time private address that only the connected wallet can spend from. The claim is still being set up. Safe to close this."
+            ? stealthPayee === "other"
+              ? "The funds landed at a one-time private address only the recipient can spend from. They claim it with their own stealth keys. Safe to close this."
+              : "The funds landed at a one-time private address that only the connected wallet can spend from. The claim is still being set up. Safe to close this."
             : tabsShown
               ? "Funds arrived. Finalizing the last step. Safe to close this and check Activity."
               : "Funds arrived. Finalizing the last step. Safe to close this."}

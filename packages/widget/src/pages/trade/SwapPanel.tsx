@@ -26,7 +26,13 @@ import {
 } from "@xochi/client";
 import { ESTIMATED_SINGLE_CHAIN_SEC, ESTIMATED_CROSS_CHAIN_SEC } from "@xochi/client";
 import { joinChainNames } from "./config.js";
-import { MODE_META, SETTLEMENT_FIX_LINE, STEALTH_NEEDS_WALLET_CAPTION } from "./settlementCopy.js";
+import {
+  MODE_META,
+  SETTLEMENT_FIX_LINE,
+  STEALTH_NEEDS_WALLET_CAPTION,
+  STEALTH_PRIVACY_LIMITS,
+} from "./settlementCopy.js";
+import { MetaAddressValue } from "../send/MetaAddressValue.js";
 import { TokenSelector, SlippageSelector } from "./Selectors.js";
 import { PermitBadge } from "../../components/PermitBadge.js";
 import { PrivacyBars } from "../../components/PrivacyBars.js";
@@ -192,6 +198,9 @@ export function SwapPanel({
     flowOpen,
     flowReopenable,
     flowDestination,
+    flowStealthPayee,
+    stealthRecipient,
+    clearStealthRecipient,
     executionStartTime,
     policy,
     sourceChainIds,
@@ -428,6 +437,22 @@ export function SwapPanel({
               <span>Direct Aztec settlement isn't available yet.</span>
             ) : null}
           </div>
+
+          {/* Someone else's meta-address from Send > Stealth. Shown for as long
+              as it holds, so the quote below is never read as paying this wallet. */}
+          {stealthRecipient && settlement === "stealth" && (
+            <section className="stealth-payee-note" aria-label="Stealth recipient">
+              <p>
+                <strong>Pays someone else's stealth keys.</strong> The payout lands at a one-time
+                address only they can find and claim. It will not appear in your Claims.
+              </p>
+              <MetaAddressValue encoded={stealthRecipient.encoded} />
+              <p>{STEALTH_PRIVACY_LIMITS}</p>
+              <button type="button" className="send-secondary" onClick={clearStealthRecipient}>
+                Pay my own keys instead
+              </button>
+            </section>
+          )}
 
           {/* Settings dropdown */}
           {showSettings && (
@@ -1395,6 +1420,7 @@ export function SwapPanel({
         fromChainId={fromChainId}
         toChainId={toChainId}
         destination={flowDestination}
+        stealthPayee={flowStealthPayee}
         isCrossChain={isCrossChain}
         estimatedDuration={isCrossChain ? ESTIMATED_CROSS_CHAIN_SEC : ESTIMATED_SINGLE_CHAIN_SEC}
         startTime={executionStartTime || undefined}
@@ -1413,7 +1439,7 @@ export function SwapPanel({
         // the prop stays absent there. Gated on the dispatched order's own
         // destination, like the modal ending.
         onGoToClaims={
-          flowDestination.type !== "stealth" || claimInXochiApp
+          flowDestination.type !== "stealth" || flowStealthPayee === "other" || claimInXochiApp
             ? undefined
             : (onGoToClaims ??
               (() => {
