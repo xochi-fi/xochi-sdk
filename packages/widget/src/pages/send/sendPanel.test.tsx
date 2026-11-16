@@ -11,7 +11,8 @@
  *     hash is shown and the send lands in Activity;
  *   - `stealth`: opening it signs nothing, key setup is its own explicit step,
  *     and continuing hands the order to Swap with Stealth selected;
- *   - `payment_app`: says it is unavailable and offers nothing to press.
+ *   - `payment_app`: states own-account payout and approximate estimates
+ *     before any rail, and offers only rails Peer proves available live.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -25,6 +26,8 @@ import { intentAPI } from "../../lib/intentAPI.js";
 import { listLocalSends } from "../../lib/localSends.js";
 import { clearWalletSession } from "../../lib/walletSession.js";
 import { WAIT, testBudget } from "../../test/waitBudget.js";
+import { RampDiscoveryContext } from "../../ramp/availability/useRampDiscovery.js";
+import { RECORDED_AT, recordedPort } from "../../test/rampPort.js";
 
 vi.setConfig({ testTimeout: testBudget({ renders: 1, waits: 4 }) });
 
@@ -250,15 +253,38 @@ describe("send privately", () => {
 });
 
 describe("send to a payment app", () => {
-  it("states it is unavailable and has nothing to press", async () => {
-    stubWallet();
-    await openSend();
+  it("states the payout facts first and offers only live-proven rails", async () => {
+    const calls = stubWallet();
+    const port = recordedPort({
+      account: TEST_ACCOUNT,
+      clock: { t: RECORDED_AT },
+      makerRails: ["wise"],
+    });
+    await renderTrade(
+      <RampDiscoveryContext value={port}>
+        <Trade look={FULL_LOOK} />
+      </RampDiscoveryContext>,
+      { connected: true },
+    );
+    fireEvent.click(topTab("Send"));
     fireEvent.click(kindTab("Payment app"));
     const panel = kindPanel("Payment app");
     expect(panel.hasAttribute("hidden")).toBe(false);
-    expect(panel.textContent).toMatch(/not available/i);
-    expect(panel.textContent).toMatch(/your own/i);
-    expect(panel.querySelectorAll("button, input, select, a, [tabindex]")).toHaveLength(0);
+    const facts = within(panel).getByRole("region", { name: "Before you choose" }).textContent;
+    expect(facts).toMatch(/belongs to you/);
+    expect(facts).toMatch(/estimates/);
+    expect(within(panel).queryAllByRole("radio")).toHaveLength(0);
+
+    fireEvent.change(within(panel).getByLabelText("USDC to cash out"), {
+      target: { value: "25" },
+    });
+    await within(panel).findByRole("group", { name: "Available now" }, WAIT);
+    expect(within(panel).getAllByRole("radio")).toHaveLength(1);
+    expect(within(panel).getByRole("region", { name: "Not selectable now" }).textContent).toMatch(
+      /Availability unknown/,
+    );
+    fireEvent.click(within(panel).getByLabelText(/Wise/));
+    expect(prompts(calls)).toEqual([]);
   });
 });
 

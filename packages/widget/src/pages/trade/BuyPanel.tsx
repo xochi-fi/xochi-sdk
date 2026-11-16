@@ -1,22 +1,26 @@
 /**
  * BuyPanel
  *
- * Trade's Buy mode (API `onramp`): buying crypto with fiat through Peer. Not
- * available in this build, so it renders a text-only state with no control
- * that could start anything. Live availability replaces this panel later.
+ * Trade's Buy mode (API `onramp`): buying Base USDC with fiat through Peer.
+ * Shows live Peer rail availability (ramp/availability); only a fresh
+ * `available` offer can be chosen, and choosing one starts nothing yet.
  */
 
-export function BuyPanel() {
+import { useAccount } from "wagmi";
+import { RampRails } from "../../ramp/availability/RampRails.js";
+
+interface BuyPanelProps {
+  /** Whether Buy is the visible mode; a hidden panel reads nothing from Peer. */
+  active: boolean;
+  fiatCurrency?: string;
+}
+
+export function BuyPanel({ active, fiatCurrency }: BuyPanelProps) {
+  const { address } = useAccount();
   return (
     <div className="send-card">
-      <section className="send-unavailable" aria-label="Buy">
-        <h2 className="send-card__title">Buy</h2>
-        <p>
-          Not available yet. Buying crypto with a payment app is not live in this widget, so nothing
-          here can start a purchase.
-        </p>
-        <p className="send-note">Swap is available now from the Swap mode above.</p>
-      </section>
+      <h2 className="send-card__title">Buy</h2>
+      <RampRails direction="onramp" account={address} fiatCurrency={fiatCurrency} active={active} />
     </div>
   );
 }

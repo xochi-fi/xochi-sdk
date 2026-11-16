@@ -8,13 +8,16 @@
  *   - `stealth`: the existing Stealth settlement to the user's own stealth
  *     keys, handed to the Swap card (StealthSend);
  *   - `payment_app`: cashing out to the user's own payment-app account through
- *     Peer. Not available in this build: the slot says so and executes nothing.
+ *     Peer. Shows live Peer cash-out rails (ramp/availability); choosing one
+ *     executes nothing yet.
  *
  * Neither `address` nor `stealth` touches Peer. Each destination stays mounted
  * while hidden, so switching kinds keeps what was typed.
  */
 
 import { useId } from "react";
+import { useAccount } from "wagmi";
+import { RampRails } from "../../ramp/availability/RampRails.js";
 import type { SwapPrefill } from "../trade/SwapPanel.js";
 import {
   WidgetTabs,
@@ -39,6 +42,9 @@ interface SendPanelProps {
   destinations?: readonly SendDestinationKind[];
   onStealthContinue: (order: Omit<SwapPrefill, "nonce">) => void;
   onConnectRequest?: () => void;
+  /** Whether the Send tab is visible; a hidden payment_app slot reads nothing from Peer. */
+  active?: boolean;
+  fiatCurrency?: string;
 }
 
 export function SendPanel({
@@ -47,8 +53,11 @@ export function SendPanel({
   destinations = SEND_DESTINATION_KINDS,
   onStealthContinue,
   onConnectRequest,
+  active = true,
+  fiatCurrency,
 }: SendPanelProps) {
   const baseId = useId();
+  const { address } = useAccount();
   const tabs: WidgetTab<SendDestinationKind>[] = destinations.map((kind) => ({
     id: kind,
     label: LABELS[kind],
@@ -87,17 +96,12 @@ export function SendPanel({
       )}
       {destinations.includes("payment_app") && (
         <div {...panel("payment_app")}>
-          <section className="send-unavailable" aria-label="Payment app cash-out">
-            <h3 className="send-review__title">Cash out to your payment app</h3>
-            <p>
-              Not available yet. Cashing out to your own payment-app account through Peer is not
-              live in this widget, so nothing here can be sent.
-            </p>
-            <p className="send-note">
-              When it is, it will pay out only to an account that belongs to you, with live rail
-              availability shown here.
-            </p>
-          </section>
+          <RampRails
+            direction="offramp"
+            account={address}
+            fiatCurrency={fiatCurrency}
+            active={active && destination === "payment_app"}
+          />
         </div>
       )}
     </div>

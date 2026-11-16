@@ -13,7 +13,10 @@
  *   - Claims exists only where it can render (a connected wallet);
  *   - leaving Swap mid-quote (for another tab or for Buy) keeps the held
  *     quote: no re-quote, no reset;
- *   - Buy cannot start anything: it is text, with no control to press;
+ *   - Buy shows its critical facts before any rail, reads Peer only for an
+ *     entered amount, and offers only fresh live rails (nothing executes);
+ *   - host narrowing (tabs / modes / destinations / rampProviders) hides
+ *     surfaces and seeds the initial selection, never adds one;
  *   - every "go claim it" path lands on the Claims tab: the claims nudge, the
  *     activity row's claim action, and the stealth receipt's "Claim your
  *     payment";
@@ -28,6 +31,8 @@ import type { Config } from "wagmi";
 import { QuoteResponseSchema } from "@xochi/client";
 import { quoteWire, statusWire } from "../../test/intentHarness.js";
 import { intentAPI } from "../../lib/intentAPI.js";
+import { RampDiscoveryContext } from "../../ramp/availability/useRampDiscovery.js";
+import { RECORDED_AT, recordedPort } from "../../test/rampPort.js";
 import {
   renderTrade,
   makeTestConfig,
@@ -282,17 +287,75 @@ describe("tablist", () => {
     ).toEqual([-1, 0]);
   });
 
-  it("renders Buy as text with nothing to press", async () => {
+  it("shows Buy's critical facts before any rail and reads Peer only for an amount", async () => {
     stubApi();
-    await renderTrade(<Trade look={FULL_LOOK} />, { connected: true });
+    const port = recordedPort({ account: TEST_ACCOUNT, clock: { t: RECORDED_AT } });
+    await renderTrade(
+      <RampDiscoveryContext value={port}>
+        <Trade look={FULL_LOOK} />
+      </RampDiscoveryContext>,
+      { connected: true },
+    );
     fireEvent.click(modeTab("Buy"));
 
-    const buy = document.getElementById(modeTab("Buy").getAttribute("aria-controls") ?? "");
-    expect(buy?.hasAttribute("hidden")).toBe(false);
-    expect(buy?.textContent).toMatch(/not available/i);
-    expect(buy?.querySelectorAll("button, input, select, a, [tabindex]")).toHaveLength(0);
+    const buy = document.getElementById(modeTab("Buy").getAttribute("aria-controls") ?? "")!;
+    expect(buy.hasAttribute("hidden")).toBe(false);
+    expect(within(buy).getByRole("region", { name: "Before you choose" }).textContent).toMatch(
+      /Base is public/,
+    );
+    expect(within(buy).queryAllByRole("radio")).toHaveLength(0);
+    expect(port.calls).toEqual([]);
     // The Swap card is hidden, not unmounted.
     expect(document.querySelector(".trade-card")?.closest("[hidden]")).not.toBeNull();
+
+    fireEvent.change(within(buy).getByLabelText("USDC to receive"), { target: { value: "25" } });
+    await within(buy).findByRole("group", { name: "Available now" }, WAIT);
+    expect(port.calls).toEqual(["25000000"]);
+    expect(within(buy).getByLabelText(/Wise/)).toBeTruthy();
+    expect(within(buy).getByRole("region", { name: "Not selectable now" }).textContent).toMatch(
+      /Venmo.*Temporarily unavailable/,
+    );
+  });
+
+  it("follows the host's initial tab and mode, and hides what it narrows out", async () => {
+    stubApi();
+    await renderTrade(
+      <Trade look={FULL_LOOK} embed={{ initialTab: "trade", initialMode: "onramp" }} />,
+    );
+    expect(selectedTab()).toBe("Trade");
+    expect(selectedMode()).toBe("Buy");
+    cleanup();
+
+    await renderTrade(
+      <Trade look={FULL_LOOK} embed={{ rampProviders: [], initialMode: "onramp" }} />,
+    );
+    expect(selectedMode()).toBe("Swap");
+    expect(
+      within(screen.getByRole("tablist", { name: "Trade mode" }))
+        .getAllByRole("tab")
+        .map((t) => t.textContent),
+    ).toEqual(["Swap"]);
+    fireEvent.click(tab("Send"));
+    expect(
+      within(screen.getByRole("tablist", { name: "Send to" }))
+        .getAllByRole("tab")
+        .map((t) => t.textContent),
+    ).toEqual(["Address", "Stealth"]);
+    cleanup();
+
+    await renderTrade(
+      <Trade look={FULL_LOOK} embed={{ initialTab: "send", sendDestinations: ["payment_app"] }} />,
+    );
+    expect(selectedTab()).toBe("Send");
+    const kinds = within(screen.getByRole("tablist", { name: "Send to" })).getAllByRole("tab");
+    expect(kinds.map((t) => [t.textContent, t.getAttribute("aria-selected")])).toEqual([
+      ["Payment app", "true"],
+    ]);
+    cleanup();
+
+    await renderTrade(<Trade look={FULL_LOOK} embed={{ tabs: ["activity"] }} />);
+    expect(tabNames()).toEqual(["Activity"]);
+    expect(document.querySelector(".trade-card")).toBeNull();
   });
 
   it("offers Claims only to a connected wallet", async () => {
