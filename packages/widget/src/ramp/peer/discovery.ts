@@ -1,13 +1,12 @@
 import { parseRamp, sameRampAsset, validateRampSettlement, type RampIntent } from "@xochi/client";
 import {
-  apiGetQuote,
-  apiGetQuotesBestByPlatform,
   getContracts,
   getPaymentMethodsCatalog,
   resolveFiatCurrencyBytes32,
   type QuoteRequest,
   type QuotesBestByPlatformRequest,
 } from "@zkp2p/sdk";
+import { PEER_ENVIRONMENT } from "../../config.js";
 import { isPeerMobileWeb } from "./environment.js";
 import { formatUnits } from "viem";
 import {
@@ -31,22 +30,50 @@ const URLS = {
 };
 const TIMEOUT_MS = 10_000;
 class ReadTimeout extends Error {}
-export async function boundedPeerRead(read: () => Promise<unknown>): Promise<unknown> {
+/** Fixed public cancellation error; never forwards AbortSignal.reason or provider errors. */
+export class PeerReadAborted extends Error {
+  constructor() {
+    super("peer_read_aborted");
+    this.name = "AbortError";
+  }
+}
+export function checkPeerAbort(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new PeerReadAborted();
+}
+export async function boundedPeerRead(
+  read: (signal: AbortSignal) => Promise<unknown>,
+  signal?: AbortSignal,
+): Promise<unknown> {
+  checkPeerAbort(signal);
+  const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let abort: (() => void) | undefined;
   try {
     return await Promise.race([
-      Promise.resolve().then(read),
+      Promise.resolve().then(() => {
+        checkPeerAbort(signal);
+        return read(controller.signal);
+      }),
       new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new ReadTimeout()), TIMEOUT_MS);
+        abort = () => {
+          controller.abort();
+          reject(new PeerReadAborted());
+        };
+        signal?.addEventListener("abort", abort, { once: true });
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new ReadTimeout());
+        }, TIMEOUT_MS);
       }),
     ]);
   } finally {
     clearTimeout(timer);
+    if (abort) signal?.removeEventListener("abort", abort);
   }
 }
 /** Uses the exact deployment config bundled in the selected SDK graph. */
 export function peerConfiguration(options: PeerDiscoveryOptions = {}): PeerConfiguration {
-  const environment = options.environment ?? "production";
+  const environment = options.environment ?? PEER_ENVIRONMENT;
   const addresses = getContracts(8453, environment).addresses;
   const settlement = validateRampSettlement({
     kind: "crypto",
@@ -72,11 +99,42 @@ export function peerConfiguration(options: PeerDiscoveryOptions = {}): PeerConfi
   };
 }
 function peerReads(options: PeerDiscoveryOptions): PeerDiscoveryReads {
-  const url = URLS[options.environment ?? "production"];
+  const url = URLS[options.environment ?? PEER_ENVIRONMENT];
+  // The pinned SDK quote adapters do not forward signals. Mirror their V3
+  // read-only wire format and use fetch directly to cancel the actual request.
+  const quoteRead = async (
+    request: QuotesBestByPlatformRequest | QuoteRequest,
+    best: boolean,
+    signal?: AbortSignal,
+  ) => {
+    const { amount, isExactFiat, ...body } = request;
+    const quotesToReturn = "quotesToReturn" in body ? body.quotesToReturn : undefined;
+    if ("quotesToReturn" in body) delete body.quotesToReturn;
+    const exactFiat = isExactFiat !== false;
+    const endpoint = best
+      ? exactFiat
+        ? "best-by-platform"
+        : "best-by-platform-exact-token"
+      : exactFiat
+        ? "exact-fiat"
+        : "exact-token";
+    const query = !best && quotesToReturn ? `?quotesToReturn=${quotesToReturn}` : "";
+    const response = await fetch(`${url}/v3/quote/${endpoint}${query}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal,
+      body: JSON.stringify({
+        ...body,
+        [exactFiat ? "exactFiatAmount" : "exactTokenAmount"]: String(amount),
+      }),
+    });
+    if (!response.ok) throw new Error("capabilities_unavailable");
+    return response.json();
+  };
   return (
     options.reads ?? {
-      bestByPlatform: (request) => apiGetQuotesBestByPlatform(request, url, TIMEOUT_MS),
-      quote: (request) => apiGetQuote(request, url, TIMEOUT_MS),
+      bestByPlatform: (request, signal) => quoteRead(request, true, signal),
+      quote: (request, signal) => quoteRead(request, false, signal),
     }
   );
 }
@@ -108,6 +166,7 @@ export async function readPeerQuotes(
   rail?: string,
 ): Promise<{ quotes: NormalizedPeerQuote[]; result: PeerDiscoveryResult }> {
   try {
+    checkPeerAbort(options.signal);
     const parsed = parseRamp(input),
       config = peerConfiguration(options);
     if (
@@ -127,6 +186,7 @@ export async function readPeerQuotes(
         quotes: [],
         result: {
           offers: [],
+          estimates: [],
           availability: {
             state: "setup_required",
             requirement_codes: ["peer_desktop_extension_or_app"],
@@ -137,16 +197,22 @@ export async function readPeerQuotes(
     const intent = parsed.value,
       reads = peerReads(options),
       request = requestFor(intent, config, options.user);
-    const raw = await boundedPeerRead(() =>
-      rail === undefined || intent.direction === "offramp"
-        ? reads.bestByPlatform(request)
-        : reads.quote({
-            ...request,
-            paymentPlatforms: [rail],
-            quotesToReturn: 1,
-            includeNearbyQuotes: false,
-          } as QuoteRequest),
+    const raw = await boundedPeerRead(
+      (signal) =>
+        rail === undefined || intent.direction === "offramp"
+          ? reads.bestByPlatform(request, signal)
+          : reads.quote(
+              {
+                ...request,
+                paymentPlatforms: [rail],
+                quotesToReturn: 1,
+                includeNearbyQuotes: false,
+              } as QuoteRequest,
+              signal,
+            ),
+      options.signal,
     );
+    checkPeerAbort(options.signal);
     const now = (options.now ?? Date.now)();
     if (!Number.isSafeInteger(now)) return { quotes: [], result: unavailable() };
     let quotes: NormalizedPeerQuote[];
@@ -163,7 +229,10 @@ export async function readPeerQuotes(
           let evidence: unknown;
           try {
             evidence = reads.makerEvidence
-              ? await boundedPeerRead(() => reads.makerEvidence!(intent, value, options.user))
+              ? await boundedPeerRead(
+                  (signal) => reads.makerEvidence!(intent, value, options.user, signal),
+                  options.signal,
+                )
               : undefined;
           } catch {
             /* Rail remains unknown. */
@@ -179,6 +248,7 @@ export async function readPeerQuotes(
         }),
       );
     }
+    checkPeerAbort(options.signal);
     const available = quotes.filter((q) => q.offer.availability.state === "available");
     const availability = available.length
       ? {
@@ -198,15 +268,32 @@ export async function readPeerQuotes(
       quotes,
       result: {
         offers: quotes.map((q) => q.offer),
+        estimates: available.flatMap((q) =>
+          q.offer.availability.state === "available"
+            ? [
+                {
+                  offerId: q.offer.offer_id,
+                  pay: q.pay,
+                  receive: q.receive,
+                  fees: q.fees.map(({ code, money }) => ({ code, money })),
+                  observedAt: q.offer.observed_at,
+                  validUntil: q.offer.availability.valid_until,
+                },
+              ]
+            : [],
+        ),
         availability,
         ...(quotes.length ? {} : { code: "capability_unavailable" as const }),
       },
     };
   } catch (error) {
+    checkPeerAbort(options.signal);
+    if (error instanceof PeerReadAborted) throw error;
     return {
       quotes: [],
       result: {
         offers: [],
+        estimates: [],
         availability: { state: "temporarily_unavailable", reason_code: "capabilities_unavailable" },
         code: error instanceof ReadTimeout ? "provider_timeout" : "capabilities_unavailable",
       },
