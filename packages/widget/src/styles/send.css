@@ -1,0 +1,290 @@
+/* Send tab (address / stealth / payment app) and Trade's Buy mode. One column
+   at the card's width, every control at least 44px tall, text on the shared
+   text scale (textContrast.test.ts). */
+
+/* Its own card, not .trade-card: that class is the Swap card's landmark and
+   carries its split-receipt layout. The surface matches it. */
+.send-card {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 420px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  padding: 1.25rem;
+  backdrop-filter: blur(16px);
+  box-shadow:
+    var(--shadow-md),
+    0 0 0 1px rgba(168, 154, 128, 0.04);
+}
+
+.launch-screen--full .send-card {
+  max-width: 600px;
+}
+
+.send-card__title {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.send-card__kinds,
+.trade-modes {
+  width: 100%;
+}
+
+.send-card__kinds .type-btn,
+.trade-modes .type-btn {
+  min-height: 44px;
+}
+
+.send-card__panel[hidden] {
+  display: none;
+}
+
+.send-form,
+.send-review,
+.send-unavailable {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.send-unavailable p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* Network and asset share a row when there is room, and stack below it. */
+.send-form__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.send-form__row > .send-field {
+  flex: 1 1 140px;
+}
+
+.send-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.send-field__label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  padding: 0 0.25rem;
+}
+
+.send-field__control {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  color: var(--pearl-cream);
+  background: var(--inset-bg);
+  border: 1px solid var(--line-subtle);
+  border-radius: 12px;
+  padding: 0.6rem 0.9rem;
+  box-shadow: var(--shadow-inset);
+  min-width: 0;
+}
+
+.send-field__control--mono {
+  font-size: 0.8rem;
+}
+
+.send-field__control::placeholder {
+  color: var(--text-muted);
+}
+
+.send-field__control:focus-visible {
+  outline: none;
+  border-color: var(--muted-gold-25);
+  box-shadow:
+    var(--shadow-inset),
+    0 0 0 2px var(--muted-gold-subtle);
+}
+
+.send-field__control[aria-invalid="true"] {
+  border-color: var(--color-error);
+}
+
+.send-field__hint {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  padding: 0 0.25rem;
+}
+
+.send-field__control[aria-invalid="true"] + .send-field__hint,
+.send-field__error {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--color-error);
+  padding: 0 0.25rem;
+}
+
+.send-note {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.send-cta {
+  min-height: 44px;
+  margin-top: 0.25rem;
+}
+
+.send-review__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--pearl-cream);
+}
+
+.send-review__facts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0.75rem;
+  background: var(--inset-bg);
+  border: 1px solid var(--line-subtle);
+  border-radius: 12px;
+}
+
+.send-review__facts dt {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.send-review__facts dd {
+  margin: 0.15rem 0 0;
+  color: var(--pearl-cream);
+}
+
+.send-review__amount {
+  font-family: var(--font-mono);
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.send-review__mono {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.send-review__hash {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.send-review__hash a,
+.send-activity__row a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--muted-gold);
+}
+
+.send-review__actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: stretch;
+}
+
+.send-review__actions .send-cta {
+  flex: 1 1 auto;
+  margin-top: 0;
+}
+
+.send-secondary {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--line-subtle);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.send-secondary:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Activity: public sends, above the swap log. */
+.send-activity {
+  width: 100%;
+  max-width: 420px;
+}
+
+.launch-screen--full .send-activity {
+  max-width: 760px;
+}
+
+.send-activity__title {
+  margin: 0 0 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.send-activity__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.send-activity__row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+}
+
+.send-activity__amount {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--pearl-cream);
+}
+
+.send-activity__meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}

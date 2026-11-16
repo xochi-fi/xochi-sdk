@@ -134,10 +134,41 @@ const callData = (params: unknown): string | undefined => {
  * throws, so a test cannot come to depend on chain state a CI box has no way to
  * serve.
  */
+/**
+ * Mined transactions a test has declared, by hash: what `eth_getTransactionReceipt`
+ * answers. Empty unless a test puts a hash here (and clears it after), so no
+ * other suite can come to depend on a receipt it did not ask for.
+ */
+export const harnessReceipts = new Map<string, "success" | "reverted">();
+
+const receiptFor = (chain: Chain, params: unknown) => {
+  const hash: unknown = Array.isArray(params) ? params[0] : undefined;
+  const status = typeof hash === "string" ? harnessReceipts.get(hash) : undefined;
+  if (status === undefined) return null;
+  return {
+    transactionHash: hash,
+    transactionIndex: "0x0",
+    blockHash: `0x${"0b".repeat(32)}`,
+    blockNumber: "0x1",
+    from: TEST_ACCOUNT,
+    to: TEST_ACCOUNT,
+    cumulativeGasUsed: "0x5208",
+    gasUsed: "0x5208",
+    effectiveGasPrice: "0x1",
+    contractAddress: null,
+    logs: [],
+    logsBloom: `0x${"0".repeat(512)}`,
+    status: status === "success" ? "0x1" : "0x0",
+    type: "0x2",
+    chainId: numberToHex(chain.id),
+  };
+};
+
 const testTransport = (chain: Chain, tokenBalance: bigint) =>
   custom({
     request: async ({ method, params }: { method: string; params?: unknown }) => {
       if (method === "personal_sign" || method === "eth_sign") return TEST_SIGNATURE;
+      if (method === "eth_getTransactionReceipt") return receiptFor(chain, params);
       if (method === "eth_chainId") return numberToHex(chain.id);
       if (method === "eth_call") {
         const data = callData(params);
@@ -460,19 +491,24 @@ export interface ApiStubOptions {
    * included), so a test can assert a prompt was never raised.
    */
   onWalletRpc?: (method: string) => void;
+  /**
+   * What the mock wallet answers for a prompt it would otherwise refuse, by
+   * method (e.g. the hash an approved `eth_sendTransaction` returns).
+   */
+  walletResults?: Readonly<Record<string, unknown>>;
   /** Serve the typed default matrix when the test does not override capabilities. */
   serveDefaultCapabilities?: boolean;
 }
 
 export function apiStub(
   routes: Record<string, StubbedRoute>,
-  { onWalletRpc, serveDefaultCapabilities = true }: ApiStubOptions = {},
+  { onWalletRpc, walletResults, serveDefaultCapabilities = true }: ApiStubOptions = {},
 ): FetchStub {
   return (input, init) => {
     // Narrowed rather than cast: `fetch` takes a string, a URL or a Request, and
     // only the last has `.url`.
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (url === HARNESS_RPC) return Promise.resolve(walletRpc(init, onWalletRpc));
+    if (url === HARNESS_RPC) return Promise.resolve(walletRpc(init, onWalletRpc, walletResults));
     for (const [match, route] of Object.entries(routes)) {
       if (url.includes(match)) {
         const body = route.answer
@@ -514,6 +550,7 @@ export function apiStub(
 function walletRpc(
   init: RequestInit | undefined,
   onWalletRpc: ((method: string) => void) | undefined,
+  walletResults: Readonly<Record<string, unknown>> = {},
 ): Response {
   const body: unknown = JSON.parse(typeof init?.body === "string" ? init.body : "{}");
   const method =
@@ -523,13 +560,15 @@ function walletRpc(
   onWalletRpc?.(method);
   const id = body && typeof body === "object" && "id" in body ? body.id : 0;
   const result =
-    method === "eth_sign" || method === "personal_sign"
-      ? TEST_SIGNATURE
-      : method === "eth_accounts" || method === "eth_requestAccounts"
-        ? [TEST_ACCOUNT]
-        : method === "eth_chainId"
-          ? numberToHex(mainnet.id)
-          : undefined;
+    method in walletResults
+      ? walletResults[method]
+      : method === "eth_sign" || method === "personal_sign"
+        ? TEST_SIGNATURE
+        : method === "eth_accounts" || method === "eth_requestAccounts"
+          ? [TEST_ACCOUNT]
+          : method === "eth_chainId"
+            ? numberToHex(mainnet.id)
+            : undefined;
   const payload =
     result !== undefined
       ? { id, jsonrpc: "2.0", result }
