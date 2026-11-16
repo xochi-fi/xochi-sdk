@@ -24,6 +24,14 @@ export interface MakerExecutionTerms {
   maximum: string;
   conversionRate: string;
   validUntil: string;
+  /** Verified live inline ARM config; omitted only for a manual-rate template. */
+  oracle?: {
+    adapter: `0x${string}`;
+    adapterConfig: `0x${string}`;
+    spreadBps: number;
+    maxStaleness: number;
+    floor: string;
+  };
 }
 /**
  * Construct the SDK-backed write preparation port. The application's trusted read layer supplies
@@ -126,6 +134,19 @@ export function createSDKMakerIO(options: {
           conversionRates: [
             [{ currency: input.intent.fiat.currency, conversionRate: terms.conversionRate }],
           ],
+          ...(terms.oracle
+            ? {
+                currenciesOverride: [
+                  [
+                    {
+                      code: config.currencyHash as `0x${string}`,
+                      minConversionRate: BigInt(atomic(terms.oracle.floor)),
+                      oracleRateConfig: terms.oracle,
+                    },
+                  ],
+                ],
+              }
+            : {}),
           retainOnEmpty: false,
         });
         return result.prepared;

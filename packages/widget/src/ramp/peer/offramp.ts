@@ -11,6 +11,14 @@ import {
   type RampSnapshot,
 } from "@xochi/client";
 import type { PreparedTransaction } from "@zkp2p/sdk";
+import { peerConfiguration } from "./discovery.js";
+import { makeOffer } from "./normalization.js";
+import {
+  browserMakerStorage,
+  ProtectedMakerMappings,
+  type MakerMappingStorage,
+  type ProtectedMakerMapping,
+} from "./protectedMapping.js";
 import { fetchPeerCapabilities } from "./discovery.js";
 import { previewPeerOffer } from "./preview.js";
 import type { PeerDiscoveryOptions, PeerDiscoveryResult } from "./types.js";
@@ -26,6 +34,8 @@ export type MakerWalletAction = "approve_usdc" | "create_deposit" | "withdraw_un
 export interface MakerUnsignedPlan {
   readonly action: MakerWalletAction;
   readonly transaction: PreparedTransaction;
+  /** The connected wallet must match this public sender before signing. */
+  readonly account: string;
   readonly expiresAt: string;
 }
 export interface MakerReadiness {
@@ -51,6 +61,11 @@ export type MakerReconciliation =
   | { readonly state: "confirmed"; readonly depositId?: string };
 /** Trusted I/O only. Implementations must not log raw errors, registration data or identifiers. */
 export interface PeerMakerIO {
+  rebuild?(
+    mapping: ProtectedMakerMapping,
+    pendingWithdrawalHash?: string,
+  ): Promise<{ state: "pending" } | { state: "confirmed"; depositId: string; amount: string }>;
+
   readiness(intent: RampIntent, rail: string): Promise<MakerReadiness>;
   /** POST /v2/makers/create, via SDK registerPayeeDetails. Own account only. */
   registerOwnPayee(rail: string, ownAccount: string): Promise<string>;
@@ -96,6 +111,7 @@ interface Entry {
   ownAccount?: string;
   payeeHash?: string;
   depositId?: string;
+  creationHash?: string;
   plan?: MakerUnsignedPlan;
   claimed?: MakerWalletAction;
   hash?: string;
@@ -165,6 +181,8 @@ function readinessCode(
   if (value.sellerSetup !== "ready") return "capability_unavailable";
 }
 export interface PeerOfframpProvider extends RampProvider {
+  /** Explicit setup-only registration; returns no payee/provider identifier. */
+  setupOwnAccount(rail: string, account: string, ownership: "own_account"): Promise<void>;
   /** Trusted local UI input. This confirms the handle belongs to the connected user. */
   setOwnAccount(operationId: string, account: string, ownership: "own_account"): Promise<void>;
   /** Single-use handoff to the caller's wallet. Claiming creates uncertainty until reconciled. */
@@ -190,11 +208,108 @@ export function createPeerOfframpProvider(options: {
   discovery: PeerDiscoveryOptions;
   store?: PeerMakerPrivateStore;
   mintOperationId?: () => string;
+  storage?: MakerMappingStorage | null;
 }): PeerOfframpProvider {
   const store = options.store ?? new PeerMakerPrivateStore();
   const now = options.discovery.now ?? Date.now;
   const io = options.io;
   const refusedRails = new Set<string>();
+  const recoveredWithdrawalHashes = new Map<string, string>();
+  const registrations = new Map<string, { account: string; hash: string }>();
+  const config = peerConfiguration(options.discovery);
+  const browserStorage =
+    options.storage === null ? undefined : (options.storage ?? browserMakerStorage());
+  const mappings =
+    browserStorage && options.discovery.user
+      ? new ProtectedMakerMappings(browserStorage, options.discovery.user, config.escrow)
+      : undefined;
+  function persist(e: Entry) {
+    if (!mappings) return;
+    if (e.snapshot.terminal) {
+      mappings.remove(e.snapshot.operation_id);
+      return;
+    }
+    if (!e.depositId && !e.creationHash && e.claimed !== "create_deposit") {
+      mappings.remove(e.snapshot.operation_id);
+      return;
+    }
+    if (e.depositId || e.creationHash || e.claimed === "create_deposit")
+      mappings.put({
+        operationRef: e.snapshot.operation_id,
+        escrowAddress: config.escrow,
+        depositId: e.depositId ?? null,
+        creationTxHash: e.creationHash ?? null,
+        legRevision: e.snapshot.revision,
+      });
+  }
+  async function restore(
+    entries: Map<string, Entry>,
+    id: string,
+  ): Promise<RampSnapshot | undefined> {
+    const saved = mappings?.get(id);
+    if (!saved) fail();
+    const snapshot: RampSnapshot = {
+      contract_version: "ramp/1",
+      kind: "snapshot",
+      operation_id: id,
+      revision: saved.legRevision,
+      direction: "offramp",
+      leg_order: ["peer"],
+      peer: { name: "peer", state: "in_doubt", recoverable: true, failure_code: "peer_in_doubt" },
+      allowed_actions: ["check_status"],
+      updated_at: new Date(now()).toISOString(),
+      terminal: false,
+    };
+    const rebuilt = await io.rebuild?.(saved, recoveredWithdrawalHashes.get(id));
+    if (!rebuilt || rebuilt.state === "pending") return snapshot;
+    const amount = atomic(rebuilt.amount);
+    const intent: RampIntent = {
+      contract_version: "ramp/1",
+      kind: "intent",
+      direction: "offramp",
+      exact: { side: "crypto", money: { asset: config.settlement, atomic: amount } },
+      fiat: { kind: "fiat", currency: "USD", decimals: 6 },
+      crypto: config.settlement,
+      recipient: options.discovery.user!,
+    };
+    const offer = makeOffer(
+      intent,
+      config,
+      "recovered",
+      now(),
+      { state: "availability_unknown", reason_code: "capability_unavailable" },
+      ["recovered"],
+    );
+    // Only recovery reads use this internal record; it can never prepare a second deposit.
+    const preview: RampPreview = {
+      contract_version: "ramp/1",
+      kind: "preview",
+      operation_id: id,
+      quote_id: "recovered",
+      offer_id: offer.offer_id,
+      capability_revision: offer.capability_revision,
+      request_digest: `0x${"0".repeat(64)}`,
+      pay: { asset: config.settlement, atomic: amount },
+      receive: { asset: intent.fiat, atomic: atomic("0") },
+      fees: [],
+      expires_at: new Date(0).toISOString(),
+      leg_order: ["peer"],
+      disclosures: offer.disclosures,
+    };
+    entries.set(id, {
+      intent,
+      offer,
+      preview,
+      snapshot,
+      depositId: rebuilt.depositId,
+      creationHash: saved.creationTxHash ?? undefined,
+      approved: false,
+      transactionHashes: new Set(saved.creationTxHash ? [saved.creationTxHash.toLowerCase()] : []),
+      // S4 owns its persisted public CAS counter; it is independent of this leg revision.
+      commandRevision: 0n,
+      receipts: new Map(),
+    });
+  }
   async function readReady(intent: RampIntent, rail: string): Promise<MakerReadiness> {
     try {
       const result = await io.readiness(intent, rail);
@@ -208,7 +323,15 @@ export function createPeerOfframpProvider(options: {
     }
   }
 
-  const entry = (entries: Map<string, Entry>, id: string): Entry => entries.get(id) ?? fail();
+  function entry(entries: Map<string, Entry>, id: string): Entry {
+    const value = entries.get(id) ?? fail();
+    if (
+      options.discovery.user &&
+      value.intent.recipient.toLowerCase() !== options.discovery.user.toLowerCase()
+    )
+      fail("session_conflict");
+    return value;
+  }
   function update(
     e: Entry,
     state: RampSnapshot["peer"]["state"],
@@ -217,7 +340,14 @@ export function createPeerOfframpProvider(options: {
   ): RampSnapshot {
     e.snapshot = {
       ...e.snapshot,
-      revision: (BigInt(e.snapshot.revision) + 1n).toString(),
+      // An odd provider revision durably marks a withdrawal wallet handoff. After
+      // reload it cannot be re-authorized until its known wallet hash is reconciled.
+      revision: (() => {
+        let next = BigInt(e.snapshot.revision) + 1n;
+        const parity = e.claimed === "withdraw_unmatched" ? 1n : 0n;
+        if (next % 2n !== parity) next++;
+        return next.toString();
+      })(),
       peer: {
         name: "peer",
         state,
@@ -228,6 +358,7 @@ export function createPeerOfframpProvider(options: {
       updated_at: new Date(now()).toISOString(),
       terminal: ["completed", "refunded"].includes(state),
     };
+    persist(e);
     return copy(e.snapshot);
   }
   async function fresh(e: Entry) {
@@ -256,7 +387,7 @@ export function createPeerOfframpProvider(options: {
       !/^0x(?:[0-9a-fA-F]{2})+$/.test(transaction.data)
     )
       fail("provider_declined");
-    return { action, transaction: copy(transaction), expiresAt };
+    return { action, transaction: copy(transaction), expiresAt, account: options.discovery.user! };
   }
   async function refresh(e: Entry): Promise<RampSnapshot> {
     if (e.snapshot.terminal) return copy(e.snapshot);
@@ -272,6 +403,7 @@ export function createPeerOfframpProvider(options: {
         // The actual payment handle is no longer needed after successful registration/deposit.
         delete e.ownAccount;
         delete e.payeeHash;
+        registrations.delete(e.offer.rail.id);
       }
       delete e.claimed;
       delete e.hash;
@@ -365,6 +497,26 @@ export function createPeerOfframpProvider(options: {
   }
   const provider: PeerOfframpProvider = {
     id: "peer",
+    async setupOwnAccount(rail, account, ownership) {
+      if (
+        ownership !== "own_account" ||
+        !account ||
+        account.length > 256 ||
+        !Object.hasOwn(config.rails, rail)
+      )
+        fail();
+      try {
+        const hash = await io.registerOwnPayee(rail, account);
+        registrations.set(rail, { account, hash });
+        refusedRails.delete(rail);
+      } catch (error) {
+        if (error instanceof MakerSetupRequired) {
+          refusedRails.add(rail);
+          throw new MakerSetupRequired();
+        }
+        fail("provider_declined");
+      }
+    },
     async capabilities(intent) {
       if (intent.direction !== "offramp") return { offers: [] };
       const result = await fetchPeerCapabilities(intent, options.discovery);
@@ -449,6 +601,12 @@ export function createPeerOfframpProvider(options: {
           preview: copy(preview),
           snapshot,
           approved: false,
+          ...(registrations.has(offer.rail.id)
+            ? {
+                ownAccount: registrations.get(offer.rail.id)!.account,
+                payeeHash: registrations.get(offer.rail.id)!.hash,
+              }
+            : {}),
           transactionHashes: new Set(),
           commandRevision: 0n,
           receipts: new Map(),
@@ -502,6 +660,14 @@ export function createPeerOfframpProvider(options: {
     },
     async status(id) {
       return access(store, async (entries) => {
+        if (!entries.has(id)) {
+          try {
+            const pending = await restore(entries, id);
+            if (pending) return pending;
+          } catch {
+            fail("peer_in_doubt");
+          }
+        }
         const e = entry(entries, id);
         try {
           return await refresh(e);
@@ -529,6 +695,7 @@ export function createPeerOfframpProvider(options: {
           !account ||
           account.length > 256 ||
           e.depositId ||
+          e.approved ||
           e.claimed ||
           e.payeeHash
         )
@@ -567,12 +734,35 @@ export function createPeerOfframpProvider(options: {
     },
     async recordSubmission(id, action, hash) {
       await access(store, async (entries) => {
+        if (!entries.has(id)) {
+          const saved = mappings?.get(id);
+          if (
+            saved?.depositId &&
+            action === "withdraw_unmatched" &&
+            BigInt(saved.legRevision) % 2n === 1n &&
+            /^0x[0-9a-fA-F]{64}$/.test(hash)
+          ) {
+            recoveredWithdrawalHashes.set(id, hash);
+            return;
+          }
+          if (
+            !saved ||
+            saved.creationTxHash ||
+            action !== "create_deposit" ||
+            !/^0x[0-9a-fA-F]{64}$/.test(hash)
+          )
+            fail();
+          mappings!.put({ ...saved, creationTxHash: hash });
+          return;
+        }
         const e = entry(entries, id);
         if (e.claimed !== action || e.hash || !/^0x[0-9a-fA-F]{64}$/.test(hash)) fail();
         if ([...entries.values()].some((other) => other.transactionHashes.has(hash.toLowerCase())))
           fail("session_conflict");
         e.transactionHashes.add(hash.toLowerCase());
         e.hash = hash;
+        if (action === "create_deposit") e.creationHash = hash;
+        persist(e);
       });
     },
     async recordWalletRejection(id) {
@@ -615,10 +805,10 @@ export function createPeerOfframpProvider(options: {
       const snapshot = await provider.status(id);
       return access(store, async (entries) => ({
         snapshot,
-        ...(snapshot.peer.state !== "in_doubt" && entry(entries, id).phase
-          ? { phase: entry(entries, id).phase }
+        ...(snapshot.peer.state !== "in_doubt" && entries.get(id)?.phase
+          ? { phase: entries.get(id)?.phase }
           : {}),
-        ...(entry(entries, id).reason ? { reason: entry(entries, id).reason } : {}),
+        ...(entries.get(id)?.reason ? { reason: entries.get(id)?.reason } : {}),
       }));
     },
   };

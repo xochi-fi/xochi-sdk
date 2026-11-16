@@ -8,6 +8,7 @@ import {
   type RampIntent,
   type RampSnapshot,
 } from "@xochi/client";
+import type { MakerMappingStorage, ProtectedMakerMapping } from "./protectedMapping.js";
 import type { PreparedTransaction } from "@zkp2p/sdk";
 import recorded from "./fixtures/usd-best-by-platform.json";
 import { peerConfiguration } from "./discovery.js";
@@ -21,6 +22,18 @@ import {
   type MakerWalletAction,
   type PeerMakerIO,
 } from "./offramp.js";
+class MemoryMappingStorage implements MakerMappingStorage {
+  values = new Map<string, string>();
+  getItem(key: string) {
+    return this.values.get(key) ?? null;
+  }
+  setItem(key: string, value: string) {
+    this.values.set(key, value);
+  }
+  removeItem(key: string) {
+    this.values.delete(key);
+  }
+}
 const config = peerConfiguration();
 const wallet = "0x000000000000000000000000000000000000dEaD";
 const hash = `0x${"1".repeat(64)}`;
@@ -63,6 +76,16 @@ class MemoryMaker implements PeerMakerIO {
     activeIntents: 0,
     closed: false,
   };
+  async rebuild(mapping: ProtectedMakerMapping, pendingWithdrawalHash?: string) {
+    if (
+      !mapping.creationTxHash ||
+      (mapping.depositId !== null &&
+        BigInt(mapping.legRevision) % 2n === 1n &&
+        !pendingWithdrawalHash)
+    )
+      return { state: "pending" as const };
+    return { state: "confirmed" as const, depositId: "123", amount: "25000000" };
+  }
   async readiness() {
     return { ...this.ready };
   }
@@ -386,5 +409,120 @@ describe("Peer maker unsigned lifecycle", () => {
     );
     expect(snapshot.peer.state).toBe("processing");
     expect(s.io.depositPlans).toBe(1);
+  });
+  it("persists only approved private mapping fields and rebuilds after a new runtime", async () => {
+    const s = await previewed();
+    const storage = new MemoryMappingStorage();
+    const provider = createPeerOfframpProvider({
+      io: s.io,
+      discovery: s.discovery,
+      store: s.store,
+      storage,
+    });
+    s.snapshot = await provider.interact(
+      s.preview.operation_id,
+      context(s.snapshot, "prepare_durable"),
+    );
+    await provider.takeUnsignedPlan(s.preview.operation_id);
+    let saved = [...storage.values.values()][0]!;
+    expect(JSON.parse(saved)[0]).toEqual({
+      operationRef: s.preview.operation_id,
+      escrowAddress: config.escrow,
+      depositId: null,
+      creationTxHash: null,
+      legRevision: expect.any(String),
+    });
+    const pending = createPeerOfframpProvider({ io: s.io, discovery: s.discovery, storage });
+    expect((await pending.status(s.preview.operation_id)).peer.state).toBe("in_doubt");
+    await pending.recordSubmission(s.preview.operation_id, "create_deposit", hash);
+    s.io.outcome = { state: "confirmed", depositId: "123" };
+    const rebuilt = await pending.orderStatus(s.preview.operation_id);
+    expect(rebuilt.phase).toBe("awaiting_buyer");
+    expect(s.io.depositPlans).toBe(1);
+    saved = [...storage.values.values()][0]!;
+    expect(Object.keys(JSON.parse(saved)[0]).sort()).toEqual([
+      "creationTxHash",
+      "depositId",
+      "escrowAddress",
+      "legRevision",
+      "operationRef",
+    ]);
+    for (const value of [
+      "synthetic-own-account",
+      "payeeHash",
+      "intent",
+      "preview",
+      "signature",
+      "credential",
+      "synthetic_payee_hash",
+    ])
+      expect(saved).not.toContain(value);
+    const foreign = createPeerOfframpProvider({
+      io: s.io,
+      discovery: { ...s.discovery, user: "0x0000000000000000000000000000000000000001" },
+      storage,
+    });
+    await expect(foreign.status(s.preview.operation_id)).rejects.toThrow("peer_in_doubt");
+    const withdrawn = await pending.prepareWithdrawal(
+      s.preview.operation_id,
+      "25000000",
+      context(rebuilt.snapshot, "durable_withdraw"),
+    );
+    expect(withdrawn.peer.state).toBe("action_required");
+    await pending.takeUnsignedPlan(s.preview.operation_id);
+    const reloaded = createPeerOfframpProvider({ io: s.io, discovery: s.discovery, storage });
+    expect((await reloaded.status(s.preview.operation_id)).peer.state).toBe("in_doubt");
+    await expect(
+      reloaded.prepareWithdrawal(
+        s.preview.operation_id,
+        "25000000",
+        context(withdrawn, "duplicate"),
+      ),
+    ).rejects.toThrow("invalid_request");
+    await reloaded.recordSubmission(
+      s.preview.operation_id,
+      "withdraw_unmatched",
+      `0x${"2".repeat(64)}`,
+    );
+    Object.assign(s.io.facts, {
+      remaining: "0",
+      unmatched: "0",
+      withdrawn: "25000000",
+      closed: true,
+    });
+    expect((await reloaded.orderStatus(s.preview.operation_id)).phase).toBe("returned");
+    expect(storage.values.size).toBe(0);
+  });
+  it("fails closed for corrupted or unavailable protected storage", async () => {
+    const s = await previewed();
+    const storage = new MemoryMappingStorage();
+    const provider = createPeerOfframpProvider({
+      io: s.io,
+      discovery: s.discovery,
+      store: s.store,
+      storage,
+    });
+    await provider.interact(s.preview.operation_id, context(s.snapshot, "storage_prepare"));
+    await provider.takeUnsignedPlan(s.preview.operation_id);
+    const key = [...storage.values.keys()][0]!;
+    storage.values.set(key, "[synthetic-corrupted-record]");
+    const restored = createPeerOfframpProvider({ io: s.io, discovery: s.discovery, storage });
+    await expect(restored.status(s.preview.operation_id)).rejects.toThrow("peer_in_doubt");
+    const unavailable: MakerMappingStorage = {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error("[synthetic-storage-error]");
+      },
+      removeItem: () => {},
+    };
+    const t = await previewed();
+    const blocked = createPeerOfframpProvider({
+      io: t.io,
+      discovery: t.discovery,
+      store: t.store,
+      storage: unavailable,
+    });
+    await blocked.interact(t.preview.operation_id, context(t.snapshot, "unavailable_prepare"));
+    await expect(blocked.takeUnsignedPlan(t.preview.operation_id)).rejects.toThrow("peer_in_doubt");
   });
 });

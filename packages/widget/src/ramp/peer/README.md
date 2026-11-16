@@ -68,6 +68,8 @@ It must **perform new provider/protocol reads on each invocation** and return on
   not establish protocol bounds.
 - An explicit `fees` array of `{code, atomic}` in USDC units, including an empty
   array only when a live read establishes no fees.
+- Optional `pricing_revision`, a bounded digest of public oracle configuration, for
+  detecting changed pricing policy independently of observation timestamps.
 - `credential: "verified" | "missing" | "unknown"` and, for verification,
   `wallet` matching the public connected user. The callback retains all payee and
   credential identifiers locally and never includes them in its return value.
@@ -83,15 +85,14 @@ capabilities; do not bridge them or substitute static/cached data.
 Maker preview is an **estimate, never a locked rate or guaranteed fill**. The
 result wrapper has `estimate: true`, and disclosure codes include
 `maker_estimate` and `asynchronous_partial_fills`. Cash proceeds round down and
-required USDC rounds up using bigint rational arithmetic. S5 must establish the
-execution price/fees, approval and lifecycle separately.
+required USDC rounds up using bigint rational arithmetic. The maker adapter below
+establishes execution pricing, approvals and lifecycle separately.
 
 The selected SDK README states that its readiness reader verifies the V3
 manifest only and that V4 readiness awaits a new manifest (lines 560–561).
 These functions use the SDK's validated deployment identity and live quotes;
-they do not claim full V4 manifest certification. Maker live eligibility/bounds
-remain an integration gap until S5 supplies authoritative reads. Keep both
-limitations in deployment and release review.
+they do not claim full V4 manifest certification. The default maker reader below independently supplies on-chain and public-indexer
+evidence; keep the V4 manifest-certification limitation in release review.
 
 ## Fixture and opt-in probe
 
@@ -144,23 +145,51 @@ maker transaction. Current effective rates can include ARM oracle pricing; a sta
 feed pauses execution. This port never configures a guessed ARM policy or Autopilot
 workaround.
 
-The application supplies the trusted read ports for account/ARM readiness,
-allowance, chain receipts, deposit state and indexed fills/withdrawals. These are
-required dependencies, not a default live maker-read implementation: no dedicated
-public maker capability endpoint exists, and maker reads may need an approved
-provider API key. `reconcile` must compare a confirmed transaction's sender, chain,
-target, calldata and value against the expected unsigned transaction, and extract
-only its own deposit ID from the escrow receipt. Unknown receipts remain pending.
-`deposit` must validate owner, escrow/asset identity, confirmed chain state and
-indexer coherence; missing, stale or inconsistent observations must throw. Its
+`createLivePeerOfframpProvider({publicClient, sdk, wallet, environment})` supplies
+production read implementations using the existing runtime's Base 8453 viem
+PublicClient and the unauthenticated public indexer (staging selects its indexer).
+No approved-key maker API is used. S2's public quotes discover candidate rails;
+the default maker reader independently checks the chain, escrow/orchestrator pause,
+wallet USDC balance, active rail/currency and effective rate. A live indexed deposit
+is only a corridor template: its on-chain intent range deliberately narrows the new
+order policy, not a claim about platform-wide bounds. Missing templates or an
+unproven region constraint remain unavailable. The exact newly prepared deposit
+is simulated from the actual maker before wallet handoff. ARM templates preserve
+the live oracle config, spread, staleness threshold and floor; an unusable effective
+rate blocks execution, and a changed pricing config changes the capability revision.
+
+Call `setupOwnAccount(rail, account, "own_account")` as an explicit trusted setup
+interaction before the first executable preview. It registers with the curator and
+keeps the account/hash in provider-private memory. Successful registration is
+required; an explicit Autopilot refusal stays `setup_required`. The default
+transport also keeps unresolved Venmo/Cash App/PayPal/X Money Autopilot eligibility
+closed at `setup_required`; registration alone never enables those deposits. Identity-attestation
+rails remain `setup_required` in the default transport rather than fabricating an
+attestation. Re-enter account setup for a new cash-out after a runtime reload;
+existing deposits resume entirely from their chain mapping without any payee input.
+
+The default receipt reader compares sender, chain, target, calldata and value
+against the unsigned plan and extracts the deposit ID from that escrow's confirmed
+creation event. Unknown receipts stay pending. Reload recovery independently checks
+the creation transaction/receipt. Deposit status reads compare chain balances and
+active intents with indexed verified fills and withdrawals. ProtocolViewerV4's
+available liquidity excludes unavailable reservations. Indexed balances and totals
+must agree exactly; disagreement or missing data yields `in_doubt`. The reader caps
+history at 1,000 rows and fails closed if truncated, rather than guessing a terminal
+state. Indexer 429 responses honor `Retry-After` without automatic retries or sleeps;
+other HTTP/GraphQL errors return bounded unavailable/in-doubt states. Raw responses
+and errors are never logged or returned.
+
+The lower-level `createPeerOfframpProvider` and `createSDKMakerIO` retain injected
+ports for deterministic tests or another trusted runtime. Their read contract's
 `remaining` includes active-intent reservations; `unmatched` excludes reservations
 and fees. `filled` is gross USDC debited by verified fills, including protocol fees.
 Remaining + filled + withdrawn must equal the original deposit. Payment-pending
-intents are never fills. SDK read exceptions must not be logged by the application.
+intents are never fills.
 
 The trusted UI/wallet sequence is:
 
-1. Discover, preview and review the `maker_estimate` and asynchronous partial-fill
+1. Complete explicit own-account setup when required, then discover, preview and review the `maker_estimate` and asynchronous partial-fill
    disclosures. The estimate is approximate, never a locked rate or ETA.
 2. Call `setOwnAccount(operationId, account, "own_account")` with the user's own
    payment account, then explicitly approve the preview through the ramp client.
@@ -171,6 +200,7 @@ The trusted UI/wallet sequence is:
    uncertainty. Actions are `approve_usdc`, `create_deposit`, or `withdraw_unmatched`.
    No method broadcasts, signs or receives a private key. Wallet calldata is
    wallet-only material; never forward it through host callbacks or bridge events.
+   The wallet must match the plan's public `account` sender before signing.
 4. Report the public transaction hash with `recordSubmission`, then reconcile
    `check_status`. A confirmed allowance requests another explicit `interact` for
    deposit creation. If the wallet definitively rejected before broadcast, call
@@ -186,16 +216,26 @@ The trusted UI/wallet sequence is:
    funds/reservations are checked again at wallet handoff. A rejected full close
    returns bounded `active_intent_blocks_withdrawal` in the safe order reason.
 
-`PeerMakerPrivateStore` holds mappings, registration data and command receipts in
-module-private memory. Reusing it across provider instances resumes the existing
-deposit; its JSON representation is empty. It has no public mapping accessors.
-The raw account is discarded after deposit confirmation. It is **not durable across
-a page/process reload**: the host must keep the trusted runtime alive or supply a
-future protected persistence integration; sanitized public snapshots alone cannot
-recover provider handles or authorize recreation. Do not serialize this object,
-put payees into browser storage, or rebuild a deposit from a public snapshot.
-Public snapshots contain only the widget-minted operation reference and bounded
-states/codes. `orderStatus` adds only safe phase/reason enums.
+`PeerMakerPrivateStore` keeps transient registration data and command receipts in
+module-private memory with no public mapping accessors. The live factory also uses
+a dedicated browser localStorage key scoped to wallet + Base chain + escrow,
+separate from public activity. Its strict allowlist persists **only** operation
+reference, escrow address, deposit ID, creation transaction hash and leg revision.
+A pending creation may have null ID/hash; it remains `in_doubt` after reload until
+the known wallet hash can be attached. No intent, preview, payee/account/hash,
+identity, credential, proof, wallet signature or raw response enters storage.
+Entries are removed on confirmed final delivery/withdrawal. Corrupt or inaccessible
+storage fails closed; the live factory requires durable storage.
+
+The provider leg revision's odd parity marks an unresolved withdrawal wallet
+handoff. Reloading such an entry exposes reconciliation only, and cannot prepare
+another withdrawal. Reattach the known current wallet transaction hash via
+`recordSubmission(operationId, "withdraw_unmatched", hash)` to reconcile the
+matching escrow withdrawal receipt before unlocking recovery. Creation/deposit
+handles are always rebuilt from public protocol data inside the provider; a
+sanitized public snapshot alone never authorizes deposit recreation. Public
+snapshots contain only the widget-minted operation reference and bounded states
+and codes; `orderStatus` adds only safe phase/reason enums.
 
 The in-memory maker/SDK implementations exercise the same ports without signing,
 network calls, sleeps or mocking libraries. They use the sanitized recorded S2

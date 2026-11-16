@@ -3,7 +3,7 @@ import { atomic, type RampIntent } from "@xochi/client";
 import { decodeFunctionData, erc20Abi } from "viem";
 import type { PreparedTransaction } from "@zkp2p/sdk";
 import { peerConfiguration } from "./discovery.js";
-import { createSDKMakerIO, type UnsignedMakerSDK } from "./sdkMaker.js";
+import { createSDKMakerIO, type MakerExecutionTerms, type UnsignedMakerSDK } from "./sdkMaker.js";
 import { MakerSetupRequired, MakerWithdrawalBlocked } from "./offramp.js";
 const config = peerConfiguration();
 const now = Date.parse("2026-11-16T00:00:00Z");
@@ -54,7 +54,7 @@ class MemorySDK implements UnsignedMakerSDK {
 }
 function setup() {
   const sdk = new MemorySDK();
-  const terms = {
+  const terms: MakerExecutionTerms = {
     minimum: "1000000",
     maximum: "5000000",
     conversionRate: "1000000000000000000",
@@ -145,5 +145,30 @@ describe("SDK maker preparation port", () => {
       }),
     ).rejects.toThrow("provider_declined");
     expect(sdk.deposits).toHaveLength(0);
+  });
+  it("preserves a verified live ARM config and floor in unsigned creation", async () => {
+    const { io, sdk, terms } = setup();
+    terms.oracle = {
+      adapter: "0x0000000000000000000000000000000000000001",
+      adapterConfig: "0x1234",
+      spreadBps: 25,
+      maxStaleness: 3600,
+      floor: "990000000000000000",
+    };
+    await io.prepareDeposit({
+      intent,
+      rail: "revolut",
+      amount: "2000000",
+      payeeHash: `0x${"3".repeat(64)}`,
+    });
+    expect(sdk.deposits[0].currenciesOverride).toEqual([
+      [
+        {
+          code: config.currencyHash,
+          minConversionRate: 990000000000000000n,
+          oracleRateConfig: terms.oracle,
+        },
+      ],
+    ]);
   });
 });

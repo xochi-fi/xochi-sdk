@@ -30,6 +30,10 @@ const evidence = z.object({
     .max(32),
   credential: z.enum(["verified", "missing", "unknown"]),
   wallet: z.string().optional(),
+  pricing_revision: z
+    .string()
+    .regex(/^0x[0-9a-f]{64}$/)
+    .optional(),
 });
 export function normalizePeerMakerEvidence(
   raw: unknown,
@@ -103,6 +107,7 @@ export function normalizePeerMakerEvidence(
           e.fees,
           e.credential,
           e.wallet,
+          e.pricing_revision,
         ];
         fees = e.fees.map((fee) => ({
           code: fee.code,

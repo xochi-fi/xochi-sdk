@@ -28,3 +28,7 @@ export type {
 } from "./offramp.js";
 export { createSDKMakerIO } from "./sdkMaker.js";
 export type { MakerExecutionTerms, UnsignedMakerSDK } from "./sdkMaker.js";
+
+export { createLivePeerOfframpProvider } from "./liveProvider.js";
+export type { MakerPublicClient } from "./liveReads.js";
+export type { MakerMappingStorage } from "./protectedMapping.js";
