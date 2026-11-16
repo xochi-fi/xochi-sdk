@@ -149,7 +149,29 @@ Xochi source and the extracted shared subset are MIT. Monaspace fonts remain SIL
 lists remain empty. UI consumers must intersect these restrictions with their
 supported surfaces and fresh live capabilities; a default or restriction never
 grants executable availability. This config intentionally excludes trade `amount`.
-The UI task owns rendering and selecting tabs/modes/destinations.
+
+The full layout (`layout=full`) reads it once on mount and narrows what it
+renders (`src/pages/trade/embedNarrowing.ts`): a tab, mode or destination the
+host leaves out is not rendered; `rampProviders` without `peer` removes Buy and
+the `payment_app` destination; Stealth send goes with Swap (it hands its order
+to the Swap card); Trade or Send with nothing left goes too. `initialTab` and
+`initialMode` pick among what remains, else Trade and Swap. `layout=swap` ignores
+these parameters.
+
+## Ramp rail availability
+
+Trade/Buy (`onramp`) and Send/`payment_app` (`offramp`) show live Peer rails
+through `fetchPeerCapabilities` (`src/ramp/availability/`). The critical facts
+(public Base settlement, what the fiat counterparty sees, the Peer/TEE
+dependency, own-account payout and approximate estimates for Send) are shown
+before any rail. Only an offer that `checkRampOffer` accepts at the current
+clock is a radio; every other state (`setup_required`, `temporarily_unavailable`
+with `retry_after`, `not_supported`, `availability_unknown`, expired) stays
+readable as text with a next step. A timer re-reads the clock at the earliest
+`valid_until`, so an expired offer stops being selectable without a reload.
+Amount and currency changes refetch; a superseded response is discarded. Only
+the visible surface reads Peer, and only with a connected wallet and an amount.
+Selecting a rail executes nothing yet.
 
 Frame flows can use `createRampEmitter(direction)` from `src/lib/rampLifecycle.ts`.
 It uses the existing mounted `hostBridge`, mints one opaque `rampRef`, emits
