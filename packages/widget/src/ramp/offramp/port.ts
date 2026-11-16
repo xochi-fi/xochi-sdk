@@ -24,7 +24,7 @@ import {
   type RampSettlement,
 } from "@xochi/client";
 import { Zkp2pClient } from "@zkp2p/sdk";
-import { createWalletClient, custom, type Hex } from "viem";
+import { createWalletClient, custom, erc20Abi, type Hex } from "viem";
 import { base } from "viem/chains";
 import type { Config } from "wagmi";
 import {
@@ -68,6 +68,8 @@ export interface OfframpWallet {
 
 export interface OfframpPort {
   /** One runtime per wallet; the same object for the same wallet. */
+  /** Fresh, uncached Base USDC wallet balance; never an execute receipt. */
+  spendable?(account: string): Promise<bigint>;
   runtime(account: string): Promise<OfframpRuntime>;
   /** Discovery re-read delay after an amount or currency change. */
   debounceMs: number;
@@ -145,6 +147,16 @@ export function withReferralCode(
 export function createLiveOfframpPort(config: Config): OfframpPort {
   const runtimes = new Map<string, Promise<OfframpRuntime>>();
   return {
+    async spendable(account) {
+      const client = getPublicClient(config, { chainId: BASE_CHAIN_ID });
+      if (!client) throw new Error("balance_unavailable");
+      return client.readContract({
+        address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [account as Hex],
+      });
+    },
     runtime(account) {
       const key = account.toLowerCase();
       let runtime = runtimes.get(key);

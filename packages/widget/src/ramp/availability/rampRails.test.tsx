@@ -134,7 +134,6 @@ describe("Buy rails", () => {
       pending[1]({
         estimates: [],
         offers: [],
-        estimates: [],
         availability: { state: "not_supported", reason_code: "capability_unavailable" },
       }),
     );
@@ -142,7 +141,6 @@ describe("Buy rails", () => {
       pending[0]({
         estimates: [],
         offers: [],
-        estimates: [],
         availability: { state: "temporarily_unavailable", reason_code: "capability_unavailable" },
       }),
     );
@@ -160,7 +158,6 @@ describe("Buy rails", () => {
       discover: async () => ({
         estimates: [],
         offers: [],
-        estimates: [],
         availability: {
           state: "setup_required",
           requirement_codes: ["peer_desktop_extension_or_app"],
@@ -183,7 +180,6 @@ describe("Buy rails", () => {
       discover: async () => ({
         estimates: [],
         offers: [],
-        estimates: [],
         availability: {
           state: "temporarily_unavailable",
           reason_code: "capabilities_unavailable",

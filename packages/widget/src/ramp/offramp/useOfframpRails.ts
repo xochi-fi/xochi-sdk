@@ -50,6 +50,7 @@ export function useOfframpRails(input: {
       return;
     }
     let stale = false;
+    const controller = new AbortController();
     setState({ status: "loading" });
     const intent = buildRampIntent({
       direction: "offramp",
@@ -62,7 +63,10 @@ export function useOfframpRails(input: {
       void (async () => {
         let next: OfframpRailsState;
         try {
-          const raw = (await runtime.provider.capabilities(intent)) as PeerDiscoveryResult;
+          const raw = (await runtime.provider.capabilities(
+            intent,
+            controller.signal,
+          )) as PeerDiscoveryResult;
           const offers = runtime.provider.normalizeCapabilities(raw, intent);
           // Estimates only for offers still available after the maker readiness overlay.
           const live = new Set(
@@ -85,6 +89,7 @@ export function useOfframpRails(input: {
     }, port.debounceMs);
     return () => {
       stale = true;
+      controller.abort();
       clearTimeout(timer);
     };
   }, [port, runtime, settlement, account, amount, currency, enabled, nonce]);

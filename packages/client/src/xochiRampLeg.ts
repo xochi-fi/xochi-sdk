@@ -39,22 +39,26 @@ export interface PreparedXochiRampLeg extends XochiRampLeg {
   preview(operationId: string): XochiRampPreview | undefined;
 }
 
-/** Peer completion survives every Xochi outcome, including an unknown submission. */
+/** Independent route leg: onramp follows released Peer delivery; offramp precedes Peer. */
 export function createXochiRampLeg(options: {
   readonly store: RampOperationStore;
   readonly driver: XochiRampDriver;
   readonly delivered: RampMoney;
+  /** Offramp prerequisites pay the source asset and receive public Base USDC. */
+  readonly direction?: "onramp" | "offramp";
   readonly now?: () => number;
 }): PreparedXochiRampLeg {
   const { store, driver } = options;
   const now = options.now ?? Date.now;
+  const offramp = options.direction === "offramp";
   const delivered = immutable(RampMoneySchema.parse(options.delivered));
   if (
     delivered.asset.kind !== "crypto" ||
-    delivered.asset.chain_id !== "eip155:8453" ||
-    delivered.asset.asset_id.split(":").at(-1)?.toLowerCase() !==
-      "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" ||
-    delivered.asset.decimals !== 6 ||
+    (!offramp &&
+      (delivered.asset.chain_id !== "eip155:8453" ||
+        delivered.asset.asset_id.split(":").at(-1)?.toLowerCase() !==
+          "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" ||
+        delivered.asset.decimals !== 6)) ||
     BigInt(delivered.atomic) === 0n
   )
     throw new Error("invalid_request");
@@ -65,8 +69,8 @@ export function createXochiRampLeg(options: {
     const snapshot = (await store.get(id))?.snapshot;
     if (
       !snapshot ||
-      snapshot.direction !== "onramp" ||
-      snapshot.peer.state !== "completed" ||
+      snapshot.direction !== (offramp ? "offramp" : "onramp") ||
+      snapshot.peer.state !== (offramp ? "not_started" : "completed") ||
       snapshot.peer.payout_state === "held" ||
       !snapshot.xochi
     )
@@ -116,14 +120,22 @@ export function createXochiRampLeg(options: {
         !Number.isFinite(Date.parse(quote.expiresAt)) ||
         Date.parse(quote.expiresAt) <= now() ||
         pay.asset.kind !== "crypto" ||
-        pay.asset.chain_id !== "eip155:8453" ||
-        pay.asset.asset_id.split(":").at(-1)?.toLowerCase() !==
-          "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" ||
-        pay.asset.decimals !== 6 ||
+        (!offramp &&
+          (pay.asset.chain_id !== "eip155:8453" ||
+            pay.asset.asset_id.split(":").at(-1)?.toLowerCase() !==
+              "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" ||
+            pay.asset.decimals !== 6)) ||
         pay.atomic !== delivered.atomic ||
         JSON.stringify(pay.asset) !== JSON.stringify(delivered.asset) ||
         BigInt(atomic(pay.atomic)) === 0n ||
         receive.asset.kind !== "crypto" ||
+        (offramp &&
+          (receive.asset.chain_id !== "eip155:8453" ||
+            receive.asset.asset_id.split(":").at(-1)?.toLowerCase() !==
+              "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" ||
+            receive.asset.decimals !== 6 ||
+            BigInt(receive.atomic) === 0n ||
+            quote.settlement !== "public")) ||
         !quote.recipient ||
         !["public", "stealth"].includes(quote.settlement)
       )

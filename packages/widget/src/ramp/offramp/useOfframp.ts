@@ -39,6 +39,7 @@ import { createRampEmitter } from "../../lib/rampLifecycle.js";
 import {
   MakerSetupRequired,
   type MakerPhase,
+  type MakerOrderAmounts,
   type MakerReason,
   type MakerWalletAction,
 } from "../peer/index.js";
@@ -71,6 +72,7 @@ export interface OfframpOrder {
   /** Base USDC deposit, atomic. */
   amount: string;
   snapshot: RampSnapshot;
+  amounts?: MakerOrderAmounts;
   phase?: MakerPhase;
   reason?: MakerReason;
   stage: OfframpStage;
@@ -130,7 +132,12 @@ function unreadable(ref: string, now: number): RampSnapshot {
   };
 }
 
-export function useOfframp(port: OfframpPort, account: string | undefined, active: boolean) {
+export function useOfframp(
+  port: OfframpPort,
+  account: string | undefined,
+  active: boolean,
+  funding?: (amount: string) => Promise<boolean>,
+) {
   const [runtime, setRuntime] = useState<OfframpRuntime | undefined>();
   const [runtimeFailed, setRuntimeFailed] = useState(false);
   const [view, setView] = useState<OfframpView>({ kind: "edit" });
@@ -212,14 +219,15 @@ export function useOfframp(port: OfframpPort, account: string | undefined, activ
 
   /** Re-read the order from chain and indexer facts. Never prepares or sends anything. */
   const readOrder = useCallback(
-    async (order: OfframpOrder): Promise<OfframpOrder> => {
+    async (order: OfframpOrder, signal?: AbortSignal): Promise<OfframpOrder> => {
       if (!runtime) return order;
       try {
-        const status = await runtime.provider.orderStatus(order.ref);
+        const status = await runtime.provider.orderStatus(order.ref, signal);
         const settled = status.snapshot.peer.state !== "in_doubt";
         return {
           ...order,
           snapshot: status.snapshot,
+          amounts: status.amounts,
           phase: status.phase ?? order.phase,
           reason: status.reason,
           ...(status.phase ? { stage: "deposit" as const } : {}),
@@ -274,10 +282,17 @@ export function useOfframp(port: OfframpPort, account: string | undefined, activ
     if (!order || !port.pollMs || busy || order.snapshot.terminal || order.stage !== "deposit")
       return;
     if (order.pendingAction && order.snapshot.peer.state === "in_doubt") return;
+    const controller = new AbortController();
     const timer = setTimeout(() => {
-      void readOrder(order).then((next) => orderRef.current?.ref === next.ref && showOrder(next));
+      void readOrder(order, controller.signal).then(
+        (next) =>
+          !controller.signal.aborted && orderRef.current?.ref === next.ref && showOrder(next),
+      );
     }, port.pollMs);
-    return () => clearTimeout(timer);
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
   }, [order, busy, port, readOrder, showOrder]);
 
   const estimate = useCallback(
@@ -364,6 +379,12 @@ export function useOfframp(port: OfframpPort, account: string | undefined, activ
       setNotice(undefined);
       const id = quote.preview.operation_id;
       try {
+        if (funding && !(await funding(quote.preview.pay.atomic))) {
+          setNotice(
+            "Spendable Base USDC could not be confirmed in this wallet. Peer has not started; check the balance. The completed Xochi route will not repeat.",
+          );
+          return;
+        }
         if (!quote.registeredPayee) {
           if (!payee) return;
           await runtime.provider.setOwnAccount(id, payee.trim(), "own_account");
@@ -406,7 +427,7 @@ export function useOfframp(port: OfframpPort, account: string | undefined, activ
         setBusy(false);
       }
     },
-    [runtime, busy, view, port, showOrder],
+    [runtime, busy, view, port, showOrder, funding],
   );
 
   const switchNetwork = useCallback(async () => {

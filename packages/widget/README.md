@@ -182,8 +182,9 @@ readiness on live Peer offers, and drives the lifecycle through S4's
 `createRampClient`:
 
 1. Rails, amount and currency. Only a fresh `available` offer can be estimated.
-   A source other than Base USDC is explained as needing a separate Xochi route
-   and is not executable here. An amount over the deployment canary cap
+   A supported source other than Base USDC first receives a separate fresh Xochi
+   quote and wallet approval. Peer remains blocked until the route completes and
+   an uncached Base USDC balance read confirms spendable funds in this wallet. An amount over the deployment canary cap
    (`offrampCanaryCapAtomic`) shows its reason and reads no rails.
 2. Review: platform, currency, deposit, an approximate payout (never a locked
    rate or an ETA), the public Base deposit into Peer's escrow, and the payee.
@@ -243,3 +244,24 @@ For a local, network-free visual preview, run `npm exec -w @xochi/widget vite --
 `/preview-onramp-route.html` (append `?failure` for a failed quote). This harness
 uses the production route view with in-memory provider and Xochi interfaces and
 is excluded from the published widget.
+
+### Route before cash-out
+
+The Xochi prerequisite uses the shared `XochiRampLeg` and existing Swap interpreter,
+with public settlement to the connected wallet on Base. Source choices require a
+live route and honor embed restrictions. A route receipt alone never unlocks Peer:
+the UI reads the Base USDC balance and rechecks it immediately before Peer approval.
+A failed or uncertain Peer order cannot rerun a completed prerequisite. Before
+deposit, Base USDC remains in the wallet; after deposit, use Peer reconciliation
+and withdrawal of unmatched funds. The order displays sanitized deposited, filled,
+reserved, withdrawable and withdrawn totals, with no totals while in doubt.
+
+Each leg has its own review, approval and receipt. Unknown Xochi submissions expose
+status checks only. Existing Xochi Activity retains the public route intent; Peer
+resume uses its protected mapping. The prerequisite review itself is memory-only:
+after reload, inspect Xochi Activity for the original route and continue with the
+wallet's confirmed Base USDC rather than routing the source again. No live deposit
+or mainnet spending is part of the deterministic checks.
+
+`preview-offramp-route.html` and `?failure` render the actual presentation components
+with in-memory route facts for 460px review and Peer-failure-after-route evidence.

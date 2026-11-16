@@ -124,7 +124,9 @@ describe("estimate and review", () => {
     ).toMatch(/belongs to you/);
 
     fireEvent.change(screen.getByLabelText("Cash out from"), { target: { value: "other" } });
-    expect(screen.getByRole("note").textContent).toMatch(/separate Xochi route into Base USDC/);
+    expect(screen.getByRole("region", { name: "Two-leg cash-out review" }).textContent).toMatch(
+      /approve the cash-out separately/,
+    );
     expect(screen.queryByLabelText("USDC to cash out")).toBeNull();
     expect(screen.queryByRole("button", { name: "Get estimate" })).toBeNull();
 

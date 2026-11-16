@@ -85,7 +85,6 @@ export function useRampDiscovery({
           (): PeerDiscoveryResult => ({
             estimates: [],
             offers: [],
-            estimates: [],
             availability: {
               state: "temporarily_unavailable",
               reason_code: "capabilities_unavailable",

@@ -43,6 +43,9 @@ import {
 } from "./model.js";
 import { BASE_CHAIN_ID, createLiveOfframpPort, OfframpPortContext } from "./port.js";
 import { useOfframp, type OfframpOrder, type OfframpQuote } from "./useOfframp.js";
+import { CompletedPrerequisite } from "./CompletedPrerequisite.js";
+import { OfframpRoute } from "./OfframpRoute.js";
+import type { OfframpPrerequisite } from "./prerequisite.js";
 import { useOfframpRails } from "./useOfframpRails.js";
 
 type Flow = ReturnType<typeof useOfframp>;
@@ -64,15 +67,46 @@ export function PaymentAppSend({ active, fiatCurrency = "USD" }: PaymentAppSendP
   const id = useId();
   const port = useOfframpPort();
   const { address } = useAccount();
-  const flow = useOfframp(port, address, active);
+  const [route, setRoute] = useState<OfframpPrerequisite>();
+  const [routeAmount, setRouteAmount] = useState<string>();
+  const funding = useMemo(
+    () => (route ? (amount: string) => route.funded(amount) : undefined),
+    [route],
+  );
+  const flow = useOfframp(port, address, active, funding);
+  useEffect(() => {
+    setRoute(undefined);
+    setRouteAmount(undefined);
+  }, [address]);
 
   return (
     <section className="ramp-rails" aria-labelledby={`${id}-title`}>
       <h3 id={`${id}-title`} className="send-review__title">
         Cash out to your own payment app
       </h3>
+      {route && (
+        <CompletedPrerequisite
+          receipt={route.snapshot().xochi?.transaction_hash ?? route.snapshot().operation_id}
+          wallet={address ?? ""}
+          peerFailed={
+            flow.view.kind === "order" &&
+            flow.view.order.stage === "before_deposit" &&
+            flow.view.order.snapshot.peer.state === "failed"
+          }
+        />
+      )}
       {flow.view.kind === "edit" && (
-        <EditStep flow={flow} account={address} active={active} fiatCurrency={fiatCurrency} />
+        <EditStep
+          flow={flow}
+          account={address}
+          active={active}
+          fiatCurrency={fiatCurrency}
+          routeAmount={routeAmount}
+          onReady={(next, amount) => {
+            setRoute(next);
+            setRouteAmount(amount);
+          }}
+        />
       )}
       {flow.view.kind === "review" && <ReviewStep flow={flow} quote={flow.view.quote} />}
       {flow.view.kind === "order" && <OrderStep flow={flow} order={flow.view.order} />}
@@ -90,19 +124,30 @@ function EditStep({
   account,
   active,
   fiatCurrency,
+  routeAmount,
+  onReady,
 }: {
   flow: Flow;
   account: string | undefined;
   active: boolean;
   fiatCurrency: string;
+  routeAmount?: string;
+  onReady(route: OfframpPrerequisite, amount: string): void;
 }) {
   const id = useId();
   const port = useOfframpPort();
   const settlement = useMemo(() => port.settlement(), [port]);
+  const [routeLocked, setRouteLocked] = useState(false);
   const [source, setSource] = useState<"base_usdc" | "other">("base_usdc");
-  const [amountText, setAmountText] = useState("");
+  const [amountText, setAmountText] = useState(routeAmount ? usdcDecimal(routeAmount) : "");
   const [currency, setCurrency] = useState(fiatCurrency);
   const [selected, setSelected] = useState<string | undefined>();
+  useEffect(() => {
+    if (routeAmount) {
+      setSource("base_usdc");
+      setAmountText(usdcDecimal(routeAmount));
+    }
+  }, [routeAmount]);
   const amount = parseRampAmount(amountText);
   const amountInvalid = amountText.trim() !== "" && amount === undefined;
   // Enforced before any rail read or review: an over-cap amount is never estimated.
@@ -164,6 +209,7 @@ function EditStep({
         <select
           className="send-field__control"
           value={source}
+          disabled={!!routeAmount || routeLocked}
           onChange={(e) => {
             setSource(e.target.value as "base_usdc" | "other");
             setSelected(undefined);
@@ -175,11 +221,7 @@ function EditStep({
       </label>
 
       {source === "other" ? (
-        <p className="send-note" role="note">
-          Peer cash-outs settle from USDC on Base only. Cashing out another token or network needs a
-          separate Xochi route into Base USDC first, with its own quote and wallet approval. That
-          route is not available here yet, so nothing can be started from this asset.
-        </p>
+        <OfframpRoute port={port} onReady={onReady} onLock={() => setRouteLocked(true)} />
       ) : (
         <>
           <div className="send-form__row">
@@ -594,6 +636,16 @@ function OrderStep({ flow, order }: { flow: Flow; order: OfframpOrder }) {
         <span>{headline.detail}</span>
       </div>
 
+      {order.amounts && (
+        <dl className="send-review__facts" aria-label="Confirmed order totals">
+          {Object.entries(order.amounts).map(([label, amount]) => (
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd>{formatUsdc(amount)}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
       {order.stage === "deposit" && order.phase !== "returned" && (
         <ol className="ramp-order__steps" aria-label="Order progress">
           {steps.map((s) => (

@@ -16,7 +16,8 @@ export function findOnrampRoute(
       row.type === "swap" &&
       row.data &&
       /^[A-Za-z0-9_-]{1,128}$/.test(row.id) &&
-      row.data.fromChainId === 8453 &&
+      row.data.fromChainId ===
+        Number(delivered.asset.kind === "crypto" ? delivered.asset.chain_id.slice(7) : 0) &&
       typeof row.data.fromToken === "string" &&
       row.data.fromToken.toLowerCase() === token &&
       row.data.fromAmount === delivered.atomic &&

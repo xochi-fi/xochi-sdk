@@ -129,7 +129,9 @@ export function useXochiRampDriver(options: {
           status: "pending",
           intentStatus: "executing",
           data: {
-            fromChainId: 8453,
+            fromChainId: Number(
+              o.pay.asset.chain_id.slice(7),
+            ) as SwapActivityItem["data"]["fromChainId"],
             toChainId: Number(
               o.receiveAsset.chain_id.slice(7),
             ) as SwapActivityItem["data"]["toChainId"],
@@ -140,7 +142,7 @@ export function useXochiRampDriver(options: {
             tier: intent.tierName,
             feeRate: Number(intent.quote?.xochiFeeRate ?? "0"),
             txHash: null,
-            isCrossChain: o.receiveAsset.chain_id !== "eip155:8453",
+            isCrossChain: o.receiveAsset.chain_id !== o.pay.asset.chain_id,
             settlementType: o.settlement,
             ...(o.settlement === "stealth" && o.payee === "other"
               ? { stealthPayee: "other" as const }

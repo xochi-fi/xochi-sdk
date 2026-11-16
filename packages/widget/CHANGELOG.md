@@ -4,6 +4,8 @@
 
 ### Added
 
+- Route a supported source asset into public Base USDC before Send/payment_app cash-out (#179), with independent Xochi and Peer approvals and receipts. Peer stays blocked until route completion and fresh spendable wallet balance reads, including at Peer approval. Peer failure preserves the completed route and explains wallet versus escrow recovery. Show sanitized maker order totals and cancel superseded maker discovery reads.
+
 - Optional Xochi routing after confirmed Peer Buy delivery and payout hold release (#178). A fresh quote and separate wallet approval can route Base USDC to a live supported EVM asset, the wallet's Stealth keys or another recipient's meta-address. The route keeps its own preview, expiry, status and receipt; failure preserves Peer completion and names the Base USDC wallet, retry quotes only Xochi, and skip keeps USDC. Existing Xochi Activity records the route without recipient keys or Peer handles; reload polls the original Xochi intent rather than resubmitting.
 
 - Extract the complete hosted trading widget: wallet/Stealth providers, route selection, quote/sign/execute flows, claims, history, recovery, activity and agent panels, session adapters, styles, fonts and assets.
