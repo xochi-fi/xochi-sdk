@@ -74,7 +74,12 @@ export function digest(value: unknown): `0x${string}` {
 export function unavailable(
   code: "capabilities_unavailable" | "capability_unavailable" = "capabilities_unavailable",
 ): PeerDiscoveryResult {
-  return { offers: [], availability: { state: "availability_unknown", reason_code: code }, code };
+  return {
+    offers: [],
+    estimates: [],
+    availability: { state: "availability_unknown", reason_code: code },
+    code,
+  };
 }
 function currency(value: string, config: PeerConfiguration, intent: RampIntent): boolean {
   return (
@@ -186,7 +191,7 @@ export function normalizePeerQuotes(
           offer: makeOffer(intent, config, p.platform, now, availability, [
             p.supported,
             p.available,
-            validUntil,
+            b.quoteExpiresAt,
           ]),
           pay: { asset: intent.fiat, atomic: atomic("0") },
           receive: { asset: config.settlement, atomic: atomic("0") },
@@ -215,7 +220,7 @@ export function normalizePeerQuotes(
       const availability: RampAvailability = q.disputeProtectionRequiresStake
         ? { state: "setup_required", requirement_codes: ["peer_dispute_stake"] }
         : { state: "available", valid_until: validUntil };
-      const offer = makeOffer(intent, config, p.platform, now, availability, [q, validUntil]);
+      const offer = makeOffer(intent, config, p.platform, now, availability, [q, b.quoteExpiresAt]);
       if (!parseRamp(offer).ok) continue;
       output.push({
         offer,

@@ -14,8 +14,8 @@ curator, escrow and V4 orchestrator. Staging still settles on Base chain 8453.
 
 ## Buyer
 
-Discovery calls `apiGetQuotesBestByPlatform` with eligible Buyer TEE quotes.
-Preview re-reads the selected rail via `apiGetQuote`. The live response must
+Discovery and preview use cancellable fetch reads of the pinned SDK’s V3
+best-by-platform and exact-quote endpoints with eligible Buyer TEE quotes. The live response must
 match Base USDC identity/precision, requested fiat, exact amount, recipient,
 rail/payment method, deployment and expiry. Canonical USD money uses the
 provider's **six-decimal quote precision**, not the rounded formatted string
@@ -243,3 +243,26 @@ quote fixture for candidate rails and explicitly synthetic maker facts; they are
 not evidence of live seller eligibility or an executed cash-out. No live deposit
 was performed. Staging is Base mainnet and requires coordinator approval before
 spending, with at most 2 USDC for the approved check.
+
+## Cancellation, estimates and host environment
+
+Pass `signal?: AbortSignal` in discovery/preview options. Cancellation aborts the
+underlying fetch (or is forwarded to custom read ports), rejects with
+`PeerReadAborted` (`name: "AbortError"`, `message: "peer_read_aborted"`), and never
+returns offers, estimates or a preview. Provider errors and cancellation reasons
+are never forwarded. Custom ports should honor their optional signal too.
+
+Discovery `estimates` contains only fresh available offers, linked by `offerId`,
+with `pay`/`receive` RampMoney, fee codes and RampMoney, `observedAt`, and
+`validUntil`. Estimates come from that same live read, never catalog metadata;
+maker estimates remain approximate. No provider fields enter these estimates.
+Capability revisions bind live economics and server expiry, while the local
+30-second freshness cap stays separate from revision identity.
+
+Hosts select `configureWidget({ ..., peerEnvironment: "production" })` (default),
+`"preproduction"` or `"staging"`. Development mode does not change this default;
+non-production requires explicit configuration. Staging still uses Base mainnet.
+The Peer entry imports its declared `reflect-metadata` dependency before the SDK;
+its side effect is preserved in package metadata. After building the widget, run
+`node scripts/verify-peer-consumer.mjs` at the repository root to verify the public
+entry builds and executes in a fresh browser realm without consumer polyfills.

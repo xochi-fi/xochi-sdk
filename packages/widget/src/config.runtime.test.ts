@@ -42,3 +42,23 @@ it.each([
   if (!caps) throw new Error("Capability fixture is invalid");
   expect(model.embedOffer(caps, "live").sourceChainIds.includes(5042)).toBe(offered);
 });
+
+it.each([undefined, "production", "preproduction", "staging"] as const)(
+  "selects Peer environment only from runtime settings: %s",
+  async (peerEnvironment) => {
+    vi.resetModules();
+    const config = await import("./config.js");
+    expect(config.PEER_ENVIRONMENT).toBe("production");
+    config.configureWidget({
+      apiUrl: "https://api.example.test",
+      peerEnvironment,
+      solverPin: { erc3009Allowlist: [], permit2Allowlist: [], requirePin: true },
+      depositAttestationSigner: "",
+    });
+    expect(config.PEER_ENVIRONMENT).toBe(peerEnvironment ?? "production");
+    const { peerConfiguration } = await import("./ramp/peer/discovery.js");
+    expect(peerConfiguration()).toEqual(
+      peerConfiguration({ environment: peerEnvironment ?? "production" }),
+    );
+  },
+);
