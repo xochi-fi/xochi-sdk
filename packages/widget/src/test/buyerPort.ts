@@ -4,7 +4,11 @@ import type { PeerExtensionSdk, PeerMetadataMessage } from "@zkp2p/sdk";
 import { buildRampIntent } from "../ramp/availability/model.js";
 import { peerConfiguration, fetchPeerCapabilities } from "../ramp/peer/discovery.js";
 import { digest } from "../ramp/peer/normalization.js";
-import { createPeerOnrampProvider, type PeerBuyerDriver } from "../ramp/peer/onramp.js";
+import {
+  createPeerOnrampProvider,
+  type PeerBuyerDriver,
+  type PeerResumeBinding,
+} from "../ramp/peer/onramp.js";
 import recorded from "../ramp/peer/fixtures/usd-best-by-platform.json";
 const NOW = Date.parse("2026-11-16T12:00:00.000Z");
 const ACCOUNT = "0x1111111111111111111111111111111111111111";
@@ -67,6 +71,10 @@ export async function buyerHarness(now = NOW) {
     fulfills = 0;
   let payout: Awaited<ReturnType<PeerBuyerDriver["status"]>> = "pending";
   let signalError: unknown;
+  // In-memory "chain": what a reload can re-find by read-only lookup.
+  const chain = { signaled: false, fulfilled: false, findable: true };
+  let resumes = 0;
+  const lookups: PeerResumeBinding[] = [];
   const privateRecipient = crypto.randomUUID();
   const privateMaterial = crypto.randomUUID();
   const privateHash = crypto.randomUUID();
@@ -92,6 +100,7 @@ export async function buyerHarness(now = NOW) {
         paymentRecipient: privateRecipient,
         async signal() {
           signals++;
+          chain.signaled = true;
           if (signalError) throw signalError;
           return { intentHash: privateHash, expiresAt: now + 120_000 };
         },
@@ -101,18 +110,36 @@ export async function buyerHarness(now = NOW) {
       expect(hash).toBe(privateHash);
       expect(proof.encryptedSessionMaterial).toBe(privateMaterial);
       fulfills++;
+      chain.fulfilled = true;
     },
     async status() {
       return payout;
     },
+    async resume(binding) {
+      resumes++;
+      lookups.push(binding);
+      if (!chain.findable || !chain.signaled) return undefined;
+      if (chain.fulfilled) return { kind: "fulfilled", intentHash: privateHash };
+      return {
+        kind: "active",
+        intentHash: privateHash,
+        expiresAt: now + 120_000,
+        signaledAt: now,
+        paymentRecipient: privateRecipient,
+      };
+    },
   };
-  const runtime = createPeerOnrampProvider({
-    extension,
-    driver,
-    desktop: true,
-    reads,
-    now: () => clock.now,
-  });
+  /** A fresh provider runtime over the same chain: what a page reload produces. */
+  const createRuntime = (user?: string) =>
+    createPeerOnrampProvider({
+      extension,
+      driver,
+      desktop: true,
+      reads,
+      now: () => clock.now,
+      ...(user ? { user } : {}),
+    });
+  const runtime = createRuntime();
   const params = { selection: crypto.randomUUID() };
   function capture(): PeerMetadataMessage {
     return {
@@ -152,6 +179,10 @@ export async function buyerHarness(now = NOW) {
     privateHash,
     goodCapture,
     counts: () => ({ signals, fulfills }),
+    chain,
+    createRuntime,
+    resumes: () => resumes,
+    lookups,
     setPayout: (value: typeof payout) => {
       payout = value;
     },

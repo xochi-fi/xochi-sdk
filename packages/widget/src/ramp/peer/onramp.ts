@@ -47,7 +47,34 @@ export interface PeerBuyerDriver {
   /** Must verify on-chain intent identity/amount/recipient before requesting attestation. */
   fulfill(intentHash: string, proof: BuyerTeePaymentProofInput): Promise<void>;
   status(intentHash: string): Promise<"pending" | "held" | "paid" | "released" | "unknown">;
+  /**
+   * Re-find an intent this wallet already signaled, after the transient runtime was
+   * lost (reload). Read-only: must never sign, signal or submit. `undefined` means
+   * the outcome cannot be established, which the caller treats as in doubt.
+   */
+  resume?(binding: PeerResumeBinding): Promise<PeerResumeResult | undefined>;
 }
+/** Public, sanitized facts from the local summary; no provider handle is persisted. */
+export interface PeerResumeBinding {
+  readonly wallet: string;
+  readonly rail: string;
+  readonly currency: string;
+  readonly payAtomic: string;
+  readonly receiveAtomic: string;
+  /** The wallet approval happened at or after this time (ms). */
+  readonly approvedAfter: number;
+}
+export type PeerResumeResult =
+  | {
+      kind: "active";
+      intentHash: string;
+      expiresAt: number;
+      signaledAt: number;
+      /** Absent when Peer cannot return it; the payment step then cannot be captured. */
+      paymentRecipient?: string;
+    }
+  | { kind: "fulfilled"; intentHash: string }
+  | { kind: "expired" };
 export interface PeerBuyerOptions extends PeerDiscoveryOptions {
   extension: PeerExtensionSdk;
   driver: PeerBuyerDriver;
@@ -55,11 +82,15 @@ export interface PeerBuyerOptions extends PeerDiscoveryOptions {
   desktop?: boolean;
 }
 interface Operation {
-  intent: RampIntent;
-  offer: RampOffer;
-  preview: RampPreview;
+  intent: Pick<RampIntent, "recipient" | "fiat">;
+  rail: string;
+  quoteId?: string;
+  quoteExpiresAt: string;
+  payAtomic: string;
+  receiveAtomic: string;
   paymentRecipient: string;
-  signal: () => Promise<{
+  /** Absent on a resumed operation: a lost runtime can never signal a second intent. */
+  signal?: () => Promise<{
     intentHash: string;
     expiresAt: number;
     paymentRecipient?: string;
@@ -72,6 +103,10 @@ interface Operation {
   payout?: "held" | "released";
   phase: BuyerPhase;
   submitted: boolean;
+  fulfillAttempted?: boolean;
+  failure?: "quote_expired";
+  /** Public facts to re-find a lost runtime's intent; never a provider handle. */
+  resumeBinding?: PeerResumeBinding;
   proof?: BuyerTeePaymentProofInput;
   capture?: Promise<boolean>;
   stopCapture?: () => void;
@@ -176,6 +211,7 @@ export function createPeerOnrampProvider(options: PeerBuyerOptions) {
         name: "peer",
         state: op.state,
         recoverable: op.state === "in_doubt",
+        ...(op.failure ? { failure_code: op.failure } : {}),
         ...(op.payout ? { payout_state: op.payout } : {}),
       },
       allowed_actions:
@@ -195,7 +231,8 @@ export function createPeerOnrampProvider(options: PeerBuyerOptions) {
     // The extension API cannot carry our operation ID. Bind a single active capture to
     // the selected rail, intent lifetime, exact fiat amount and selected maker recipient.
     if (
-      message.platform !== op.offer.rail.id ||
+      !op.paymentRecipient ||
+      message.platform !== op.rail ||
       !message.requestId ||
       usedCaptures.has(message.requestId) ||
       message.errorMessage ||
@@ -223,7 +260,7 @@ export function createPeerOnrampProvider(options: PeerBuyerOptions) {
         !row.params
       )
         return false;
-      return parseUnits(row.amount, op.intent.fiat.decimals).toString() === op.preview.pay.atomic;
+      return parseUnits(row.amount, op.intent.fiat.decimals).toString() === op.payAtomic;
     });
     if (rows.length !== 1) return;
     const params = rows[0].params!;
@@ -238,8 +275,8 @@ export function createPeerOnrampProvider(options: PeerBuyerOptions) {
       proofType: "buyerTee",
       encryptedSessionMaterial: message.buyerTeeCapture.encryptedSessionMaterial,
       params,
-      actionPlatform: op.offer.rail.id,
-      actionType: `transfer_${op.offer.rail.id}`,
+      actionPlatform: op.rail,
+      actionType: `transfer_${op.rail}`,
     };
   }
   const provider: RampProvider = {
@@ -263,9 +300,14 @@ export function createPeerOnrampProvider(options: PeerBuyerOptions) {
       const parsed = parseRamp(quote.preview);
       if (!parsed.ok || parsed.value.kind !== "preview") throw new Error("invalid_request");
       operations.set(quote.preview.operation_id, {
-        ...quote,
         intent,
-        offer,
+        rail: offer.rail.id,
+        quoteId: quote.preview.quote_id,
+        quoteExpiresAt: quote.preview.expires_at,
+        payAtomic: quote.preview.pay.atomic,
+        receiveAtomic: quote.preview.receive.atomic,
+        paymentRecipient: quote.paymentRecipient,
+        signal: quote.signal,
         state: "quoted",
         phase: "review",
         submitted: false,
@@ -274,16 +316,17 @@ export function createPeerOnrampProvider(options: PeerBuyerOptions) {
     },
     async approve(preview) {
       const op = operation(preview.operation_id);
-      if (op.submitted) return snapshot(preview.operation_id);
-      if (preview.quote_id !== op.preview.quote_id || Date.parse(op.preview.expires_at) <= now())
+      if (op.submitted || !op.signal) return snapshot(preview.operation_id);
+      if (preview.quote_id !== op.quoteId || Date.parse(op.quoteExpiresAt) <= now())
         throw new Error("quote_expired");
-      setup = await checkReadiness(op.offer.rail.id);
+      setup = await checkReadiness(op.rail);
       if (setup) {
         op.state = "failed";
         return snapshot(preview.operation_id);
       }
       // Set before wallet/network boundary; never automatically signal a second time.
       op.submitted = true;
+      const approvedAfter = now();
       op.state = "in_doubt";
       try {
         const signaled = await op.signal();
@@ -298,6 +341,16 @@ export function createPeerOnrampProvider(options: PeerBuyerOptions) {
         if (error instanceof PeerSigningSetupRequired) {
           setup = "peer_wallet_linked_session";
           op.state = "failed";
+        } else {
+          // The wallet transaction may have landed: reconcile by read-only lookup only.
+          op.resumeBinding = {
+            wallet: op.intent.recipient,
+            rail: op.rail,
+            currency: op.intent.fiat.currency,
+            payAtomic: op.payAtomic,
+            receiveAtomic: op.receiveAtomic,
+            approvedAfter,
+          };
         }
       }
       return snapshot(preview.operation_id);
@@ -317,6 +370,7 @@ export function createPeerOnrampProvider(options: PeerBuyerOptions) {
         }
         const proof = op.proof;
         op.proof = undefined;
+        op.fulfillAttempted = true;
         op.state = "in_doubt";
         op.phase = "processing";
         try {
@@ -330,6 +384,7 @@ export function createPeerOnrampProvider(options: PeerBuyerOptions) {
     },
     async status(id) {
       const op = operation(id);
+      if (!op.intentHash && op.resumeBinding && op.state === "in_doubt") await rebind(op);
       if (!op.intentHash || op.state === "completed") return snapshot(id);
       const state = await options.driver.status(op.intentHash);
       if (state === "held") {
@@ -342,6 +397,18 @@ export function createPeerOnrampProvider(options: PeerBuyerOptions) {
         if (state === "released") op.payout = "released";
         op.proof = undefined;
         op.stopCapture?.();
+      } else if (
+        state === "pending" &&
+        !op.fulfillAttempted &&
+        !op.capture &&
+        !op.proof &&
+        op.expiresAt !== undefined &&
+        op.expiresAt > now()
+      ) {
+        // Signaled but never fulfilled (an interrupted capture or a reload): the
+        // same intent goes back to its payment step. Nothing is signaled again.
+        op.state = "action_required";
+        op.phase = "payment";
       } else if (op.state !== "action_required") {
         op.state = state === "unknown" ? "in_doubt" : "processing";
       }
@@ -349,13 +416,92 @@ export function createPeerOnrampProvider(options: PeerBuyerOptions) {
     },
     recover: (id) => provider.status(id),
   };
+  /**
+   * Rebind a persisted operation to this runtime after a reload or a lost runtime.
+   * Uses only public summary facts; never signals, signs or submits. An unknown
+   * outcome stays in doubt and allows status reconciliation only.
+   */
+  async function resume(
+    id: string,
+    summary: {
+      wallet: string;
+      rail: string;
+      pay: RampPreview["pay"];
+      receive: RampPreview["receive"];
+      quoteExpiresAt: string;
+      approvedAfter: number;
+    },
+  ): Promise<void> {
+    const existing = operations.get(id);
+    if (existing?.submitted) return;
+    // An operation bound to another wallet can never continue in this runtime.
+    if (
+      summary.pay.asset.kind !== "fiat" ||
+      (options.user && options.user.toLowerCase() !== summary.wallet.toLowerCase())
+    )
+      throw new Error("invalid_request");
+    const fiat = summary.pay.asset;
+    const op: Operation = {
+      intent: {
+        recipient: summary.wallet,
+        fiat: { kind: "fiat", currency: fiat.currency, decimals: fiat.decimals },
+      },
+      rail: summary.rail,
+      quoteExpiresAt: summary.quoteExpiresAt,
+      payAtomic: summary.pay.atomic,
+      receiveAtomic: summary.receive.atomic,
+      paymentRecipient: "",
+      state: "in_doubt",
+      phase: "processing",
+      submitted: true,
+    };
+    op.resumeBinding = {
+      wallet: summary.wallet,
+      rail: summary.rail,
+      currency: fiat.currency,
+      payAtomic: summary.pay.atomic,
+      receiveAtomic: summary.receive.atomic,
+      approvedAfter: summary.approvedAfter,
+    };
+    operations.set(id, op);
+    await rebind(op);
+  }
+  /** Read-only lookup; an unestablished outcome leaves the operation in doubt. */
+  async function rebind(op: Operation): Promise<void> {
+    let found: PeerResumeResult | undefined;
+    try {
+      found = op.resumeBinding && (await options.driver.resume?.(op.resumeBinding));
+    } catch {
+      found = undefined;
+    }
+    if (found?.kind === "active") {
+      op.intentHash = found.intentHash;
+      op.expiresAt = found.expiresAt;
+      op.signaledAt = found.signaledAt;
+      op.paymentRecipient = found.paymentRecipient ?? "";
+      if (found.expiresAt > now()) {
+        op.state = "action_required";
+        op.phase = "payment";
+      }
+    } else if (found?.kind === "fulfilled") {
+      op.intentHash = found.intentHash;
+      op.fulfillAttempted = true;
+      op.state = "processing";
+    } else if (found?.kind === "expired") {
+      op.state = "failed";
+      op.failure = "quote_expired";
+    }
+  }
+
   return {
     provider,
+    resume,
     checkReadiness,
     setupRequired: () => setup,
     setupAvailability: () =>
       setup ? { state: "setup_required" as const, requirement_codes: [setup] } : undefined,
-    phase: (id: string) => operation(id).phase,
+    phase: (id: string) => operations.get(id)?.phase,
+    rail: (id: string) => operations.get(id)?.rail,
     /** Private rendered provider instructions, never a bridge/snapshot payload. */
     paymentRecipient: (id: string) => operation(id).paymentRecipient,
     expiresAt: (id: string) => operation(id).expiresAt,
@@ -371,7 +517,8 @@ export function createPeerOnrampProvider(options: PeerBuyerOptions) {
         !op.expiresAt ||
         op.expiresAt <= now() ||
         !readiness ||
-        readiness.platform !== op.offer.rail.id ||
+        readiness.platform !== op.rail ||
+        !op.paymentRecipient ||
         readiness.code ||
         now() - readiness.at > 30_000 ||
         isPeerMobileWeb()
@@ -399,8 +546,8 @@ export function createPeerOnrampProvider(options: PeerBuyerOptions) {
       });
       try {
         extension.authenticate({
-          platform: op.offer.rail.id,
-          actionType: `transfer_${op.offer.rail.id}`,
+          platform: op.rail,
+          actionType: `transfer_${op.rail}`,
           captureMode: "buyerTee",
           attestationServiceUrl: PEER_ATTESTATION_ORIGIN,
           callerAddress: op.intent.recipient,

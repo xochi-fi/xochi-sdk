@@ -1,6 +1,7 @@
 import { PEER_ENVIRONMENT } from "../../config.js";
 import type { RampIntent, RampPreview } from "@xochi/client";
 import {
+  apiGetPayeeDetails,
   apiSignIntentV3Raw,
   resolveFiatCurrencyBytes32,
   Zkp2pClient,
@@ -23,7 +24,7 @@ import { z } from "zod";
 import { boundedPeerRead, peerConfiguration } from "./discovery.js";
 import { digest, normalizePeerQuotes } from "./normalization.js";
 import type { PeerDiscoveryOptions } from "./types.js";
-import type { PeerBuyerDriver } from "./onramp.js";
+import type { PeerBuyerDriver, PeerResumeResult } from "./onramp.js";
 import {
   PEER_ATTESTATION_ORIGIN,
   PeerSigningSetupRequired,
@@ -84,7 +85,7 @@ const urls = {
   staging: "https://api-staging.zkp2p.xyz",
 };
 interface Binding {
-  intent: RampIntent;
+  intent: Pick<RampIntent, "recipient" | "fiat">;
   depositId: bigint;
   amount: bigint;
   expectedNetAmount: bigint;
@@ -343,6 +344,95 @@ export function createPeerBuyerDriver(
           };
         },
       };
+    },
+    async resume(lookup) {
+      // Read-only: indexer and chain reads by the public owner address. The intent
+      // hash is re-derived here and never persisted by the widget.
+      if (!same(lookup.wallet, account.address)) return undefined;
+      const rail = config.rails[lookup.rail];
+      if (!rail) return undefined;
+      const currency = resolveFiatCurrencyBytes32(lookup.currency);
+      const rows = (await sdk.indexer.getOwnerIntents(account.address)).filter(
+        (row) =>
+          same(row.owner, account.address) &&
+          same(row.toAddress, lookup.wallet) &&
+          same(row.orchestratorAddress, config.orchestrator) &&
+          !!row.paymentMethodHash &&
+          same(row.paymentMethodHash, rail.paymentMethodHash) &&
+          same(row.fiatCurrency, currency) &&
+          /^[0-9]{1,20}$/.test(row.signalTimestamp) &&
+          Number(row.signalTimestamp) * 1000 >= lookup.approvedAfter - 120_000,
+      );
+      // Ambiguity is never resolved by guessing: two candidates stay in doubt.
+      if (rows.length !== 1) return undefined;
+      const row = rows[0];
+      const hash = row.intentHash as Hex;
+      if (row.status === "PRUNED") return { kind: "expired" };
+      if (row.status === "FULFILLED") {
+        if (!row.fulfillTxHash || !/^0x[0-9a-fA-F]{64}$/.test(row.fulfillTxHash)) return undefined;
+        bindings.set(hash, {
+          intent: {
+            recipient: lookup.wallet,
+            fiat: { kind: "fiat", currency: lookup.currency, decimals: 6 },
+          },
+          depositId: BigInt(row.depositId),
+          amount: BigInt(row.amount),
+          expectedNetAmount: BigInt(lookup.receiveAtomic),
+          conversionRate: BigInt(row.conversionRate),
+          paymentMethod: rail.paymentMethodHash,
+          payeeDetails: "",
+          signalBlock: 0n,
+          fulfillHash: row.fulfillTxHash as Hex,
+        });
+        return { kind: "fulfilled", intentHash: hash };
+      }
+      if (row.status !== "SIGNALED") return undefined;
+      const live = (await sdk.getIntent(hash)).intent;
+      if (
+        !same(live.owner, account.address) ||
+        !same(live.to, lookup.wallet) ||
+        !same(live.escrow, config.escrow) ||
+        !same(live.paymentMethod, rail.paymentMethodHash) ||
+        !same(live.fiatCurrency, currency) ||
+        !live.payeeId
+      )
+        return undefined;
+      const period = await options.publicClient.readContract({
+        address: config.escrow as Address,
+        abi: escrowAbi!,
+        functionName: "intentExpirationPeriod",
+      });
+      bindings.set(hash, {
+        intent: {
+          recipient: lookup.wallet,
+          fiat: { kind: "fiat", currency: lookup.currency, decimals: 6 },
+        },
+        depositId: live.depositId,
+        amount: live.amount,
+        expectedNetAmount: BigInt(lookup.receiveAtomic),
+        conversionRate: live.conversionRate,
+        paymentMethod: live.paymentMethod,
+        payeeDetails: live.payeeId,
+        signalBlock: 0n,
+      });
+      // The payee handle is re-read for this session's instructions and capture
+      // matching only; it stays in provider memory.
+      const payee = await apiGetPayeeDetails(
+        { hashedOnchainId: live.payeeId, processorName: lookup.rail },
+        urls[environment],
+        10_000,
+      ).catch(() => undefined);
+      const offchainId = payee?.responseObject?.offchainId;
+      const result: PeerResumeResult = {
+        kind: "active",
+        intentHash: hash,
+        signaledAt: Number(live.timestamp) * 1000,
+        expiresAt: Number(live.timestamp + BigInt(period as bigint)) * 1000,
+        ...(typeof offchainId === "string" && offchainId.length > 0 && offchainId.length <= 512
+          ? { paymentRecipient: offchainId }
+          : {}),
+      };
+      return result;
     },
     async fulfill(hash, proof) {
       const binding = bindings.get(hash);
