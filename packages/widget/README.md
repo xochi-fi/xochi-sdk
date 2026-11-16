@@ -171,7 +171,42 @@ readable as text with a next step. A timer re-reads the clock at the earliest
 `valid_until`, so an expired offer stops being selectable without a reload.
 Amount and currency changes refetch; a superseded response is discarded. Only
 the visible surface reads Peer, and only with a connected wallet and an amount.
-Selecting a rail executes nothing yet.
+On Buy, selecting a rail executes nothing yet; Send/`payment_app` continues below.
+
+## Send/payment_app cash-out
+
+Send/`payment_app` (`src/ramp/offramp/`) completes a Peer maker cash-out of Base
+USDC to the user's own payment-app account. It reads rails through S5's offramp
+provider (`createLivePeerOfframpProvider`), whose capabilities overlay seller
+readiness on live Peer offers, and drives the lifecycle through S4's
+`createRampClient`:
+
+1. Rails, amount and currency. Only a fresh `available` offer can be estimated.
+   A source other than Base USDC is explained as needing a separate Xochi route
+   and is not executable here. An amount over the deployment canary cap
+   (`offrampCanaryCapAtomic`) shows its reason and reads no rails.
+2. Review: platform, currency, deposit, an approximate payout (never a locked
+   rate or an ETA), the public Base deposit into Peer's escrow, and the payee.
+   The payee must be the user's own account; it is masked once entered and is
+   passed only to the provider-private `setOwnAccount`. An estimate past
+   `expires_at` cannot be confirmed.
+3. Wallet: each step (`approve_usdc`, `create_deposit`, `withdraw_unmatched`) is
+   its own click. The wallet signs exactly the plan S5 hands out for the
+   connected account, on Base (a network switch is its own step). A declined
+   prompt is recorded as such; any other wallet failure stays `in_doubt` and is
+   settled only by status checks or by pasting the transaction's public hash.
+4. Order: progress is S5's `orderStatus` (awaiting buyer, matched, partly paid,
+   delivered, returned), re-read every 15 seconds and on demand. Unmatched USDC
+   can be withdrawn through a separate prepare and wallet approval.
+
+Activity shows a sanitized local summary under `xochi_local_offramps:<wallet>`:
+operation reference, rail, currency, USDC amount and bounded status enums only.
+A reload resumes the newest open order from S5's protected deposit mapping; it
+never prepares another deposit. An order that never reached its deposit step is
+marked not started. The live SDK client is built over a wallet client that
+refuses to sign; only `sendTransaction` through the user's connector signs.
+`peerReferralCode` (unset by default) is attached to deposit creation only when
+the deployment sets it.
 
 Frame flows can use `createRampEmitter(direction)` from `src/lib/rampLifecycle.ts`.
 It uses the existing mounted `hostBridge`, mints one opaque `rampRef`, emits
