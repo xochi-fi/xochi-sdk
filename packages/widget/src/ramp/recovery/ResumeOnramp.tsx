@@ -19,7 +19,8 @@ import type { RampOperationStore, RampSnapshot } from "@xochi/client";
 import type { PublicClient, WalletClient } from "viem";
 import type { PeerOnrampRuntime } from "../peer/onramp.js";
 import { OnrampSteps } from "../peer/OnrampSteps.js";
-import { usePeerOnrampRuntime, useRampClient } from "../peer/runtime.js";
+import { OnrampRoute } from "../route/OnrampRoute.js";
+import { browserRampStore, usePeerOnrampRuntime, useRampClient } from "../peer/runtime.js";
 import {
   abandonRampSummary,
   summaryFromSnapshot,
@@ -63,7 +64,8 @@ export function ResumeOnramp({
     wallet: bound ? wallet : undefined,
     publicClient,
   });
-  const client = useRampClient(bound && summary.submitted ? runtime : undefined, store);
+  const [ownedStore] = useState(() => store ?? browserRampStore());
+  const client = useRampClient(bound && summary.submitted ? runtime : undefined, ownedStore);
   const [snapshot, setSnapshot] = useState<RampSnapshot>();
   const [failed, setFailed] = useState(false);
   const id = summary.operation_id;
@@ -186,6 +188,19 @@ export function ResumeOnramp({
         </p>
       ) : (
         <p role="status">Resuming your existing purchase…</p>
+      )}
+      {snapshot?.peer.state === "completed" && snapshot.peer.payout_state !== "held" && runtime && (
+        <OnrampRoute
+          snapshot={snapshot}
+          onSnapshot={(next) => {
+            setSnapshot(next);
+            upsertRampSummary(summaryFromSnapshot(summary, next));
+          }}
+          store={ownedStore}
+          peer={runtime.provider}
+          received={summary.receive}
+          wallet={summary.wallet}
+        />
       )}
       {snapshot?.terminal && onDone && (
         <button type="button" onClick={onDone}>

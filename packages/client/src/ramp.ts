@@ -558,7 +558,11 @@ export function checkRampCommand(
     command.action !== "check_status" &&
     !(
       isRecoverableFailure(leg) &&
-      command.action === (command.leg === "peer" ? "recover_peer" : "recover_route")
+      (command.action === (command.leg === "peer" ? "recover_peer" : "recover_route") ||
+        (command.action === "skip_route" &&
+          command.leg === "xochi" &&
+          snapshot.direction === "onramp" &&
+          snapshot.peer.state === "completed"))
     )
   )
     return "action_not_allowed";

@@ -4,6 +4,8 @@
 
 ### Added
 
+- Optional Xochi routing after confirmed Peer Buy delivery and payout hold release (#178). A fresh quote and separate wallet approval can route Base USDC to a live supported EVM asset, the wallet's Stealth keys or another recipient's meta-address. The route keeps its own preview, expiry, status and receipt; failure preserves Peer completion and names the Base USDC wallet, retry quotes only Xochi, and skip keeps USDC. Existing Xochi Activity records the route without recipient keys or Peer handles; reload polls the original Xochi intent rather than resubmitting.
+
 - Extract the complete hosted trading widget: wallet/Stealth providers, route selection, quote/sign/execute flows, claims, history, recovery, activity and agent panels, session adapters, styles, fonts and assets.
 - Export the separate lightweight iframe configurator, shared configuration model, stylesheet and browser modules used by the private affiliate dashboard.
 - Accept explicit immutable deployment settings and own the iframe bridge through widget mount/unmount, preserving signing consent, security pins and storage formats.

@@ -157,6 +157,8 @@ interface ActivityBase {
 
 export interface SwapActivityItem extends ActivityBase {
   type: "swap";
+  /** Widget-minted ramp reference linking an independent post-route; never a Peer handle. */
+  rampOperationId?: string;
   data: SwapActivity;
   intentStatus: IntentStatus;
   /** Who initiated: "you" (this device) or "agent" (a delegated agent stream). */

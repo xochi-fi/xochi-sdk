@@ -161,7 +161,20 @@ Atomic money never uses floating-point numbers. Independent Peer/Xochi snapshots
 preserve partial success; in-doubt operations permit reconciliation, never execute-again.
 The exported JSON Schema and runtime-neutral conformance vectors are available at
 `@xochi/client/ramp/contract.schema.json` and `@xochi/client/ramp/conformance.json`.
-Command preflight is not durable orchestration or a provider adapter (#169/#171).
+`createRampClient` serializes commands through a `RampOperationStore`; trusted adapters
+own external provider and wallet boundaries. `offerRoute(operationId, context)` adds
+an optional onramp Xochi leg only after confirmed Peer delivery and hold release.
+It obtains no quote and cannot repeat a Peer operation.
+
+`createXochiRampLeg({ store, delivered, driver })` implements that leg over the existing
+validated Xochi swap interpreter. The driver fetches a fresh quote, executes only its
+held quote through an explicit wallet approval, and polls the existing Xochi intent.
+Its preview is an allowlisted projection with exact atomic amounts, recipient,
+settlement and expiry; signing material stays inside the swap interpreter.
+`approve_route` prepares the preview, `execute_route` approves execution, and
+`recover_route` fetches a fresh quote after a proven safe failure. Unknown execution
+permits only `check_status`; `skip_route` preserves Peer completion. Failed route
+quotes remain recoverable partial success, including a timeout before execution.
 
 The [Peer compatibility example](../../examples/peer-compatibility/README.md)
 evaluates one browser SDK graph separately from live provider availability. Public

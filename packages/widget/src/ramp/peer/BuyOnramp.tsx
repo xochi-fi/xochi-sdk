@@ -11,7 +11,8 @@ import type { PublicClient, WalletClient } from "viem";
 import { createRampEmitter } from "../../lib/rampLifecycle.js";
 import type { PeerOnrampRuntime, PeerSetupCode } from "./onramp.js";
 import { OnrampSteps } from "./OnrampSteps.js";
-import { usePeerOnrampRuntime, useRampClient } from "./runtime.js";
+import { OnrampRoute } from "../route/OnrampRoute.js";
+import { browserRampStore, usePeerOnrampRuntime, useRampClient } from "./runtime.js";
 import {
   abandonRampSummary,
   getRampSummary,
@@ -62,7 +63,8 @@ export function BuyOnramp({
   makeEmitter = createRampEmitter,
 }: BuyOnrampProps) {
   const { runtime, pin } = usePeerOnrampRuntime({ supplied, wallet, publicClient });
-  const client = useRampClient(runtime, store);
+  const [ownedStore] = useState(() => store ?? browserRampStore());
+  const client = useRampClient(runtime, ownedStore);
   const [preview, setPreview] = useState<RampPreview>();
   const [snapshot, setSnapshot] = useState<RampSnapshot>();
   const [setup, setSetup] = useState<PeerSetupCode>();
@@ -139,9 +141,13 @@ export function BuyOnramp({
     setSnapshot(next);
     const row = summary.current ?? getRampSummary(next.operation_id);
     if (row) remember(summaryFromSnapshot(row, next));
-    emitter.current?.status(next.peer.state);
+    emitter.current?.status(next.peer.state, next.xochi?.state);
     if (next.peer.state === "in_doubt") emitter.current?.recoveryRequired("peer", "peer_in_doubt");
-    if (next.terminal) emitter.current?.terminal(next.peer.state);
+    if (next.xochi?.state === "in_doubt")
+      emitter.current?.recoveryRequired("xochi", "xochi_in_doubt");
+    if (next.xochi?.state === "failed")
+      emitter.current?.recoveryRequired("xochi", next.xochi.failure_code ?? "route_failed");
+    if (next.terminal) emitter.current?.terminal(next.peer.state, next.xochi?.state);
   }
   const context = () => ({
     expected_revision: snapshot!.revision,
@@ -327,6 +333,19 @@ export function BuyOnramp({
               heldSince={summary.current?.held_since}
             />
           )}
+          {snapshot?.peer.state === "completed" &&
+            snapshot.peer.payout_state !== "held" &&
+            runtime &&
+            preview && (
+              <OnrampRoute
+                snapshot={snapshot}
+                onSnapshot={publish}
+                store={ownedStore}
+                peer={runtime.provider}
+                received={preview.receive}
+                wallet={intent.recipient}
+              />
+            )}
           {snapshot?.peer.state === "failed" && !summary.current?.submitted && (
             <p role="status">
               Purchase did not start. No transfer was submitted. Review a fresh quote after
