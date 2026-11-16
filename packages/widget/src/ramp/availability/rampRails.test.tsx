@@ -133,12 +133,14 @@ describe("Buy rails", () => {
     await act(async () =>
       pending[1]({
         offers: [],
+        estimates: [],
         availability: { state: "not_supported", reason_code: "capability_unavailable" },
       }),
     );
     await act(async () =>
       pending[0]({
         offers: [],
+        estimates: [],
         availability: { state: "temporarily_unavailable", reason_code: "capability_unavailable" },
       }),
     );
@@ -155,6 +157,7 @@ describe("Buy rails", () => {
     const port: RampDiscoveryPort = {
       discover: async () => ({
         offers: [],
+        estimates: [],
         availability: {
           state: "setup_required",
           requirement_codes: ["peer_desktop_extension_or_app"],
@@ -176,6 +179,7 @@ describe("Buy rails", () => {
     const port: RampDiscoveryPort = {
       discover: async () => ({
         offers: [],
+        estimates: [],
         availability: {
           state: "temporarily_unavailable",
           reason_code: "capabilities_unavailable",
