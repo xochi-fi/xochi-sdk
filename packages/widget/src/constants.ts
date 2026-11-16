@@ -39,6 +39,8 @@ export const STORAGE_KEYS = {
   localActivityPrefix: "xochi_local_activity:",
   /** Local-first log of public sends from the Send tab (prefix; per-wallet key appended) */
   localSendsPrefix: "xochi_local_sends:",
+  /** Sanitized summaries of payment-app cash-outs (prefix; per-wallet). No payee or deposit data. */
+  localOfframpsPrefix: "xochi_local_offramps:",
   /** Intent ids whose flow modal the user closed, so it never auto-reopens (prefix; per-wallet) */
   resumeDismissedPrefix: "xochi_resume_dismissed:",
   /** Authorized-agent registry + per-agent stream capability (prefix; per-wallet) */
