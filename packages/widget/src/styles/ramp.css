@@ -135,3 +135,43 @@
     transition: none;
   }
 }
+
+/* Resumed and in-progress Peer purchases (W3). The step heading takes focus
+   on resume and on return from Peer, so it carries a visible focus ring. */
+
+.onramp-resume,
+.onramp-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.onramp-steps {
+  padding: 0.75rem;
+  background: var(--inset-bg);
+  border: 1px solid var(--line-subtle);
+  border-radius: 12px;
+}
+
+.onramp-steps__title {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.onramp-steps__title:focus-visible {
+  outline: 2px solid var(--muted-gold);
+  outline-offset: 2px;
+}
+
+.onramp-resume button,
+.onramp-steps button {
+  min-height: 44px;
+}
+
+.ramp-resume__blocked {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}

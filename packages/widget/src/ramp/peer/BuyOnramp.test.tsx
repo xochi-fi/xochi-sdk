@@ -43,7 +43,7 @@ it("reviews exact economics, names wallet actions and waits for receipt confirma
   expect(h.counts().fulfills).toBe(0);
   h.setPayout("held");
   fireEvent.click(finalize);
-  await screen.findByText(/Payout held by Peer for up to 14 days/);
+  await screen.findByText(/Peer is holding this payout, for up to 14 days/);
   expect(screen.queryByText("Confirmed Base USDC received.")).toBeNull();
   h.setPayout("released");
   fireEvent.click(screen.getByRole("button", { name: "Check existing purchase status" }));

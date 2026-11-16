@@ -1,21 +1,27 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  createBrowserRampOperationStore,
-  createMemoryRampOperationStore,
-  createRampClient,
-  type RampIntent,
-  type RampOffer,
-  type RampPreview,
-  type RampSnapshot,
+import { useEffect, useRef, useState } from "react";
+import type {
+  RampIntent,
+  RampOffer,
+  RampOperationStore,
+  RampPreview,
+  RampSnapshot,
 } from "@xochi/client";
-import { createPeerExtensionSdk } from "@zkp2p/sdk";
 import { formatUnits } from "viem";
 import type { PublicClient, WalletClient } from "viem";
 import { createRampEmitter } from "../../lib/rampLifecycle.js";
-import { createPeerBuyerDriver } from "./buyerDriver.js";
-import { createPeerOnrampProvider, type PeerOnrampRuntime, type PeerSetupCode } from "./onramp.js";
+import type { PeerOnrampRuntime, PeerSetupCode } from "./onramp.js";
+import { OnrampSteps } from "./OnrampSteps.js";
+import { usePeerOnrampRuntime, useRampClient } from "./runtime.js";
+import {
+  abandonRampSummary,
+  getRampSummary,
+  markRampOperationLive,
+  summaryFromSnapshot,
+  upsertRampSummary,
+  type RampOperationSummary,
+} from "../recovery/summaries.js";
 
-const setupCopy: Record<PeerSetupCode, string> = {
+export const setupCopy: Record<PeerSetupCode, string> = {
   peer_desktop_extension_or_app:
     "Use desktop Chrome or Brave with the Peer extension, or the Peer app. Mobile web cannot start a purchase.",
   peer_extension_install: "Install the Peer extension before buying.",
@@ -32,6 +38,10 @@ export interface BuyOnrampProps {
   publicClient?: PublicClient;
   /** Trusted runtime injection for deterministic tests; never an embed parameter. */
   runtime?: PeerOnrampRuntime;
+  /** S4 store injection for deterministic tests; defaults to browser-local storage. */
+  store?: RampOperationStore;
+  /** Currently connected wallet; the operation stays bound to the one that approved it. */
+  connected?: string;
   onSubmit?: () => void;
   onReset?: () => void;
   makeEmitter?: typeof createRampEmitter;
@@ -45,39 +55,14 @@ export function BuyOnramp({
   wallet,
   publicClient,
   runtime: supplied,
+  store,
+  connected,
   onSubmit,
   onReset,
   makeEmitter = createRampEmitter,
 }: BuyOnrampProps) {
-  const pinned = useRef<PeerOnrampRuntime | undefined>(undefined);
-  const runtime = useMemo(() => {
-    if (pinned.current) return pinned.current;
-    if (supplied) return supplied;
-    if (!wallet?.account || !publicClient) return;
-    try {
-      return createPeerOnrampProvider({
-        user: wallet.account.address,
-        extension: createPeerExtensionSdk(),
-        driver: createPeerBuyerDriver({ wallet, publicClient }),
-      });
-    } catch {
-      return;
-    }
-  }, [supplied, wallet, publicClient]);
-  const client = useMemo(() => {
-    if (!runtime) return;
-    let store = createMemoryRampOperationStore();
-    try {
-      if (navigator.locks && window.localStorage)
-        store = createBrowserRampOperationStore({
-          storage: window.localStorage,
-          locks: navigator.locks,
-        });
-    } catch {
-      /* In-memory summaries are safe when browser storage is disabled. */
-    }
-    return createRampClient({ peer: runtime.provider, store, commandTimeoutMs: 180_000 });
-  }, [runtime]);
+  const { runtime, pin } = usePeerOnrampRuntime({ supplied, wallet, publicClient });
+  const client = useRampClient(runtime, store);
   const [preview, setPreview] = useState<RampPreview>();
   const [snapshot, setSnapshot] = useState<RampSnapshot>();
   const [setup, setSetup] = useState<PeerSetupCode>();
@@ -89,8 +74,18 @@ export function BuyOnramp({
   const generation = useRef(0);
   const bound = JSON.stringify([intent, offer.offer_id, offer.capability_revision]);
   const submitted = snapshot !== undefined && !["quoted", "failed"].includes(snapshot.peer.state);
+  const summary = useRef<RampOperationSummary | undefined>(undefined);
+  function remember(next: RampOperationSummary) {
+    summary.current = next;
+    upsertRampSummary(next);
+  }
   useEffect(() => {
     generation.current++;
+    // A superseded review never crossed the wallet boundary; drop it from resume.
+    const previous = summary.current;
+    if (previous && !previous.submitted) abandonRampSummary(previous.operation_id);
+    if (previous) markRampOperationLive(previous.operation_id, false);
+    summary.current = undefined;
     setPreview(undefined);
     setSnapshot(undefined);
     setAccepted(false);
@@ -102,14 +97,21 @@ export function BuyOnramp({
       generation.current++;
     };
   }, [bound, client]);
-  useEffect(() => () => runtime?.dispose(), [runtime]);
+  useEffect(
+    () => () => {
+      runtime?.dispose();
+      // The in-memory provider state is gone: a remaining operation becomes resumable.
+      if (summary.current) markRampOperationLive(summary.current.operation_id, false);
+    },
+    [runtime],
+  );
   useEffect(() => {
     if (!preview || submitted) return;
     const timer = setTimeout(
       () => {
         setClock(Date.now());
         setAccepted(false);
-        setNote("Quote expired. Review a new quote before approving.");
+        setNote("Quote expired. No transfer was submitted. Review a new quote before approving.");
       },
       Math.max(0, Date.parse(preview.expires_at) - Date.now()) + 1,
     );
@@ -135,6 +137,8 @@ export function BuyOnramp({
   }
   function publish(next: RampSnapshot) {
     setSnapshot(next);
+    const row = summary.current ?? getRampSummary(next.operation_id);
+    if (row) remember(summaryFromSnapshot(row, next));
     emitter.current?.status(next.peer.state);
     if (next.peer.state === "in_doubt") emitter.current?.recoveryRequired("peer", "peer_in_doubt");
     if (next.terminal) emitter.current?.terminal(next.peer.state);
@@ -145,7 +149,6 @@ export function BuyOnramp({
   });
   const expired =
     preview !== undefined && Date.parse(preview.expires_at) <= Math.max(clock, Date.now());
-  const phase = snapshot && runtime ? runtime.phase(snapshot.operation_id) : "review";
   return (
     <section aria-label="Peer purchase review">
       {!runtime || !client ? (
@@ -189,6 +192,24 @@ export function BuyOnramp({
                     offer.capability_revision,
                   );
                   if (current !== generation.current) return;
+                  const previous = summary.current;
+                  if (previous && !previous.submitted) abandonRampSummary(previous.operation_id);
+                  const now = new Date().toISOString();
+                  markRampOperationLive(quote.operation_id);
+                  remember({
+                    operation_id: quote.operation_id,
+                    direction: "onramp",
+                    wallet: intent.recipient.toLowerCase(),
+                    rail: { id: offer.rail.id, label: offer.rail.label },
+                    pay: quote.pay,
+                    receive: quote.receive,
+                    quote_expires_at: quote.expires_at,
+                    submitted: false,
+                    state: "quoted",
+                    terminal: false,
+                    created_at: now,
+                    updated_at: now,
+                  });
                   setPreview(quote);
                   setSnapshot(await client.get(quote.operation_id));
                   setAccepted(false);
@@ -251,8 +272,19 @@ export function BuyOnramp({
                     disabled={busy || expired || !accepted || !snapshot}
                     onClick={() =>
                       void run(async () => {
-                        pinned.current = runtime;
+                        pin();
                         onSubmit?.();
+                        // Persist uncertainty BEFORE the wallet boundary: a reload
+                        // mid-approval resumes in doubt and never signals again.
+                        const approvedAt = new Date().toISOString();
+                        if (summary.current)
+                          remember({
+                            ...summary.current,
+                            submitted: true,
+                            state: "in_doubt",
+                            approved_at: approvedAt,
+                            updated_at: approvedAt,
+                          });
                         emitter.current = makeEmitter("onramp");
                         const next = await client.approve(
                           preview.operation_id,
@@ -265,6 +297,13 @@ export function BuyOnramp({
                           context(),
                         );
                         publish(next);
+                        // A setup refusal happens before any wallet prompt.
+                        if (
+                          next.peer.state === "failed" &&
+                          runtime.setupRequired() &&
+                          summary.current
+                        )
+                          remember({ ...summary.current, submitted: false });
                         setSetup(runtime.setupRequired());
                         setAccepted(false);
                       })
@@ -276,87 +315,23 @@ export function BuyOnramp({
               )}
             </>
           )}
-          {snapshot && (
-            <>
-              {phase === "payment" && (
-                <>
-                  <p>
-                    Pay only the reviewed amount to the selected Peer payment recipient:{" "}
-                    {runtime.paymentRecipient(snapshot.operation_id)}.
-                  </p>
-                  <p>
-                    Intent expires:{" "}
-                    {new Date(runtime.expiresAt(snapshot.operation_id)!).toISOString()}. Fiat for an
-                    expired or unverifiable intent is not refundable.
-                  </p>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      // authenticate must execute synchronously in this user gesture.
-                      if (!runtime.openFromGesture(snapshot.operation_id)) {
-                        setNote(
-                          "Check Peer readiness and intent expiry before opening the extension.",
-                        );
-                        return;
-                      }
-                      void run(async () =>
-                        publish(await client.interact(snapshot.operation_id, {}, context())),
-                      );
-                    }}
-                  >
-                    Open Peer extension to capture my payment
-                  </button>
-                </>
-              )}
-              {phase === "finalize" && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(async () =>
-                      publish(await client.interact(snapshot.operation_id, {}, context())),
-                    )
-                  }
-                >
-                  Approve wallet: verify payment and fulfill Peer intent
-                </button>
-              )}
-              {(snapshot.peer.state === "processing" ||
-                snapshot.peer.state === "in_doubt" ||
-                phase === "payment") && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(async () => {
-                      await runtime.checkReadiness(offer.rail.id);
-                      publish(
-                        await client.recover(
-                          snapshot.operation_id,
-                          "peer",
-                          "check_status",
-                          context(),
-                        ),
-                      );
-                    })
-                  }
-                >
-                  Check existing purchase status
-                </button>
-              )}
-              <p role="status">
-                {snapshot.peer.payout_state === "held"
-                  ? "Payout held by Peer for up to 14 days. Base USDC is not yet confirmed in your wallet."
-                  : snapshot.peer.state === "completed"
-                    ? "Confirmed Base USDC received."
-                    : snapshot.peer.state === "in_doubt"
-                      ? "Submission status is uncertain. Check the existing purchase; do not pay or submit again."
-                      : snapshot.peer.state === "failed"
-                        ? "Purchase did not start. Review a fresh quote after completing any required setup."
-                        : `Peer purchase: ${snapshot.peer.state.replaceAll("_", " ")}.`}
-              </p>
-            </>
+          {snapshot && (submitted || (summary.current?.submitted && snapshot.terminal)) && (
+            <OnrampSteps
+              runtime={runtime}
+              client={client}
+              snapshot={snapshot}
+              onSnapshot={publish}
+              wallet={intent.recipient.toLowerCase()}
+              connected={connected}
+              submitted={summary.current?.submitted ?? true}
+              heldSince={summary.current?.held_since}
+            />
+          )}
+          {snapshot?.peer.state === "failed" && !summary.current?.submitted && (
+            <p role="status">
+              Purchase did not start. No transfer was submitted. Review a fresh quote after
+              completing any required setup.
+            </p>
           )}
           {snapshot?.terminal && onReset && (
             <button type="button" onClick={onReset}>
