@@ -9,19 +9,19 @@ import type { ExecutionPayload } from "@aztec-labs/stdlib/tx";
 import { TxHash, type Tx } from "@aztec-labs/stdlib/tx";
 import { describe, expect, it } from "vitest";
 
-import { deriveRecipientAccount } from "../src/account.js";
-import { backupContents } from "../src/backup.js";
-import { sanitizeFundMovementFailure } from "../src/chain.js";
+import { deriveRecipientAccount } from "../src/core/account.js";
+import { backupContents } from "../src/core/backup.js";
+import { sanitizeFundMovementFailure } from "../src/core/chain.js";
 import { closePortAfterCommand, formatCliFailure, writeCliFailure } from "../src/cli.js";
-import { OXDAI_MAINNET_REV2 } from "../src/corridor.js";
-import { NodeSubmission } from "../src/node-submission.js";
-import { OperationJournal } from "../src/operation-journal.js";
-import { simulateWalletTransaction } from "../src/oxide/vendor/oxide-client/l2_operations.js";
+import { OXDAI_MAINNET_REV2 } from "../src/core/corridor.js";
+import { NodeSubmission } from "../src/core/node-submission.js";
+import { openNodeJournals } from "../src/node/data-dir.js";
+import { simulateWalletTransaction } from "../src/core/oxide/vendor/oxide-client/l2_operations.js";
 import {
   createSubmissionDiagnosticState,
   safeOperationDiagnostic,
   safeOperationError,
-} from "../src/safe-diagnostic.js";
+} from "../src/core/safe-diagnostic.js";
 import { TEST_SECRETS } from "./fixtures.js";
 
 const HASH = TxHash.fromString(`0x${"12".repeat(32)}`);
@@ -87,8 +87,8 @@ describe("privacy-safe exit failure diagnostics", () => {
   it("preserves a simulation category through the production journal and CLI failure seams", async () => {
     const directory = mkdtempSync(join(tmpdir(), "xochi-exit-diagnostic-"));
     try {
-      const journal = new OperationJournal(directory);
-      const operation = journal.begin("exit", { fixture: "safe-request-marker" });
+      const journal = openNodeJournals(directory).operations;
+      const operation = await journal.begin("exit", { fixture: "safe-request-marker" });
       const calls = {
         simulate: 0,
         prove: 0,
@@ -143,7 +143,7 @@ describe("privacy-safe exit failure diagnostics", () => {
         sendTxReached: false,
       });
 
-      const finalError = sanitizeFundMovementFailure(
+      const finalError = await sanitizeFundMovementFailure(
         journal,
         operation,
         nodeSubmissionError,
@@ -152,14 +152,14 @@ describe("privacy-safe exit failure diagnostics", () => {
       expect(safeOperationDiagnostic(finalError)).toEqual(
         safeOperationDiagnostic(nodeSubmissionError),
       );
-      const record = journal.get(operation.id);
+      const record = await journal.get(operation.id);
       expect(record).toMatchObject({
         status: "aborted",
         error: "operation failed before Aztec node submission",
       });
       expect(record.txHash).toBeUndefined();
-      expect(journal.activeUnresolved()).toBeNull();
-      expect(existsSync(join(directory, "active.lock"))).toBe(false);
+      expect(await journal.activeUnresolved()).toBeNull();
+      expect(existsSync(join(directory, "operations", "active.lock"))).toBe(false);
       expect(calls).toEqual({ simulate: 1, prove: 0, teeSign: 0, accountSign: 0, sendTx: 0 });
 
       let cliOutput = "";
@@ -171,7 +171,7 @@ describe("privacy-safe exit failure diagnostics", () => {
       const account = await deriveRecipientAccount(TEST_SECRETS, OXDAI_MAINNET_REV2);
       const serializedBackup = JSON.stringify(
         backupContents(OXDAI_MAINNET_REV2, TEST_SECRETS, account, null, null, 1_800_000_000, {
-          operations: journal.records(),
+          operations: await journal.records(),
           exits: [],
         }),
       );
@@ -192,8 +192,8 @@ describe("privacy-safe exit failure diagnostics", () => {
   it("aborts and clears a hash persisted by a before-submit callback that then fails", async () => {
     const directory = mkdtempSync(join(tmpdir(), "xochi-exit-pre-submit-"));
     try {
-      const journal = new OperationJournal(directory);
-      const operation = journal.begin("exit", { fixture: "partial-persistence" });
+      const journal = openNodeJournals(directory).operations;
+      const operation = await journal.begin("exit", { fixture: "partial-persistence" });
       let nodeCalls = 0;
       const rawNode = {
         async sendTx(): Promise<void> {
@@ -208,7 +208,7 @@ describe("privacy-safe exit failure diagnostics", () => {
       try {
         await submission.run(
           async (txHash) => {
-            journal.update(operation.id, {
+            await journal.update(operation.id, {
               status: "broadcast",
               txHash: txHash.toString(),
             });
@@ -221,7 +221,7 @@ describe("privacy-safe exit failure diagnostics", () => {
         caught = error;
       }
 
-      const finalError = sanitizeFundMovementFailure(journal, operation, caught, state);
+      const finalError = await sanitizeFundMovementFailure(journal, operation, caught, state);
       expect(safeOperationDiagnostic(finalError)).toEqual({
         operationKind: "exit",
         phase: "pre-send",
@@ -230,30 +230,30 @@ describe("privacy-safe exit failure diagnostics", () => {
         submissionBoundaryReached: false,
         sendTxReached: true,
       });
-      expect(journal.get(operation.id)).toMatchObject({
+      expect(await journal.get(operation.id)).toMatchObject({
         status: "aborted",
         error: "operation failed before Aztec node submission",
       });
-      expect(journal.get(operation.id).txHash).toBeUndefined();
-      expect(existsSync(join(directory, "active.lock"))).toBe(false);
+      expect((await journal.get(operation.id)).txHash).toBeUndefined();
+      expect(existsSync(join(directory, "operations", "active.lock"))).toBe(false);
       expect(nodeCalls).toBe(0);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
   });
 
-  it("keeps post-submit failures in doubt with a sanitized true/true boundary", () => {
+  it("keeps post-submit failures in doubt with a sanitized true/true boundary", async () => {
     const directory = mkdtempSync(join(tmpdir(), "xochi-exit-post-submit-"));
     try {
-      const journal = new OperationJournal(directory);
-      const operation = journal.begin("exit", { fixture: "post-submit" });
-      journal.update(operation.id, { status: "broadcast", txHash: HASH.toString() });
+      const journal = openNodeJournals(directory).operations;
+      const operation = await journal.begin("exit", { fixture: "post-submit" });
+      await journal.update(operation.id, { status: "broadcast", txHash: HASH.toString() });
       const state = createSubmissionDiagnosticState("exit");
       state.phase = "pre-send";
       state.sendTxReached = true;
       state.submissionBoundaryReached = true;
 
-      const finalError = sanitizeFundMovementFailure(
+      const finalError = await sanitizeFundMovementFailure(
         journal,
         operation,
         new Error("private post-submit material"),
@@ -268,7 +268,7 @@ describe("privacy-safe exit failure diagnostics", () => {
         submissionBoundaryReached: true,
         sendTxReached: true,
       });
-      expect(journal.get(operation.id)).toMatchObject({
+      expect(await journal.get(operation.id)).toMatchObject({
         status: "in_doubt",
         txHash: HASH.toString(),
         error: "operation outcome requires transaction reconciliation",
@@ -283,15 +283,17 @@ describe("privacy-safe exit failure diagnostics", () => {
     const directory = mkdtempSync(join(tmpdir(), "xochi-exit-lock-release-"));
     try {
       let privateOperationId = "";
-      const journal = new OperationJournal(directory, () => {
-        throw new Error(`private lock path for ${privateOperationId}`);
-      });
-      const operation = journal.begin("exit", { fixture: "release-interruption" });
+      const journal = openNodeJournals(directory, {
+        afterReleaseClaimed: () => {
+          throw new Error(`private lock path for ${privateOperationId}`);
+        },
+      }).operations;
+      const operation = await journal.begin("exit", { fixture: "release-interruption" });
       privateOperationId = operation.id;
       const state = createSubmissionDiagnosticState("exit");
       state.phase = "simulate";
 
-      const finalError = sanitizeFundMovementFailure(
+      const finalError = await sanitizeFundMovementFailure(
         journal,
         operation,
         await privateSimulationFailure(),
@@ -299,11 +301,11 @@ describe("privacy-safe exit failure diagnostics", () => {
       );
       const output = formatCliFailure(finalError);
 
-      expect(journal.get(operation.id)).toMatchObject({
+      expect(await journal.get(operation.id)).toMatchObject({
         status: "aborted",
         error: "operation failed before Aztec node submission",
       });
-      expect(existsSync(join(directory, "active.lock"))).toBe(true);
+      expect(existsSync(join(directory, "operations", "active.lock"))).toBe(true);
       expect(safeOperationDiagnostic(finalError)?.category).toBe("simulation");
       expect(output).toContain(
         "operation journal abort or lock release failed before Aztec node submission",
@@ -315,11 +317,11 @@ describe("privacy-safe exit failure diagnostics", () => {
     }
   });
 
-  it("maps native prototype spoofing and throwing accessors to unknown before journal cleanup", () => {
+  it("maps native prototype spoofing and throwing accessors to unknown before journal cleanup", async () => {
     const directory = mkdtempSync(join(tmpdir(), "xochi-exit-spoof-"));
     try {
-      const journal = new OperationJournal(directory);
-      const operation = journal.begin("exit", { fixture: "native-spoof" });
+      const journal = openNodeJournals(directory).operations;
+      const operation = await journal.begin("exit", { fixture: "native-spoof" });
       const state = createSubmissionDiagnosticState("exit");
       state.phase = "simulate";
       const spoofed = new Error("private unknown message");
@@ -331,7 +333,7 @@ describe("privacy-safe exit failure diagnostics", () => {
       });
       Object.assign(spoofed, { code: "AZTEC_SIMULATION_FAILED" });
 
-      const caught = sanitizeFundMovementFailure(journal, operation, spoofed, state);
+      const caught = await sanitizeFundMovementFailure(journal, operation, spoofed, state);
 
       expect(safeOperationDiagnostic(caught)).toEqual({
         operationKind: "exit",
@@ -341,8 +343,8 @@ describe("privacy-safe exit failure diagnostics", () => {
         submissionBoundaryReached: false,
         sendTxReached: false,
       });
-      expect(journal.get(operation.id).status).toBe("aborted");
-      expect(existsSync(join(directory, "active.lock"))).toBe(false);
+      expect((await journal.get(operation.id)).status).toBe("aborted");
+      expect(existsSync(join(directory, "operations", "active.lock"))).toBe(false);
       const output = formatCliFailure(caught);
       expect(output).not.toContain("private unknown message");
       expect(output).not.toContain("private constructor getter");

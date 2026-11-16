@@ -36,7 +36,7 @@ import {
   newAccountSecrets,
   type AccountSecrets,
   type RecipientAccount,
-} from "./account.js";
+} from "./core/account.js";
 import {
   DryRunEnrollmentApi,
   HttpEnrollmentApi,
@@ -44,17 +44,9 @@ import {
   assertIntentId,
   type EnrollmentApi,
   type ReceiptApi,
-} from "./api.js";
-import {
-  backupContents,
-  openBackup,
-  readExitJournal,
-  restoreExitJournal,
-  sealBackup,
-  writeBackupCopies,
-  writePrivateFileExclusive,
-} from "./backup.js";
-import { DryRunAztec, LiveAztec, type AztecPort } from "./chain.js";
+} from "./core/api.js";
+import { SignedAckSchema, backupContents, openBackup, sealBackup } from "./core/backup.js";
+import { DryRunAztec, LiveAztec, type AztecPort } from "./core/chain.js";
 import {
   checkNetwork,
   enrollStart,
@@ -69,25 +61,31 @@ import {
   spend,
   type Ctx,
   type PendingEnrollment,
-} from "./commands.js";
+} from "./core/commands.js";
 import {
-  CorridorSchema,
   OXDAI_MAINNET_REV2,
   decimal,
-  evm,
   hex32,
   parseCorridor,
   type Corridor,
-} from "./corridor.js";
-import { bindingTypedData, typedDataJson, type SignedAck } from "./enrollment.js";
-import { SignedAckSchema } from "./backup.js";
-import { assertPinnedNetwork } from "./network.js";
-import { loadBroadcasterArtifact } from "./broadcaster-artifact.js";
-import { loadTokenArtifact } from "./oxide-token.js";
-import { OperationJournal } from "./operation-journal.js";
-import { ReceiptJournal } from "./receipt.js";
-import { durablyIncluded } from "./reconciliation.js";
-import { open, seal } from "./sealed.js";
+} from "./core/corridor.js";
+import { bindingTypedData, typedDataJson, type SignedAck } from "./core/enrollment.js";
+import { utf8Bytes } from "./core/json.js";
+import { assertPinnedNetwork } from "./core/network.js";
+import { durablyIncluded } from "./core/reconciliation.js";
+import { operatorDiagnosticLine } from "./core/safe-diagnostic.js";
+import type { State } from "./core/state.js";
+import { loadBroadcasterArtifact, loadTokenArtifact } from "./node/artifacts.js";
+import { NodeAttestationVerifier } from "./node/attestation.js";
+import {
+  SealedKeystoreKeySource,
+  openNodeJournals,
+  systemClock,
+  type NodeJournals,
+} from "./node/data-dir.js";
+import { writeBackupCopies, writePrivateFileExclusive } from "./node/files.js";
+import { NodeKeystoreCrypto } from "./node/sealed.js";
+import { NodeWalletStorage } from "./node/wallet-storage.js";
 import {
   RefundBundleSchema,
   RefundEvidenceSchema,
@@ -96,7 +94,6 @@ import {
   submitRefund,
 } from "./refund.js";
 import { assertSupportedRuntime, diagnostics, packageVersion } from "./release-info.js";
-import { operatorDiagnosticLine } from "./safe-diagnostic.js";
 
 const USAGE = `xochi-recipient <command> [options]
 
@@ -157,52 +154,6 @@ Options:
   --version                    print the test artifact version
 Passphrase: XOCHI_RECIPIENT_PASSPHRASE, else prompted.`;
 
-const BindingSchema = z
-  .object({
-    sourceWallet: evm,
-    sourceChainId: decimal,
-    aztecRecipient: hex32,
-    aztecToken: hex32,
-    descriptorDigest: hex32,
-    corridorId: hex32,
-    corridorRevision: decimal,
-    manifestDigest: hex32,
-    nonce: hex32,
-    challengeExpiry: decimal,
-    purpose: z.string(),
-  })
-  .strict();
-const StateSchema = z
-  .object({
-    corridor: CorridorSchema,
-    address: hex32,
-    backupCommitment: hex32.optional(),
-    pending: z
-      .object({
-        challenge: z
-          .object({ challenge_id: z.string(), nonce: z.string(), expires_at: z.number().int() })
-          .strict(),
-        binding: BindingSchema,
-        tokenRegistrationAck: SignedAckSchema.nullable(),
-      })
-      .strict()
-      .optional(),
-    bindingId: z.string().optional(),
-    /** The RecipientBinding digest enrolled here (`enroll submit`, or restored): `receipt` pins it. */
-    bindingDigest: hex32.optional(),
-    /** The node URL and artifact path the last live setup, enroll start or restore used. */
-    nodeUrl: z.string().min(1).optional(),
-    oxideTokenArtifact: z.string().min(1).optional(),
-    /** The TokenRegistrationAck signature the last backup carries, if any. */
-    backupTokenAckSignature: z.string().nullable().optional(),
-    /** Unix seconds of this data directory's last successful token registration. */
-    tokenRegisteredAt: z.number().int().positive().optional(),
-    /** Last signed TokenRegistrationAck, preserved across submit, backup and restore. */
-    tokenRegistrationAck: SignedAckSchema.nullable().optional(),
-  })
-  .strict();
-type State = z.infer<typeof StateSchema>;
-const SecretsSchema = z.object({ secret: hex32, salt: hex32 }).strict();
 const FeeJuiceClaimSchema = z
   .object({
     claimAmount: z.string().regex(/^[1-9][0-9]*$/),
@@ -337,9 +288,9 @@ const flagOrSaved = (
   fail(`--${name} is required: no ${what} was saved by setup, enroll start or restore`);
 
 /** Saves the node URL and artifact path a live command used, for `receipt` to reuse. */
-function rememberConnection(store: Store, values: Values): void {
-  store.writeState({
-    ...store.readState(),
+async function rememberConnection(store: Store, values: Values): Promise<void> {
+  await store.writeState({
+    ...(await store.readState()),
     nodeUrl: required(values, "node-url"),
     oxideTokenArtifact: resolve(required(values, "oxide-token-artifact")),
   });
@@ -351,8 +302,14 @@ const baseUnits = (name: string, v: string): bigint => {
 /** A signed TokenRegistrationAck in the shape the state and backup files hold. */
 const tokenAckForState = (ack: SignedAck | null) => (ack ? SignedAckSchema.parse(ack) : null);
 
+const keystoreCrypto = new NodeKeystoreCrypto();
+
 class Store {
-  constructor(readonly dir: string) {}
+  /** The journals and state.json at today's paths under the data directory. */
+  readonly journals: NodeJournals;
+  constructor(readonly dir: string) {
+    this.journals = openNodeJournals(dir);
+  }
   private secureDirectory(): void {
     mkdirSync(this.dir, { recursive: true, mode: 0o700 });
     chmodSync(this.dir, 0o700);
@@ -360,50 +317,52 @@ class Store {
   get keystorePath() {
     return join(this.dir, "keystore.sealed");
   }
-  get statePath() {
-    return join(this.dir, "state.json");
-  }
   get pxeDir() {
     return join(this.dir, "pxe");
   }
-  readState(): State {
-    if (!existsSync(this.statePath)) fail(`no account in ${this.dir}: run init or restore first`);
-    return StateSchema.parse(JSON.parse(readFileSync(this.statePath, "utf8")));
+  async readState(): Promise<State> {
+    return (
+      (await this.journals.state.read()) ??
+      fail(`no account in ${this.dir}: run init or restore first`)
+    );
   }
-  writeState(state: State): void {
-    this.secureDirectory();
-    writeFileSync(this.statePath, JSON.stringify(state, null, 2) + "\n", { mode: 0o600 });
-    chmodSync(this.statePath, 0o600);
+  writeState(state: State): Promise<void> {
+    return this.journals.state.write(state);
   }
-  async secrets(): Promise<AccountSecrets> {
-    const opened = open("keystore", readFileSync(this.keystorePath), await passphrase(false));
-    return SecretsSchema.parse(JSON.parse(opened.toString("utf8")));
+  secrets(): Promise<AccountSecrets> {
+    return new SealedKeystoreKeySource(
+      this.keystorePath,
+      () => passphrase(false),
+      keystoreCrypto,
+    ).accountSecrets();
   }
-  writeKeystore(secrets: AccountSecrets, pass: string): void {
+  async writeKeystore(secrets: AccountSecrets, pass: string): Promise<void> {
     if (existsSync(this.keystorePath))
       fail(`${this.keystorePath} exists: refusing to overwrite an account`);
     this.secureDirectory();
     writePrivateFileExclusive(
       this.keystorePath,
-      seal("keystore", Buffer.from(JSON.stringify(secrets)), pass),
+      await keystoreCrypto.seal("keystore", utf8Bytes(JSON.stringify(secrets)), pass),
     );
   }
 }
 
-async function port(values: Values, store: Store, corridor: Corridor): Promise<AztecPort> {
-  if (values["dry-run"]) return new DryRunAztec(corridor);
-  mkdirSync(store.pxeDir, { recursive: true, mode: 0o700 });
+async function port(values: Values, store: Store, state: State): Promise<AztecPort> {
+  if (values["dry-run"]) return new DryRunAztec(state.corridor);
   return LiveAztec.connect({
     nodeUrl: required(values, "node-url"),
-    dataDirectory: store.pxeDir,
-    corridor,
+    walletStorage: new NodeWalletStorage(store.pxeDir),
+    scope: state.address,
+    corridor: state.corridor,
     l1RpcUrl: values["l1-rpc"] ?? null,
+    journal: store.journals.operations,
+    attestation: new NodeAttestationVerifier(),
   });
 }
 
 function api(values: Values, descriptorDigest: string): EnrollmentApi & ReceiptApi {
   if (values["dry-run"]) {
-    return new DryRunEnrollmentApi(Math.floor(Date.now() / 1000), descriptorDigest);
+    return new DryRunEnrollmentApi(Math.floor(systemClock.nowMs() / 1000), descriptorDigest);
   }
   const jwt =
     process.env["XOCHI_JWT"] ?? fail("XOCHI_JWT (the source wallet's SIWE session) is required");
@@ -444,10 +403,10 @@ async function withAccount<T>(
   if (account.descriptor.aztecAddress !== state.address) {
     fail(`keystore derives ${account.descriptor.aztecAddress}, state names ${state.address}`);
   }
-  const p = await port(values, store, state.corridor);
+  const p = await port(values, store, state);
   let commandFailed = false;
   try {
-    const ctx: Ctx = { corridor: state.corridor, port: p, log };
+    const ctx: Ctx = { corridor: state.corridor, port: p, log, clock: systemClock };
     await checkNetwork(ctx);
     await p.addAccount(account);
     return await run(ctx, account, state);
@@ -467,7 +426,9 @@ async function registerAndRecord(
   artifact: ContractArtifact,
 ): Promise<void> {
   const at = await registerToken(ctx, artifact);
-  if (ctx.port.mode === "live") store.writeState({ ...store.readState(), tokenRegisteredAt: at });
+  if (ctx.port.mode === "live") {
+    await store.writeState({ ...(await store.readState()), tokenRegisteredAt: at });
+  }
 }
 
 async function tokenArtifact(values: Values, corridor: Corridor): Promise<ContractArtifact> {
@@ -488,7 +449,7 @@ async function withTokenArtifactAccount<T>(
     artifact: ContractArtifact,
   ) => Promise<T>,
 ): Promise<T> {
-  const state = store.readState();
+  const state = await store.readState();
   const artifact = await tokenArtifact(values, state.corridor);
   return withAccount(values, store, state, (ctx, account, current) =>
     run(ctx, account, current, artifact),
@@ -498,10 +459,10 @@ async function withTokenArtifactAccount<T>(
 /** The whole sequence on the dry-run ports with a throwaway account. */
 async function plan(values: Values): Promise<void> {
   const corridor = readCorridor(values.corridor);
-  const now = Math.floor(Date.now() / 1000);
+  const now = Math.floor(systemClock.nowMs() / 1000);
   const aztec = new DryRunAztec(corridor);
   const xochi = new DryRunEnrollmentApi(now);
-  const ctx: Ctx = { corridor, port: aztec, log };
+  const ctx: Ctx = { corridor, port: aztec, log, clock: systemClock };
   const flush = (label: string) => {
     log(`== ${label}`);
     for (const call of aztec.calls.splice(0)) log(`  [aztec] ${call}`);
@@ -543,7 +504,7 @@ async function plan(values: Values): Promise<void> {
   const sourceKey = keccak256(toHex("xochi-recipient TEST ONLY dry-run source wallet"));
   const source = privateKeyToAccount(sourceKey);
   const pending = await enrollStart(ctx, xochi, account, source.address, tokenRegisteredAt);
-  const sealed = sealBackup(
+  const sealed = await sealBackup(
     backupContents(
       corridor,
       secrets,
@@ -553,13 +514,17 @@ async function plan(values: Values): Promise<void> {
       now,
     ),
     "dry-run passphrase TEST ONLY",
+    keystoreCrypto,
   );
   log(
     `backup: ${sealed.bytes.length} sealed bytes${pending.tokenRegistrationAck ? " carrying the TokenRegistrationAck" : ""}, backupCommitment ${sealed.commitment}`,
   );
   if (pending.tokenRegistrationAck) {
     const sourceSignature = await source.signTypedData(pending.typedData);
-    await enrollSubmit(ctx, xochi, account, pending, sourceSignature, sealed.commitment);
+    await enrollSubmit(ctx, xochi, account, pending, sourceSignature, {
+      mode: "sealed_file",
+      commitment: sealed.commitment,
+    });
     await enrollStatus(ctx, xochi, "dry-run-binding", account);
     flush("enrollment (source wallet: a TEST ONLY key; every required acknowledgement verified)");
   } else {
@@ -617,7 +582,7 @@ export async function run(argv: string[]): Promise<void> {
     const backupPath = values.backup;
     log(
       JSON.stringify(
-        diagnostics(
+        await diagnostics(
           backupPath
             ? { bytes: readFileSync(backupPath), passphrase: await passphrase(false) }
             : undefined,
@@ -640,8 +605,8 @@ export async function run(argv: string[]): Promise<void> {
       const corridor = readCorridor(values.corridor);
       const secrets = newAccountSecrets();
       const account = await deriveRecipientAccount(secrets, corridor);
-      store.writeKeystore(secrets, await passphrase(true));
-      store.writeState({ corridor, address: account.descriptor.aztecAddress });
+      await store.writeKeystore(secrets, await passphrase(true));
+      await store.writeState({ corridor, address: account.descriptor.aztecAddress });
       log(
         `init: account ${account.descriptor.aztecAddress} on ${corridor.name}; next: backup, then setup`,
       );
@@ -656,7 +621,7 @@ export async function run(argv: string[]): Promise<void> {
         await setupAccount(ctx, account, claim);
         await registerSenders(ctx);
         await registerAndRecord(ctx, store, artifact);
-        if (ctx.port.mode === "live") rememberConnection(store, values);
+        if (ctx.port.mode === "live") await rememberConnection(store, values);
       });
     case "balance":
       return withTokenArtifactAccount(values, store, async (ctx, account, _state, artifact) => {
@@ -668,7 +633,7 @@ export async function run(argv: string[]): Promise<void> {
       if (outs.length !== 2 || resolve(outs[0]!) === resolve(outs[1]!)) {
         fail("backup needs exactly two different --out paths (two independently retained copies)");
       }
-      const state = store.readState();
+      const state = await store.readState();
       const secrets = await store.secrets();
       const account = await deriveRecipientAccount(secrets, state.corridor);
       const checkpoint = values.checkpoint
@@ -676,33 +641,34 @@ export async function run(argv: string[]): Promise<void> {
         : null;
       const tokenAck = state.tokenRegistrationAck ?? state.pending?.tokenRegistrationAck ?? null;
       const journals = {
-        operations: new OperationJournal(join(store.dir, "operations")).records(),
-        exits: readExitJournal(join(store.dir, "exits")),
-        receipts: new ReceiptJournal(join(store.dir, "receipts")).records(),
+        operations: await store.journals.operations.records(),
+        exits: await store.journals.exits.records(),
+        receipts: await store.journals.receipts.records(),
       };
       // The binding being enrolled (its backup is acknowledged; it has no id yet), else the one
       // enrolled.
       const binding = state.pending
         ? { id: null, digest: bindingTypedData(state.corridor, state.pending.binding).digest }
         : { id: state.bindingId ?? null, digest: state.bindingDigest ?? null };
-      const sealed = sealBackup(
+      const sealed = await sealBackup(
         backupContents(
           state.corridor,
           secrets,
           account,
           checkpoint,
           tokenAck,
-          Math.floor(Date.now() / 1000),
+          Math.floor(systemClock.nowMs() / 1000),
           journals,
           binding,
         ),
         await passphrase(true),
+        keystoreCrypto,
       );
       writeBackupCopies(sealed.bytes, outs[0]!, outs[1]!);
       for (const out of outs) {
         if (keccak256(readFileSync(out)) !== sealed.commitment) fail(`${out} does not read back`);
       }
-      store.writeState({
+      await store.writeState({
         ...state,
         backupCommitment: sealed.commitment,
         backupTokenAckSignature: tokenAck?.signature ?? null,
@@ -721,7 +687,7 @@ export async function run(argv: string[]): Promise<void> {
             const xochi = api(values, hashRecipientDescriptor(liveAccount.descriptor));
             await registerSenders(ctx);
             await registerAndRecord(ctx, store, artifact);
-            const registered = store.readState();
+            const registered = await store.readState();
             const pending = await enrollStart(
               ctx,
               xochi,
@@ -732,7 +698,7 @@ export async function run(argv: string[]): Promise<void> {
             const file = join(store.dir, "binding-typed-data.json");
             writeFileSync(file, typedDataJson(pending.typedData) + "\n", { mode: 0o600 });
             chmodSync(file, 0o600);
-            store.writeState({
+            await store.writeState({
               ...registered,
               tokenRegistrationAck: tokenAckForState(pending.tokenRegistrationAck),
               pending: {
@@ -741,14 +707,14 @@ export async function run(argv: string[]): Promise<void> {
                 tokenRegistrationAck: tokenAckForState(pending.tokenRegistrationAck),
               },
             });
-            if (ctx.port.mode === "live") rememberConnection(store, values);
+            if (ctx.port.mode === "live") await rememberConnection(store, values);
             log(
               `enroll: sign ${file} with the source wallet (eth_signTypedData_v4), then: enroll submit --source-signature 0x...`,
             );
           },
         );
       }
-      const state = store.readState();
+      const state = await store.readState();
       const account = await deriveRecipientAccount(await store.secrets(), state.corridor);
       const xochi = api(values, hashRecipientDescriptor(account.descriptor));
       const ctx = { corridor: state.corridor, log };
@@ -773,10 +739,10 @@ export async function run(argv: string[]): Promise<void> {
           account,
           pending,
           required(values, "source-signature"),
-          commitment,
+          { mode: "sealed_file", commitment: commitment as `0x${string}` },
         );
         const { pending: _done, ...rest } = state;
-        store.writeState({
+        await store.writeState({
           ...rest,
           tokenRegistrationAck: tokenAckForState(saved.tokenRegistrationAck),
           bindingId: projection.binding_id,
@@ -804,7 +770,7 @@ export async function run(argv: string[]): Promise<void> {
       }
       const pass = await passphrase(false);
       const backupBytes = readFileSync(required(values, "backup"));
-      const contents = openBackup(backupBytes, pass);
+      const contents = await openBackup(backupBytes, pass, keystoreCrypto);
       const secrets = { secret: contents.account.secret, salt: contents.account.salt };
       const account = await deriveRecipientAccount(secrets, contents.corridor);
       if (account.descriptor.aztecAddress !== contents.account.address) {
@@ -822,26 +788,26 @@ export async function run(argv: string[]): Promise<void> {
         ...(contents.bindingId ? { bindingId: contents.bindingId } : {}),
         ...(contents.bindingDigest ? { bindingDigest: contents.bindingDigest } : {}),
       };
-      store.writeKeystore(secrets, pass);
-      store.writeState(restoredState);
-      new OperationJournal(join(store.dir, "operations")).restore(contents.journals.operations);
-      restoreExitJournal(join(store.dir, "exits"), contents.journals.exits);
-      new ReceiptJournal(join(store.dir, "receipts")).restore(contents.journals.receipts);
+      await store.writeKeystore(secrets, pass);
+      await store.writeState(restoredState);
+      await store.journals.operations.restore(contents.journals.operations);
+      await store.journals.exits.restore(contents.journals.exits);
+      await store.journals.receipts.restore(contents.journals.receipts);
       return withAccount(values, store, restoredState, async (ctx, restored) => {
         const state = await ctx.port.accountState(restored.address);
         if (!state.initialized) fail("the backed-up account is not deployed on this network");
         await registerSenders(ctx);
         await registerAndRecord(ctx, store, artifact);
-        if (ctx.port.mode === "live") rememberConnection(store, values);
+        if (ctx.port.mode === "live") await rememberConnection(store, values);
         await showBalance(ctx, artifact, restored);
       });
     }
     case "operations": {
-      const journal = new OperationJournal(join(store.dir, "operations"));
+      const journal = store.journals.operations;
       if (sub === "reconcile") {
-        const state = store.readState();
+        const state = await store.readState();
         const operation =
-          journal.activeUnresolved() ?? fail("no exact lock-owned unresolved operation");
+          (await journal.activeUnresolved()) ?? fail("no exact lock-owned unresolved operation");
         if (operation.kind.startsWith("refund-")) {
           fail("use refund reconcile for an L1 refund operation");
         }
@@ -853,7 +819,7 @@ export async function run(argv: string[]): Promise<void> {
               `WARNING: --force releases the lock of receipt run pid ${operation.request["pid"]} on ${operation.request["host"]}; if that run is still active, a spend or exit may now run beside it`,
             );
           }
-          journal.releaseReceiptLock(operation.id, { force: values.force ?? false });
+          await journal.releaseReceiptLock(operation.id, { force: values.force ?? false });
           log(
             `operation ${operation.id}: released the lock of receipt run pid ${operation.request["pid"]} on ${operation.request["host"]} (it moved no funds)`,
           );
@@ -881,13 +847,13 @@ export async function run(argv: string[]): Promise<void> {
         const receipt = await node.getTxReceipt(TxHash.fromString(txHash));
         if (!durablyIncluded(receipt.status))
           fail(`operation receipt is ${receipt.status}; it remains blocked until checkpointed`);
-        journal.update(operation.id, {
+        await journal.update(operation.id, {
           status: "complete",
           receiptStatus: receipt.status,
         });
         log(`operation ${operation.id}: reconciled from mined receipt ${receipt.status}`);
       } else {
-        log(JSON.stringify(journal.records(), null, 2));
+        log(JSON.stringify(await journal.records(), null, 2));
       }
       return;
     }
@@ -920,11 +886,8 @@ export async function run(argv: string[]): Promise<void> {
         });
         if (ctx.port.mode === "live") {
           // The record anyone needs to finalize the withdrawal on L1; written per exit tx.
-          const dir = join(store.dir, "exits");
-          mkdirSync(dir, { recursive: true, mode: 0o700 });
-          const file = join(dir, `${result.txHash}.json`);
-          writeFileSync(file, JSON.stringify(result, null, 2) + "\n", { mode: 0o600, flag: "wx" });
-          log(`exit: record written to ${file}`);
+          await store.journals.exits.record(result);
+          log(`exit: record written to ${store.journals.exits.path(result.txHash)}`);
         }
       });
     case "receipt": {
@@ -932,7 +895,7 @@ export async function run(argv: string[]): Promise<void> {
         sub ?? fail("receipt needs the intent id: receipt INTENT_ID"),
       );
       // Before the artifact preflight: a binding id conflict needs no file.
-      const saved = store.readState();
+      const saved = await store.readState();
       const legacyBindingId = values["binding-id"] ?? null;
       if (legacyBindingId !== null && !values["legacy-binding"]) {
         fail("--binding-id is only for receipt --legacy-binding");
@@ -959,13 +922,13 @@ export async function run(argv: string[]): Promise<void> {
         await registerAndRecord(ctx, store, artifact);
         const xochi = api(resolved, hashRecipientDescriptor(account.descriptor));
         try {
-          const receipts = new ReceiptJournal(join(store.dir, "receipts"));
+          const receipts = store.journals.receipts;
           const record = await receipt(
             ctx,
             xochi,
             account,
             artifact,
-            { receipts, operations: new OperationJournal(join(store.dir, "operations")) },
+            { receipts, operations: store.journals.operations },
             {
               intentId,
               tx: values.tx ?? null,
@@ -973,9 +936,9 @@ export async function run(argv: string[]): Promise<void> {
               bindingDigest: state.bindingDigest ?? null,
               bindingId: state.bindingId ?? legacyBindingId,
               legacyBinding: values["legacy-binding"] ?? false,
-              rememberBindingDigest: (bindingDigest, bindingId) => {
-                const current = store.readState();
-                store.writeState({
+              rememberBindingDigest: async (bindingDigest, bindingId) => {
+                const current = await store.readState();
+                await store.writeState({
                   ...current,
                   bindingDigest,
                   bindingId: current.bindingId ?? bindingId,
@@ -984,7 +947,7 @@ export async function run(argv: string[]): Promise<void> {
               dryRun: ctx.port.mode === "dry-run",
             },
           );
-          if (record) log(`receipt: recorded in ${join(receipts.directory, `${intentId}.json`)}`);
+          if (record) log(`receipt: recorded in ${receipts.path(intentId)}`);
         } finally {
           if (xochi instanceof DryRunEnrollmentApi) {
             for (const call of xochi.calls) log(`  [dry-run] ${call}`);
@@ -993,9 +956,9 @@ export async function run(argv: string[]): Promise<void> {
       });
     }
     case "refund": {
-      const state = store.readState();
+      const state = await store.readState();
       const account = await deriveRecipientAccount(await store.secrets(), state.corridor);
-      const journal = new OperationJournal(join(store.dir, "operations"));
+      const journal = store.journals.operations;
       if (sub === "authorize") {
         const evidence = RefundEvidenceSchema.parse(
           JSON.parse(readFileSync(required(values, "refund-evidence"), "utf8")),
@@ -1011,7 +974,7 @@ export async function run(argv: string[]): Promise<void> {
         if (outs.length !== 1) fail("refund authorize needs exactly one --out path");
         writePrivateFileExclusive(
           outs[0]!,
-          Buffer.from(`${JSON.stringify(authorization, null, 2)}\n`),
+          utf8Bytes(`${JSON.stringify(authorization, null, 2)}\n`),
         );
         log("refund authorization written");
       } else if (sub === "submit") {

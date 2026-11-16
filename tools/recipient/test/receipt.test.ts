@@ -4,12 +4,12 @@
 
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ContractArtifact } from "@aztec-labs/stdlib/abi";
 import { TxStatus } from "@aztec-labs/stdlib/tx";
 
-import type { RecipientAccount } from "../src/account.js";
+import type { RecipientAccount } from "../src/core/account.js";
 import {
   DryRunEnrollmentApi,
   EnrollmentApiError,
@@ -18,11 +18,11 @@ import {
   type ReceiptChallenge,
   type ReceiptResult,
   type ReceiptSubmission,
-} from "../src/api.js";
-import { DryRunAztec, type ObservedTxReceipt, type ReceivedTransfer } from "../src/chain.js";
-import { receipt, type Ctx, type ReceiptRequest } from "../src/commands.js";
-import { OperationJournal } from "../src/operation-journal.js";
-import { ReceiptJournal } from "../src/receipt.js";
+} from "../src/core/api.js";
+import { DryRunAztec, type ObservedTxReceipt, type ReceivedTransfer } from "../src/core/chain.js";
+import { receipt, type Ctx, type ReceiptRequest } from "../src/core/commands.js";
+import type { OperationJournal } from "../src/core/operation-journal.js";
+import { openNodeJournals, systemClock } from "../src/node/data-dir.js";
 import {
   AMOUNT,
   INTENT,
@@ -145,6 +145,7 @@ describe("receipt API", () => {
 const FINALIZED: ObservedTxReceipt = {
   status: TxStatus.FINALIZED,
   blockNumber: 4242,
+  blockHash: hex("b1"),
   executionSucceeded: true,
 };
 const ARTIFACT = { name: "OxideToken" } as ContractArtifact;
@@ -211,7 +212,7 @@ class Worker implements ReceiptApi {
   async submitReceipt(intentId: string, body: ReceiptSubmission): Promise<ReceiptResult> {
     this.events.push(`submit ${intentId}`);
     this.bodies.push(body);
-    this.lockHeldAtSubmit.push(this.operations.unresolved()?.kind === "receipt");
+    this.lockHeldAtSubmit.push((await this.operations.unresolved())?.kind === "receipt");
     const refused = this.refusals.shift();
     if (refused) throw refused;
     const ack = body.acknowledgement as { message: unknown; signature: string };
@@ -224,10 +225,9 @@ function setup(payouts: ReceivedTransfer[] = [payoutFor(E, TERMS)], enrolledAcco
   const events: string[] = [];
   const lines: string[] = [];
   const port = new PayoutNode(events, payouts);
-  const operations = new OperationJournal(temp("operations"));
-  const receipts = new ReceiptJournal(temp("receipts"));
+  const { operations, receipts } = openNodeJournals(temp("data"));
   const worker = new Worker(events, operations, CHALLENGE);
-  const ctx: Ctx = { corridor, port, log: (line) => lines.push(line) };
+  const ctx: Ctx = { corridor, port, log: (line) => lines.push(line), clock: systemClock };
   const run = (request: Partial<ReceiptRequest> = {}) =>
     receipt(
       ctx,
@@ -253,10 +253,14 @@ function setup(payouts: ReceivedTransfer[] = [payoutFor(E, TERMS)], enrolledAcco
 }
 
 /** A completed spend of `amount` in the fund-movement journal, mined in `txHash`. */
-function completedSpend(operations: OperationJournal, txHash: string, amount = AMOUNT): void {
-  const spend = operations.begin("spend", { amount: amount.toString() });
-  operations.update(spend.id, { status: "broadcast", txHash });
-  operations.update(spend.id, { status: "complete", txHash });
+async function completedSpend(
+  operations: OperationJournal,
+  txHash: string,
+  amount = AMOUNT,
+): Promise<void> {
+  const spend = await operations.begin("spend", { amount: amount.toString() });
+  await operations.update(spend.id, { status: "broadcast", txHash });
+  await operations.update(spend.id, { status: "complete", txHash });
 }
 
 describe("receipt command", () => {
@@ -280,14 +284,14 @@ describe("receipt command", () => {
       alreadySpentBy: [],
       bindingId: "TEST-ONLY-binding",
     });
-    expect(receipts.read(INTENT)).toEqual(record);
+    expect(await receipts.read(INTENT)).toEqual(record);
     expect(worker.lockHeldAtSubmit).toEqual([true]);
-    expect(operations.unresolved()).toBeNull();
+    expect(await operations.unresolved()).toBeNull();
   });
 
   it("refuses while a spend, exit or refund is unresolved, before any call", async () => {
     const { events, operations, run } = await setup();
-    operations.begin("spend", { amount: "1" });
+    await operations.begin("spend", { amount: "1" });
     await expect(run()).rejects.toThrow(/spend/);
     expect(events).toEqual([]);
   });
@@ -310,7 +314,7 @@ describe("receipt command", () => {
       port.nodeReceipts[hex("a7")] = node;
       await expect(run()).rejects.toThrow(/not finalized|reverted|block 4243/);
       expect(worker.bodies).toEqual([]);
-      expect(receipts.read(INTENT)).toBeNull();
+      expect(await receipts.read(INTENT)).toBeNull();
     }
   });
 
@@ -319,7 +323,7 @@ describe("receipt command", () => {
     port.simulationError = new Error("TEST ONLY note missing");
     await expect(run()).rejects.toThrow(/simulation failed: TEST ONLY note missing/);
     expect(worker.bodies).toEqual([]);
-    expect(receipts.read(INTENT)).toBeNull();
+    expect(await receipts.read(INTENT)).toBeNull();
   });
 
   it("reports the simulation cause first when reading the balance then fails too", async () => {
@@ -334,10 +338,10 @@ describe("receipt command", () => {
   it("with --already-spent, signs a payout this account spent after it landed, and records the spend", async () => {
     const { port, operations, receipts, run } = await setup();
     port.simulationError = new Error("TEST ONLY balance too low");
-    completedSpend(operations, hex("5e"));
+    await completedSpend(operations, hex("5e"));
     port.nodeReceipts[hex("5e")] = { ...FINALIZED, blockNumber: 5000 };
     await expect(run()).rejects.toThrow(/--already-spent/);
-    expect(receipts.read(INTENT)).toBeNull();
+    expect(await receipts.read(INTENT)).toBeNull();
     const record = await run({ alreadySpent: true });
     expect(record).toMatchObject({ status: "submitted", alreadySpentBy: [hex("5e")] });
   });
@@ -346,9 +350,9 @@ describe("receipt command", () => {
     const { port, operations, run } = await setup();
     port.simulationError = new Error("TEST ONLY balance too low");
     port.balanceValue = AMOUNT / 5n;
-    completedSpend(operations, hex("51"), (AMOUNT * 2n) / 5n);
-    completedSpend(operations, hex("52"), (AMOUNT * 2n) / 5n);
-    completedSpend(operations, hex("50"), AMOUNT);
+    await completedSpend(operations, hex("51"), (AMOUNT * 2n) / 5n);
+    await completedSpend(operations, hex("52"), (AMOUNT * 2n) / 5n);
+    await completedSpend(operations, hex("50"), AMOUNT);
     port.nodeReceipts[hex("51")] = { ...FINALIZED, blockNumber: 5000 };
     port.nodeReceipts[hex("52")] = { ...FINALIZED, blockNumber: 5001 };
     port.nodeReceipts[hex("50")] = { ...FINALIZED, blockNumber: 4000 };
@@ -366,7 +370,7 @@ describe("receipt command", () => {
     ] as const) {
       const { port, operations, run } = await setup();
       port.simulationError = new Error("TEST ONLY balance too low");
-      completedSpend(operations, hex("5e"), amount);
+      await completedSpend(operations, hex("5e"), amount);
       port.nodeReceipts[hex("5e")] = { ...FINALIZED, blockNumber: block };
       await expect(run()).rejects.toThrow(/simulation failed/);
       await expect(run()).rejects.not.toThrow(/--already-spent/);
@@ -380,7 +384,7 @@ describe("receipt command", () => {
     const { port, operations, run } = await setup();
     port.simulationError = new Error("TEST ONLY node unreachable");
     port.balanceValue = AMOUNT;
-    completedSpend(operations, hex("5e"));
+    await completedSpend(operations, hex("5e"));
     port.nodeReceipts[hex("5e")] = { ...FINALIZED, blockNumber: 5000 };
     await expect(run()).rejects.toThrow(/simulation failed: TEST ONLY node unreachable/);
     await expect(run()).rejects.not.toThrow(/--already-spent/);
@@ -393,9 +397,9 @@ describe("receipt command", () => {
     const { port, operations, receipts, worker, run } = await setup();
     worker.refusals.push(refusal(503));
     await expect(run()).rejects.toThrow(/503/);
-    expect(receipts.read(INTENT)).toMatchObject({ alreadySpentBy: [] });
+    expect(await receipts.read(INTENT)).toMatchObject({ alreadySpentBy: [] });
     port.simulationError = new Error("TEST ONLY balance too low");
-    completedSpend(operations, hex("5e"));
+    await completedSpend(operations, hex("5e"));
     port.nodeReceipts[hex("5e")] = { ...FINALIZED, blockNumber: 5000 };
     worker.refusals.push(refusal(409, "receipt_ack_rejected"));
     expect(await run({ alreadySpent: true })).toMatchObject({
@@ -409,15 +413,16 @@ describe("receipt command", () => {
     const { lines, receipts, worker, run } = await setup();
     const legacy = {
       bindingDigest: null,
-      rememberBindingDigest: (digest: string, bindingId: string) =>
-        remembered.push([digest, bindingId]),
+      rememberBindingDigest: (digest: string, bindingId: string) => {
+        remembered.push([digest, bindingId]);
+      },
     };
     await expect(run(legacy)).rejects.toThrow(/--legacy-binding/);
-    expect(receipts.read(INTENT)).toBeNull();
+    expect(await receipts.read(INTENT)).toBeNull();
     worker.refusals.push(refusal(503));
     await expect(run({ ...legacy, legacyBinding: true })).rejects.toThrow(/503/);
     expect(remembered).toEqual([]);
-    expect(receipts.read(INTENT)).toMatchObject({ bindingId: "TEST-ONLY-binding" });
+    expect(await receipts.read(INTENT)).toMatchObject({ bindingId: "TEST-ONLY-binding" });
     expect(lines).toContain(
       `receipt: --legacy-binding: signing under binding TEST-ONLY-binding, digest ${E.bindingDigest} (saved to state.json once Xochi accepts the receipt)`,
     );
@@ -451,7 +456,7 @@ describe("receipt command", () => {
       `challenge ${INTENT}`,
       `submit ${INTENT}`,
     ]);
-    expect(receipts.read(INTENT)!.attempts).toHaveLength(2);
+    expect((await receipts.read(INTENT))!.attempts).toHaveLength(2);
   });
 
   it("answers an accepted receipt from the journal without any call", async () => {
@@ -472,7 +477,7 @@ describe("receipt command", () => {
       expect(events).toEqual([`submit ${INTENT}`]);
     }
     expect(new Set(worker.bodies.map((b) => JSON.stringify(b))).size).toBe(1);
-    expect(receipts.read(INTENT)!.attempts).toHaveLength(1);
+    expect((await receipts.read(INTENT))!.attempts).toHaveLength(1);
 
     worker.refusals.push(refusal(410, "receipt_challenge_expired"));
     events.length = 0;
@@ -485,7 +490,7 @@ describe("receipt command", () => {
       `simulate ${E.account.address.toString()} ${AMOUNT}`,
       `submit ${INTENT}`,
     ]);
-    expect(receipts.read(INTENT)!.attempts).toHaveLength(2);
+    expect((await receipts.read(INTENT))!.attempts).toHaveLength(2);
   });
 
   it("never starts over with other terms or another payout for the same intent", async () => {
@@ -514,7 +519,7 @@ describe("receipt command", () => {
     second.worker.challenge = challengeFor(E, reused);
     await expect(
       receipt(
-        { corridor, port: second.port, log: () => {} },
+        { corridor, port: second.port, log: () => {}, clock: systemClock },
         second.worker,
         E.account,
         ARTIFACT,
@@ -536,11 +541,10 @@ describe("receipt command", () => {
   it("dry run: walks the PXE read and stops before any challenge, writing nothing", async () => {
     const port = new DryRunAztec(corridor);
     const api = new DryRunEnrollmentApi(Math.floor(Date.now() / 1000));
-    const receipts = new ReceiptJournal(temp("receipts"));
-    const operations = new OperationJournal(temp("operations"));
+    const { receipts, operations } = openNodeJournals(temp("data"));
     await expect(
       receipt(
-        { corridor, port, log: () => {} },
+        { corridor, port, log: () => {}, clock: systemClock },
         api,
         E.account,
         ARTIFACT,
@@ -559,7 +563,7 @@ describe("receipt command", () => {
     ).rejects.toThrow(/no payout from the corridor's sender/);
     expect(api.calls).toEqual([]);
     expect(port.calls).toHaveLength(1);
-    expect(existsSync(receipts.directory)).toBe(false);
-    expect(operations.records()).toEqual([]);
+    expect(existsSync(dirname(receipts.path(INTENT)))).toBe(false);
+    expect(await operations.records()).toEqual([]);
   });
 });

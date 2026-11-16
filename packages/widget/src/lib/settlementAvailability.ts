@@ -21,7 +21,8 @@ export function defaultSettlementSelection(
  * What the user can do about an unavailable settlement mode. Exactly one per
  * mode: connect a wallet, choose a stealth destination, try another route
  * (the solver turned this one down), nothing (the mode is not offered), wait
- * for the route matrix, or retry a failed route-matrix load.
+ * for the route matrix, retry a failed route-matrix load, or choose another
+ * destination (Canton is public only).
  */
 export type SettlementFix =
   | "wallet"
@@ -31,7 +32,8 @@ export type SettlementFix =
   | "route"
   | "unavailable"
   | "route_loading"
-  | "route_unavailable";
+  | "route_unavailable"
+  | "public_only";
 
 /**
  * The one fix the Stealth button shows, or null when stealth is available.

@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { ORDER_FINGERPRINT_TAG, orderFingerprintFromMeta } from "../src/order-fingerprint.js";
+import { ORDER_FINGERPRINT_TAG, orderFingerprintFromMeta } from "../src/core/order-fingerprint.js";
 
 const raw = readFileSync(new URL("./vectors/pxe-bridge-settlement-v2.json", import.meta.url));
 const vectors = JSON.parse(raw.toString("utf8")) as {

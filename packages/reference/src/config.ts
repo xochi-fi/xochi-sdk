@@ -74,7 +74,8 @@ export const CONFIG: SignerConfig = {
       weth: "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
       usdcName: "USD Coin",
       usdcVersion: "2",
-      rpc: process.env.POLYGON_RPC || "https://polygon-rpc.com",
+      // polygon-rpc.com answers "API key disabled" (-32051) to keyless calls.
+      rpc: process.env.POLYGON_RPC || "https://polygon.drpc.org",
       explorerUrl: "https://polygonscan.com",
       isTestnet: false,
     },

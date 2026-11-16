@@ -13,9 +13,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { keccak256, toHex } from "viem";
 
-import { deriveRecipientAccount } from "../dist/account.js";
-import { LiveAztec } from "../dist/chain.js";
-import { OXDAI_MAINNET_REV2 } from "../dist/corridor.js";
+import { deriveRecipientAccount } from "../dist/core/account.js";
+import { LiveAztec } from "../dist/core/chain.js";
+import { OXDAI_MAINNET_REV2 } from "../dist/core/corridor.js";
+import { NodeAttestationVerifier } from "../dist/node/attestation.js";
+import { openNodeJournals } from "../dist/node/data-dir.js";
+import { NodeWalletStorage } from "../dist/node/wallet-storage.js";
 
 const nodeUrl = process.argv[2];
 if (!nodeUrl) {
@@ -38,9 +41,12 @@ const needles = {
 const dir = mkdtempSync(join(tmpdir(), "xochi-recipient-smoke-"));
 const port = await LiveAztec.connect({
   nodeUrl,
-  dataDirectory: join(dir, "pxe"),
+  walletStorage: new NodeWalletStorage(join(dir, "pxe")),
+  scope: account.descriptor.aztecAddress,
   corridor: OXDAI_MAINNET_REV2,
   l1RpcUrl: null,
+  journal: openNodeJournals(dir).operations,
+  attestation: new NodeAttestationVerifier(),
 });
 try {
   await port.addAccount(account);

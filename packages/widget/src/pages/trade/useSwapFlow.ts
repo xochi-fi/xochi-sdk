@@ -75,6 +75,7 @@ const SETTLEMENT_FIX_BUTTON: Record<SettlementFix, string> = {
   unavailable: "Choose an available privacy mode",
   route_loading: "Loading routes",
   route_unavailable: "Retry route data",
+  public_only: "Use Public for Canton",
 };
 
 // Intent statuses at or past submission -- only these are logged to the local

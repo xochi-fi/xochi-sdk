@@ -2,13 +2,13 @@
 // data directory, names exactly the flag that was never saved, and the Xochi API defaults to
 // https://api.xochi.fi (the only origin the client accepts). No network: fetch is stubbed.
 
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { run } from "../src/cli.js";
-import { OperationJournal } from "../src/operation-journal.js";
+import { openNodeJournals } from "../src/node/data-dir.js";
 
 const PASS = "receipt cli TEST ONLY";
 const INTENT = "3f0c2a5e-8d7b-4e1a-9c6f-0b1d2e3f4a5b";
@@ -88,20 +88,32 @@ describe("receipt invocation", () => {
       "--binding-id TEST-ONLY-b is not this data directory's enrolled binding id TEST-ONLY-a",
     );
   });
+
+  // After "--", so the leading-dash id reaches the grammar check instead of the option parser.
+  it.each([["Intent_A1"], ["a".repeat(129)], ["-leading-dash"]])(
+    "refuses intent id %s before touching the data directory",
+    async (intentId) => {
+      const dataDir = join(mkdtempSync(join(tmpdir(), "receipt-cli-")), "never-created");
+      await expect(run(["receipt", "--data-dir", dataDir, "--", intentId])).rejects.toThrow(
+        "intent id must be 1-64 characters of a-z, 0-9, '_' and '-', not starting with '-'",
+      );
+      expect(existsSync(dataDir)).toBe(false);
+    },
+  );
 });
 
 describe("operations reconcile", () => {
   it("refuses to release a live receipt run's lock unless forced: it moved no funds", async () => {
     const dataDir = await initialized();
-    const operations = new OperationJournal(join(dataDir, "operations"));
-    const held = operations.beginReceipt(INTENT);
+    const operations = openNodeJournals(dataDir).operations;
+    const held = await operations.beginReceipt(INTENT);
     await expect(run(["operations", "reconcile", "--data-dir", dataDir])).rejects.toThrow(
       new RegExp(`receipt run pid ${process.pid} on .* is still running.*--force`),
     );
-    expect(operations.get(held.id).status).toBe("building");
+    expect((await operations.get(held.id)).status).toBe("building");
     await run(["operations", "reconcile", "--data-dir", dataDir, "--force"]);
-    expect(operations.get(held.id).status).toBe("aborted");
-    expect(operations.unresolved()).toBeNull();
+    expect((await operations.get(held.id)).status).toBe("aborted");
+    expect(await operations.unresolved()).toBeNull();
   });
 });
 

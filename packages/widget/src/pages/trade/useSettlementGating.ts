@@ -47,7 +47,7 @@ import {
   isChainId,
 } from "../../types/intent.js";
 import type { RoutePrivacyMode, SolverCapabilities } from "@xochi/signer";
-import { type SelectableChainId } from "@xochi/client";
+import { isCantonDestinationChainId, type SelectableChainId } from "@xochi/client";
 import { validateDestinationAddress, refundAddressError } from "@xochi/client";
 import { SHIELDED_SETTLEMENT_LIVE, STEALTH_SETTLEMENT_LIVE } from "./config.js";
 import type { CapabilityState } from "@xochi/client";
@@ -66,6 +66,7 @@ import {
   type SettlementFix,
 } from "../../lib/settlementAvailability.js";
 import { normalizeZkMoneyTag, zkMoneyTagError, zkMoneyTagValid } from "./zkMoney.js";
+import { cantonRecipientCheck } from "./canton.js";
 
 /** The explicit settlement notice; live destination guidance is derived separately. */
 export type PanelNotice = "stealth_needs_wallet" | "shielded_soon";
@@ -140,7 +141,13 @@ export interface UseSettlementGatingResult {
   recipientInvalid: boolean;
   recipientMissing: boolean;
   recipientCheck: { valid: boolean; error?: string };
-  trimmedRecipient: string;
+  /**
+   * The recipient as the quote sends it: trimmed on Tron, byte for byte as
+   * typed on Canton (a party id is never trimmed or case-folded).
+   */
+  sentRecipient: string;
+  /** The destination is Canton: public only, a party recipient, an escrow order. */
+  cantonDestination: boolean;
   /** The tag field as typed; `zkMoneyTag` is what the quote asks for. */
   recipientTag: string;
   setRecipientTag: Dispatch<SetStateAction<string>>;
@@ -190,8 +197,8 @@ export function useSettlementGating({
   const { showToast } = useToast();
   const stealth = useStealth();
 
-  // Recipient address on a non-EVM destination (Tron). The user types it; EVM
-  // routes settle to the connected wallet, so it stays empty there.
+  // Recipient address on a non-EVM destination (Tron, Canton). The user types
+  // it; EVM routes settle to the connected wallet, so it stays empty there.
   const [recipientAddress, setRecipientAddress] = useState("");
   // The zk.money tag, typed with or without its `@`; the Worker resolves it.
   const [recipientTag, setRecipientTag] = useState("");
@@ -200,17 +207,21 @@ export function useSettlementGating({
     initialSettlement ?? null,
   );
 
-  const trimmedRecipient = recipientAddress.trim();
-  const recipientCheck: { valid: boolean; error?: string } = isNonEvmDest
-    ? validateDestinationAddress(trimmedRecipient, toChainId, capabilities)
-    : { valid: true };
+  // A Canton party goes out byte for byte as typed (SPEC.md §3.3): validated
+  // untrimmed, so a padded paste is refused rather than silently repaired.
+  const cantonDestination = isCantonDestinationChainId(toChainId);
+  const sentRecipient = cantonDestination ? recipientAddress : recipientAddress.trim();
+  const recipientCheck: { valid: boolean; error?: string } = !isNonEvmDest
+    ? { valid: true }
+    : cantonDestination
+      ? cantonRecipientCheck(sentRecipient)
+      : validateDestinationAddress(sentRecipient, toChainId, capabilities);
   const zkMoneyTag = normalizeZkMoneyTag(recipientTag);
   const tagError = zkMoneyDestination ? zkMoneyTagError(zkMoneyTag) : null;
   // Either leg-scoped recipient input, under the one pair of names the amount
   // group (quote trigger) and the flow (CTA) gate on.
   const recipientMissing =
-    (isNonEvmDest && trimmedRecipient.length === 0) ||
-    (zkMoneyDestination && zkMoneyTag.length === 0);
+    (isNonEvmDest && sentRecipient.length === 0) || (zkMoneyDestination && zkMoneyTag.length === 0);
   // Invalid = required but not a valid value (empty counts as not-yet-valid).
   const recipientInvalid =
     (isNonEvmDest && !recipientCheck.valid) || (zkMoneyDestination && !zkMoneyTagValid(zkMoneyTag));
@@ -243,10 +254,12 @@ export function useSettlementGating({
   // quote, including Public.
   const liveCapabilities = capabilityState === "live";
   const routeAdvertisesPublic = liveCapabilities && routePrivacyModes.includes("public");
+  // Canton settles public only (SPEC.md §3.3), whatever a route advertises.
+  const privateRailsOff = zkMoneyDestination || cantonDestination;
   const routeAdvertisesStealth =
-    liveCapabilities && !zkMoneyDestination && routePrivacyModes.includes("stealth");
+    liveCapabilities && !privateRailsOff && routePrivacyModes.includes("stealth");
   const routeAdvertisesShielded =
-    liveCapabilities && !zkMoneyDestination && routePrivacyModes.includes("shielded");
+    liveCapabilities && !privateRailsOff && routePrivacyModes.includes("shielded");
   const stealthChains = useMemo(
     () => (liveCapabilities ? stealthDestinationChainIds.filter(isChainId) : []),
     [liveCapabilities, stealthDestinationChainIds],
@@ -254,7 +267,7 @@ export function useSettlementGating({
   const stealthDestinationSupported =
     routeAdvertisesStealth && stealthChains.some((chainId) => chainId === toChainId);
   const stealthEligible = STEALTH_SETTLEMENT_LIVE && stealthDestinationSupported;
-  const settlement: SettlementType = zkMoneyDestination
+  const settlement: SettlementType = privateRailsOff
     ? "public"
     : (defaultSettlementSelection(selectedSettlement, stealthEligible) ?? "public");
   useEffect(() => {
@@ -270,7 +283,7 @@ export function useSettlementGating({
   // zk.money is the typed Public tag-deposit rail even though its navigation
   // affordance lives under Shielded. Every other selection is requested as-is:
   // an unauthorized private choice must never silently mint a Public quote.
-  const requestedSettlement: SettlementType = zkMoneyDestination ? "public" : settlement;
+  const requestedSettlement: SettlementType = privateRailsOff ? "public" : settlement;
   const settlementRouteAuthorized =
     requestedSettlement === "public"
       ? routeAdvertisesPublic
@@ -288,7 +301,7 @@ export function useSettlementGating({
     trustScore,
     slippageBps,
     // Only send a recipient for a non-EVM destination (EVM settles to wallet).
-    recipientAddress: isNonEvmDest ? trimmedRecipient : undefined,
+    recipientAddress: isNonEvmDest ? sentRecipient : undefined,
     // zk.money: the tag, never an address; the Worker binds the resolved one.
     recipientTag: zkMoneyDestination ? zkMoneyTag : undefined,
     // Only send a refund address for a deposit-route origin, and only once it is
@@ -338,8 +351,9 @@ export function useSettlementGating({
     destinationSupported: stealthDestinationSupported,
     routeAvailable: stealthRouteAvailable,
   });
-  // Choosing privacy opens discovery; it does not grant quote or execution authority.
-  const stealthClickable = STEALTH_SETTLEMENT_LIVE;
+  // Choosing privacy opens discovery; it does not grant quote or execution
+  // authority. Canton is public only, so its Stealth control does not respond.
+  const stealthClickable = STEALTH_SETTLEMENT_LIVE && !cantonDestination;
 
   // Shielded direct settlement remains pre-live. Keep its future branch under
   // the same exact-route rule so flipping the feature flag cannot make a quote
@@ -404,22 +418,26 @@ export function useSettlementGating({
         ? "route_loading"
         : "route_unavailable"
       : "route";
-  const stealthFix = stealthFixFor({
-    live: STEALTH_SETTLEMENT_LIVE,
-    stealthChainsKnown: liveCapabilities,
-    capabilitiesLoading: capabilitiesFetching,
-    hasStealthChains: stealthChains.length > 0,
-    connected: isConnected,
-    destinationSupported: stealthDestinationSupported,
-    metaAddressReady: stealth.metaAddress !== null,
-    quotedSettlement:
-      settlement === "stealth" && intent.quote ? intent.receipt.settlement.mode : undefined,
-    routeAvailable: stealthRouteAvailable,
-  });
-  const shieldedFix = shieldedFixFor({
-    live: !shieldedPreLive,
-    routeAvailable: shieldedRouteAvailable,
-  });
+  const stealthFix = cantonDestination
+    ? "public_only"
+    : stealthFixFor({
+        live: STEALTH_SETTLEMENT_LIVE,
+        stealthChainsKnown: liveCapabilities,
+        capabilitiesLoading: capabilitiesFetching,
+        hasStealthChains: stealthChains.length > 0,
+        connected: isConnected,
+        destinationSupported: stealthDestinationSupported,
+        metaAddressReady: stealth.metaAddress !== null,
+        quotedSettlement:
+          settlement === "stealth" && intent.quote ? intent.receipt.settlement.mode : undefined,
+        routeAvailable: stealthRouteAvailable,
+      });
+  const shieldedFix = cantonDestination
+    ? "public_only"
+    : shieldedFixFor({
+        live: !shieldedPreLive,
+        routeAvailable: shieldedRouteAvailable,
+      });
   const modeFix =
     requestedSettlement === "public"
       ? publicFix
@@ -440,6 +458,7 @@ export function useSettlementGating({
   const handleSettlementChange = useCallback(
     (next: SettlementType): void => {
       if (next === "stealth" && !STEALTH_SETTLEMENT_LIVE) return;
+      if (next !== "public" && cantonDestination) return;
       const decision = settlementSelectionDecision({
         next,
         connected: isConnected,
@@ -466,7 +485,7 @@ export function useSettlementGating({
         setSettlement("shielded");
       }
     },
-    [isConnected, shieldedPreLive, shieldedSelectable],
+    [cantonDestination, isConnected, shieldedPreLive, shieldedSelectable],
   );
 
   // The destination as the live form describes it. Derived here so the flow
@@ -477,20 +496,23 @@ export function useSettlementGating({
     : settlement === "stealth" && stealthAuthorized
       ? STEALTH_DESTINATION
       : isNonEvmDest
-        ? { ...DEFAULT_DESTINATION, recipientAddress: trimmedRecipient }
+        ? { ...DEFAULT_DESTINATION, recipientAddress: sentRecipient }
         : DEFAULT_DESTINATION;
 
   // Who actually receives the payout: a typed address on a non-EVM destination,
   // otherwise the connected wallet. Only query once a typed address is complete
   // and valid, so we neither fire on every keystroke nor look up a typo. A tag
   // has no address this side knows until the quote binds one: nothing to read.
-  const payoutAddress = zkMoneyDestination
-    ? undefined
-    : isNonEvmDest
-      ? recipientInvalid || !trimmedRecipient
-        ? undefined
-        : trimmedRecipient
-      : address;
+  // A Canton party is never read either: there is no balance lookup for it,
+  // and a balance is no delivery signal on an escrow order.
+  const payoutAddress =
+    zkMoneyDestination || cantonDestination
+      ? undefined
+      : isNonEvmDest
+        ? recipientInvalid || !sentRecipient
+          ? undefined
+          : sentRecipient
+        : address;
 
   const clearRecipient = useCallback((): void => {
     setRecipientAddress("");
@@ -530,7 +552,8 @@ export function useSettlementGating({
     recipientInvalid,
     recipientMissing,
     recipientCheck,
-    trimmedRecipient,
+    sentRecipient,
+    cantonDestination,
     recipientTag,
     setRecipientTag,
     zkMoneyTag,

@@ -7,10 +7,13 @@
 
 import type { ChainId, Token } from "../../types/intent.js";
 import {
+  CANTON_COIN,
+  CANTON_MAINNET_CHAIN_ID,
   DEFAULT_SLIPPAGE_BPS,
   TOKENS as CLIENT_TOKENS,
   TRON_CHAIN_ID,
   TRON_TOKENS_BY_ADDRESS,
+  isCantonDestinationChainId,
   type SelectableChainId,
   type TokenInfo,
 } from "@xochi/client";
@@ -139,11 +142,35 @@ export { ARC_LIVE };
 /** Gnosis is live, still narrowed by the exact typed capability routes. */
 export const GNOSIS_LIVE: boolean = true;
 
-/** Client launch gates remain necessary after a solver advertises a chain. */
-export function chainEnabledForRole(chainId: number, role: "origin" | "destination"): boolean {
+/**
+ * Canton as a cross-chain destination: Base USDC -> Canton Coin, delivered to
+ * a Canton party the user types (xochi-sdk#116). Destination-only and public
+ * only; settled through the Base `RiddlerEscrow` (the deploy's `escrows` pin,
+ * `configureWidget`): the solver delivers, Riddler attests, the solver claims,
+ * or the taker refunds from `refundableAt` on.
+ *
+ * Off until the Worker forwards escrow quotes and status (`escrow`,
+ * `cantonUpdateId`), Riddler serves the corridor (axol-io/riddler#1469), and a
+ * staging run has reached a terminal status. Even on, Canton is offered only
+ * while the live capability matrix advertises it (`cvm`) with an exact route.
+ * Off, Canton is selectable nowhere: selectors, embed parameters, resume and
+ * local activity all refuse it, and no escrow pin reaches the machine.
+ */
+export const CANTON_DESTINATION_LIVE: boolean = false;
+
+/**
+ * Client launch gates remain necessary after a solver advertises a chain.
+ * `cantonLive` is `CANTON_DESTINATION_LIVE`; tests pass it to exercise both.
+ */
+export function chainEnabledForRole(
+  chainId: number,
+  role: "origin" | "destination",
+  cantonLive: boolean = CANTON_DESTINATION_LIVE,
+): boolean {
   if (chainId === TRON_CHAIN_ID) {
     return role === "origin" ? TRON_ORIGIN_LIVE : TRON_DESTINATION_LIVE;
   }
+  if (isCantonDestinationChainId(chainId)) return role === "destination" && cantonLive;
   if (chainId === 5042) return role === "destination" || ARC_LIVE;
   if (chainId === 100) return GNOSIS_LIVE;
   return true;
@@ -177,6 +204,9 @@ export const TOKENS: Record<SelectableChainId, Token[]> = {
   5042: CLIENT_TOKENS[5042].map((token) => toFrontendToken(token, 5042)),
   100: CLIENT_TOKENS[100].map((token) => toFrontendToken(token, 100)),
   [TRON_CHAIN_ID]: TRON_TOKENS,
+  // Presentation only: the matrix and `chainEnabledForRole` decide whether
+  // Canton is offered at all.
+  [CANTON_MAINNET_CHAIN_ID]: [toFrontendToken(CANTON_COIN, CANTON_MAINNET_CHAIN_ID)],
 };
 
 // ============================================================

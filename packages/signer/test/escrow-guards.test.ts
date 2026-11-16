@@ -1,8 +1,8 @@
-// @xochi/signer does not run the escrow binding (SPEC.md §2.3) on the pull or deposit
-// paths, so it refuses anything escrow-bearing there, and it does not fold the case of a
-// `0x`-prefixed value that is not hex (a Canton party id). How the `expectedEscrows` pin
-// itself is read (key spellings, padding, duplicate keys) is pinned once, in
-// escrow.test.ts, since one resolver serves both guards.
+// The plain pull and deposit paths do not run the escrow binding (SPEC.md §2.3), so they
+// refuse anything escrow-bearing; the escrow path is escrow-quote.test.ts. They also do not
+// fold the case of a `0x`-prefixed value that is not hex (a Canton party id). How the
+// `expectedEscrows` pin itself is read (key spellings, padding, duplicate keys) is pinned
+// once, in escrow.test.ts, since one resolver serves every guard.
 
 import { describe, it, expect } from "vitest";
 import {

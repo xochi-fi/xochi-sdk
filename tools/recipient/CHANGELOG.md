@@ -31,9 +31,35 @@ All releases are private test artifacts; see the README CAUTION for what they do
 
 ### Changed
 
+- `@xochi/signer` 0.7.0 -> 0.8.0 (exact pin; `npm-shrinkwrap.json` and `package-lock.json`
+  refreshed).
+- `--api-url` accepts `https://api.xochi.fi` (default), `https://api-stg.xochi.fi` and
+  `https://api-es.xochi.fi`, and still refuses any other origin before the JWT is sent.
 - Backups now carry `journals.receipts`, `bindingId` and `bindingDigest` under the same format
   name. Builds before this release refuse to open them (strict schema); keep the release that
   wrote a backup, or a newer one, for restore. This release still opens older backups.
+- The recipient logic now lives in `@xochi/recipient-core` (`packages/recipient-core`, xochi-sdk#156),
+  which this tool compiles into its `dist/core/` behind Node adapters (`src/node/`). Commands,
+  flags, data directory layout and record bytes are unchanged. New runtime dependency:
+  `@noble/hashes` 1.8.0 (already in the closure; now pinned directly).
+- `state.json` is validated, then written atomically (fsynced temporary file + rename); it was a
+  plain overwrite. Exit records (`exits/<txHash>.json`) are fsynced and linked into place, never
+  overwriting; they were written without an fsync.
+- `receipt` takes intent ids matching `^[a-z0-9_][a-z0-9_-]{0,63}$` (Xochi's ids are
+  `xi_<32 hex>`); anything else is refused with "intent id must be 1-64 characters of a-z, 0-9,
+  '_' and '-', not starting with '-'". It was `[A-Za-z0-9_-]{1,128}`.
+- A journal key outside the storage grammar is refused with "invalid storage key: KEY". A
+  journal directory holding an entry outside it (other than this tool's dot-prefixed temporary
+  files, so also an editor backup such as `x.json~`) is refused with "storage directory DIR/
+  holds an entry outside the key grammar: NAME", and one holding a symlink or subdirectory with
+  "... holds an entry that is not a regular file: NAME", instead of being read or skipped: fund
+  movement stays blocked until it is removed.
+- The Node-only Nitro attestation verifier moved, unchanged, to `src/node/vendor/`.
+- A spend's or exit's operation record names its process's `pid` in `request` (no hostname), as
+  a receipt run's did, and an exit's `broadcast` record names each withdrawal's L1 `operationId`
+  before the transaction is sent. Just before it, spend and exit create
+  `operations/submission-<id>-<lockNonce>.lock`, the operation's one submission decision.
+  `operations reconcile` is unchanged: it still refuses a spend or exit with no transaction hash.
 
 ### Fixed
 

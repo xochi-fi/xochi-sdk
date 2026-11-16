@@ -2,10 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, expect, it } from "vitest";
-import { parseCapabilities, type SolverCapabilities } from "@xochi/signer";
+import {
+  CANTON_COIN_MAINNET,
+  CANTON_MAINNET_CHAIN_ID,
+  parseCapabilities,
+  type SolverCapabilities,
+} from "@xochi/signer";
 import { SIMPLE_ACCOUNT_FACTORY } from "./shared/stealth.js";
 import { TRON_CHAIN_ID, type SelectableChainId } from "./shared/chains.js";
-import { TOKENS as EVM_TOKENS, TRON_TOKENS_BY_ADDRESS } from "./shared/tokens.js";
+import { CANTON_COIN, TOKENS as EVM_TOKENS, TRON_TOKENS_BY_ADDRESS } from "./shared/tokens.js";
 import {
   resolveRouteModel as resolveExecutableRouteModel,
   type CapabilityState,
@@ -388,5 +393,71 @@ describe("resolveRouteModel", () => {
         reason: "Routes could not be loaded",
       });
     }
+  });
+});
+
+describe("resolveRouteModel: Canton destination", () => {
+  const CANTON: SelectableChainId = CANTON_MAINNET_CHAIN_ID;
+  const CBTC = `CBTC::1220${"ab".repeat(32)}`;
+  const presentation = { ...TOKENS, [CANTON]: [{ ...CANTON_COIN, chainId: CANTON }] };
+  const matrix = parsed({
+    chains: [
+      chainRow(BASE),
+      { chain_id: CANTON, chain_name: "Canton", vm_type: "cvm", address_format: "canton_party" },
+    ],
+    tokens: [
+      wireToken("USDC", [BASE]),
+      {
+        symbol: "CC",
+        decimals: 10,
+        roles: ["origin", "destination"],
+        addresses: { [CANTON]: CANTON_COIN_MAINNET },
+      },
+      { symbol: "CBTC", decimals: 8, roles: ["destination"], addresses: { [CANTON]: CBTC } },
+    ],
+    routes: [
+      chainRoute(BASE, "USDC", CANTON, "CC", ["public", "stealth", "shielded"]),
+      chainRoute(BASE, "USDC", CANTON, "CBTC"),
+      chainRoute(CANTON, "CC", BASE, "USDC"),
+    ],
+    stealth_chains: [BASE, CANTON],
+  });
+  const model = (cantonLive: boolean): ResolvedRouteModel =>
+    resolveExecutableRouteModel(matrix, "live", {
+      chainEnabledForRole: (chainId) => chainId !== CANTON || cantonLive,
+      presentationTokens: presentation,
+    });
+
+  it("is offered only when the caller's gate enables it", () => {
+    expect(model(true).destinationChainIds).toContain(CANTON);
+    expect(model(false).destinationChainIds).not.toContain(CANTON);
+  });
+
+  it("is never an origin, whatever the matrix and the gate say", () => {
+    expect(model(true).originChainIds).not.toContain(CANTON);
+  });
+
+  it("offers Canton Coin only, by its verbatim instrument id", () => {
+    expect(model(true).destinationTokens.get(CANTON)).toEqual([
+      { ...CANTON_COIN, chainId: CANTON },
+    ]);
+  });
+
+  it("resolves Base USDC to Canton Coin as public only", () => {
+    const live = model(true);
+    const selected = selectedRoute(live, BASE, "USDC", CANTON, "CC");
+    expect(live.resolve(selected.origin, selected.destination)).toEqual({
+      status: "available",
+      privacyModes: ["public"],
+    });
+  });
+
+  it("compares the instrument id case-exactly", () => {
+    const live = model(true);
+    const selected = selectedRoute(live, BASE, "USDC", CANTON, "CC");
+    const folded = { ...selected.destination.token, address: CANTON_COIN_MAINNET.toLowerCase() };
+    expect(live.resolve(selected.origin, { ...selected.destination, token: folded }).status).toBe(
+      "unavailable",
+    );
   });
 });

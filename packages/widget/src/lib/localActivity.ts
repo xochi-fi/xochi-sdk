@@ -13,7 +13,8 @@
 import type { SwapActivityItem, ActivityStatus } from "../types/activity.js";
 import { AWAITING_RECIPIENT_SUBSTATUS } from "./recipientReceipt.js";
 import type { IntentStatus } from "../types/intent.js";
-import { isSelectableChainId, canTransitionTo } from "../types/intent.js";
+import { canTransitionTo } from "../types/intent.js";
+import { isOfferedChainId } from "../pages/trade/canton.js";
 import {
   decodeWireStatus,
   GRANULAR_WIRE_STATUS,
@@ -341,10 +342,13 @@ export function reconcileLocalSwap(
   // on a LIVE corridor: the fill receipt lost its authoritative chain and fell
   // back to the legacy `settlementTxChainId` inference, and that link is the
   // primary CTA on a cross-chain fill. A widened type whose validator still
-  // refuses the widened value is the same defect in a new place.
-  const settlementChainId = isSelectableChainId(polled.settlementChainId)
+  // refuses the widened value is the same defect in a new place. Canton counts
+  // only while its corridor is live (`isOfferedChainId`).
+  const settlementChainId = isOfferedChainId(polled.settlementChainId)
     ? polled.settlementChainId
     : null;
+  // Riddler's attested Canton update, kept once seen: the feed links it on ccview.
+  const cantonUpdateId = polled.escrow?.cantonUpdateId ?? null;
 
   return {
     ...record,
@@ -360,6 +364,7 @@ export function reconcileLocalSwap(
       substatus: substatus ?? record.data.substatus,
       settlementTxHash: polled.settlementTxHash ?? record.data.settlementTxHash,
       settlementChainId: settlementChainId ?? record.data.settlementChainId,
+      cantonUpdateId: cantonUpdateId ?? record.data.cantonUpdateId,
       // The client sets it only on a withheld read that is not a refund or a
       // terminal failure; an owner read carries the hash instead.
       settlementConfirmed:
@@ -540,7 +545,11 @@ export function findResumableSwap(
       (s) =>
         isResumableIntentStatus(s.intentStatus) &&
         !dismissed.has(s.id) &&
-        now - s.timestamp <= RESUME_MAX_AGE_MS,
+        now - s.timestamp <= RESUME_MAX_AGE_MS &&
+        // A chain the widget does not offer (Canton while its corridor is off)
+        // is never reopened into the panel.
+        isOfferedChainId(s.data.fromChainId) &&
+        isOfferedChainId(s.data.toChainId),
     ) ?? null
   );
 }

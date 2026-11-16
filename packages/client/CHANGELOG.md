@@ -4,8 +4,50 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+## [0.1.16] - 2026-11-15
+
 ### Added
 
+- Circle EURC (6 decimals, EUR-referenced) token metadata on Ethereum (`0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c`), Base (`0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42`) and Arc (`0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1`, listed after USDC), tagged EUR in `currencyOf`. Metadata only; the live capability routes still decide availability.
+- Quote and execute contracts on the Canton corridor: `recipient_address` accepts a Canton party (`cantonParty`, the signer's `isCantonPartyId`, verbatim); `QuoteResponseSchema` and `ExecuteResponseSchema` declare `escrow` (`EscrowEnvelopeSchema`: `address`, `order_id`, `fill_deadline` decimal string or integer, other envelope keys passed through; `null` = escrow off) and `refundable_at` (unix seconds). A malformed envelope now fails the body.
+- **Canton as a selectable destination** (#116). `SelectableChainId` and `ExtendedChainId` include Canton MainNet (`CantonChainId`, 253340876); it is never a valid source. `CHAIN_SHORT_NAMES` / `EXTENDED_CHAIN_NAMES` name it, `CANTON_COIN` (instrument id, 10 decimals) is its token metadata and `getTokenInfoForChain` resolves it verbatim. `getExplorerTxUrl(253340876, updateId)` links a Canton update id on ccview (`https://ccview.io/updates/<id>`); `getExplorerAddressUrl` has no Canton page and answers empty.
+- `IntentState.escrow`: the latest status poll's `EscrowStatusData`, kept across polls that omit it; an attested `cantonUpdateId` is never dropped once seen.
+
+### Changed
+
+- `capabilityVmType` reads Canton MainNet as `cvm` when the matrix serves it as `cvm` (any other pairing of `cvm` and Canton refuses). `resolveRouteModel` offers Canton only as a destination, only when `chainEnabledForRole(253340876, "destination")` answers true, with Canton Coin as its only token and `public` as its only privacy mode. A caller whose `chainEnabledForRole` answers true for unknown chains must answer false for Canton until it has a party-recipient input.
+- `QuoteRequest.toChainId`, `Context.toChainId` and `BuildQuoteRequestInput.toChainId` are `SelectableChainId`, which now includes Canton.
+
+### Removed
+
+- **BREAKING:** `DestinationChainId` (0.1.15); use `SelectableChainId`. `AddressableVmType`; use `VmType`.
+
+## [0.1.15] - 2026-11-13
+
+Requires `@xochi/signer` `^0.9.0` (was `^0.8.0`): the escrow binding and Canton helpers below are new in signer 0.9.0.
+
+### Added
+
+- **Escrow execute flow** (SPEC.md §5.2; needs `@xochi/signer` with `assertEscrowQuoteMatchesRequest`). `MachineConfig.escrows` (caller-pinned `RiddlerEscrow` per origin chain) and optional `openAuthSigners` make an escrow-bearing quote signable.
+  - Ingest runs the escrow binding (`checkSignableQuote` returns the `VerifiedEscrowOrder`). The release floor is `escrowMinOut`: the signed `toAmount` less the request's slippage.
+  - The pull may name only the pinned escrow. The execute carries both signatures, and the venue relays the open.
+  - `getIntentStatus` adds `escrow` (`EscrowStatusData`, `decodeEscrowStatus`). `escrowProgress` reads it as `awaiting_open`, `awaiting_delivery`, `delivered`, `claimed`, `refundable`, `refunded`, `expired` or `unknown`.
+  - `readEscrowLock` / `parseEscrowLock` read `locks(orderId)`; `escrowRefundableAt` and `escrowRefundCall` cover the permissionless refund; `RIDDLER_ESCROW_ABI` is exported.
+- **Canton destinations in requests**: `DestinationChainId` (`SelectableChainId` plus `CantonChainId`), `isCantonDestinationChainId`, and the re-exported `CANTON_MAINNET_CHAIN_ID`, `CANTON_COIN_MAINNET` and `isCantonPartyId`. `validateSwapParams` accepts chain 253340876 with a party recipient, Canton Coin and public settlement. It refuses a party or instrument on any other chain, and names the gateway facade ids 31337 and 30337. `validateAddressForVm(_, "cvm")` validates a party id.
+- README "Escrow" notes that a Canton recipient party needs a Canton Coin `TransferPreapproval` (`422 escrow_refused` `recipient_not_preapproved`; unreadable: `503 escrow_unavailable` `recipient_preapproval_unverified`).
+
+### Changed
+
+- A quote carrying an `escrow` envelope is no longer refused outright. It is refused when no escrow is pinned for its origin chain, or when it fails the binding. `QuoteRequest.toChainId`, `Context.toChainId` and `BuildQuoteRequestInput.toChainId` are now `DestinationChainId`.
+
+## [0.1.14] - 2026-11-12
+
+### Added
+
+- PayPal USD (PYUSD, Paxos, 6 decimals) token metadata on Ethereum
+  (`0x6c3ea9036406852006290770BEdFcAbA0e23A0e8`) and Arbitrum
+  (`0x46850aD61C2B7d64d08c9C754F45254596696984`). Metadata only; the live
+  capability routes still decide availability.
 - Extract the widget-required MIT shared vocabulary: address maps, fee/tier
   helpers, aggregate-only referral schemas, agent event serialization, pending
   claim schema, and caller-supplied decline guidance.

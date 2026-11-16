@@ -10,13 +10,13 @@ import {
   createSingleAttemptAztecNodeBroadcaster,
   NodeSubmission,
   singleAttemptJsonRpcFetch,
-} from "../src/node-submission.js";
-import { OperationJournal } from "../src/operation-journal.js";
+} from "../src/core/node-submission.js";
+import { openNodeJournals } from "../src/node/data-dir.js";
 import {
   createSubmissionDiagnosticState,
   safeOperationDiagnostic,
   type SubmissionDiagnosticState,
-} from "../src/safe-diagnostic.js";
+} from "../src/core/safe-diagnostic.js";
 
 const diagnosticState = (
   operationKind: SubmissionDiagnosticState["operationKind"] = "spend",
@@ -67,8 +67,8 @@ describe("Aztec node submission journal boundary", () => {
   it("syncs the tx hash before the real node submit and keeps a boundary crash blocked", async () => {
     const dir = mkdtempSync(join(tmpdir(), "xochi-node-submit-"));
     try {
-      const journal = new OperationJournal(dir);
-      const operation = journal.begin("spend", { amount: "1" });
+      const journal = openNodeJournals(dir).operations;
+      const operation = await journal.begin("spend", { amount: "1" });
       const fetch = vi.fn().mockRejectedValue(new Error("connection closed after request"));
       vi.stubGlobal("fetch", fetch);
       const rawNode = { sendTx: async (_tx: Tx) => undefined } as unknown as AztecNode;
@@ -82,7 +82,7 @@ describe("Aztec node submission journal boundary", () => {
       try {
         await submission.run(
           async (txHash) => {
-            journal.update(operation.id, { status: "broadcast", txHash: txHash.toString() });
+            await journal.update(operation.id, { status: "broadcast", txHash: txHash.toString() });
           },
           () => submission.node.sendTx(TX),
           state,
@@ -105,11 +105,11 @@ describe("Aztec node submission journal boundary", () => {
         sendTxReached: true,
       });
       expect(fetch).toHaveBeenCalledOnce();
-      journal.failOrAbort(operation.id);
+      await journal.failOrAbort(operation.id);
 
-      const restarted = new OperationJournal(dir);
-      expect(() => restarted.begin("exit", { amount: "2" })).toThrow(/in_doubt/);
-      expect(restarted.get(operation.id).txHash).toBe(HASH.toString());
+      const restarted = openNodeJournals(dir).operations;
+      await expect(restarted.begin("exit", { amount: "2" })).rejects.toThrow(/in_doubt/);
+      expect((await restarted.get(operation.id)).txHash).toBe(HASH.toString());
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -118,8 +118,8 @@ describe("Aztec node submission journal boundary", () => {
   it("does not cross the may-have-sent boundary when proving fails before node submission", async () => {
     const dir = mkdtempSync(join(tmpdir(), "xochi-node-submit-"));
     try {
-      const journal = new OperationJournal(dir);
-      const operation = journal.begin("spend", { amount: "1" });
+      const journal = openNodeJournals(dir).operations;
+      const operation = await journal.begin("spend", { amount: "1" });
       let journaled = false;
       const rawNode = { sendTx: async (_tx: Tx) => undefined } as unknown as AztecNode;
       const submission = new NodeSubmission(rawNode);
@@ -148,11 +148,11 @@ describe("Aztec node submission journal boundary", () => {
         submissionBoundaryReached: false,
         sendTxReached: false,
       });
-      journal.failOrAbort(operation.id);
+      await journal.failOrAbort(operation.id);
 
       expect(journaled).toBe(false);
-      expect(journal.get(operation.id).status).toBe("aborted");
-      const next = new OperationJournal(dir).begin("exit", { amount: "2" });
+      expect((await journal.get(operation.id)).status).toBe("aborted");
+      const next = await openNodeJournals(dir).operations.begin("exit", { amount: "2" });
       expect(next.kind).toBe("exit");
     } finally {
       rmSync(dir, { recursive: true, force: true });

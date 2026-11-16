@@ -102,6 +102,12 @@ decisions 4-5). The venue lists such corridors in configuration, never per
 request, and announces every quote on them whatever its quote-time announce
 setting says.
 
+> **Not the Canton corridor.** Canton is served by a direct award to one
+> configured Riddler-run solver at quote time, with no auction, no bid and no
+> `SolverBond` (Riddler ADR-0018; `ESCROW-RFC.md` §7.1, `SPEC.md` §5.2.4). Any
+> text here that has a panel solver bid on, or fill, a Canton order is
+> superseded for that corridor.
+
 - **Synchronous.** The venue holds the taker's `/quote` open for the sealed
   window and quotes the outcome. No admissible bid, no quote: the taker is
   told to retry (a new quote opens a new auction).
@@ -400,7 +406,9 @@ announces its ADR-0014 synthetic `toChainId` -- an ordinary positive integer,
 in an int32 -- and its `toToken` as the Canton Coin instrument admin party
 (`DSO::1220…`). Party ids are case-sensitive: a solver compares `toToken`
 byte-for-byte and never case-folds it, as it may an EVM address. Its fill is
-proved with `canton_update` (§6).
+proved with `canton_update` (§6). *(Superseded for the Canton corridor by
+Riddler ADR-0018: its orders are awarded directly to the configured solver,
+never auctioned to the panel; §2.5.)*
 
 **Public settlement only.** `settlementPreference` stays on the wire and stays
 REQUIRED, but on the announcement it has exactly one value, `"public"`: a venue

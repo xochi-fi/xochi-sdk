@@ -60,6 +60,48 @@ describe("public token registry", () => {
     });
     expect(getTokenInfoForChain(address, 1)).toEqual({ symbol: "EURe", decimals: 18 });
   });
+  // A missing or wrong row reads a PYUSD fill as an unknown 18-decimal token,
+  // off by 10^12 in every amount the activity feed renders.
+  it.each([
+    [1, "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8"],
+    [42161, "0x46850aD61C2B7d64d08c9C754F45254596696984"],
+  ] as const)("pins PYUSD metadata on chain %s", (chainId, address) => {
+    expect(findTokenBySymbol(chainId, "PYUSD")).toEqual({
+      address,
+      symbol: "PYUSD",
+      name: "PayPal USD",
+      decimals: 6,
+    });
+    expect(getTokenInfoForChain(address.toLowerCase(), chainId)).toEqual({
+      symbol: "PYUSD",
+      decimals: 6,
+    });
+  });
+
+  // Circle EURC: 6 decimals everywhere. Names follow on-chain name(), which
+  // differs on Ethereum ("Euro Coin") from Base and Arc ("EURC").
+  it.each([
+    [1, "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c", "Euro Coin"],
+    [8453, "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42", "EURC"],
+    [5042, "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1", "EURC"],
+  ] as const)("pins EURC metadata on chain %s", (chainId, address, name) => {
+    expect(findTokenBySymbol(chainId, "EURC")).toEqual({
+      address,
+      symbol: "EURC",
+      name,
+      decimals: 6,
+    });
+    expect(getTokenInfoForChain(address.toLowerCase(), chainId)).toEqual({
+      symbol: "EURC",
+      decimals: 6,
+    });
+  });
+
+  // Consumers read Arc USDC as the first Arc row (gas and balance).
+  it("lists Arc USDC first, then EURC", () => {
+    expect(TOKENS[5042].map((token) => token.symbol)).toEqual(["USDC", "EURC"]);
+    expect(USDC_ADDRESSES[5042]).toBe("0x3600000000000000000000000000000000000000");
+  });
 
   it("derives address and decimal lookups from the registry", () => {
     for (const chainId of SUPPORTED_CHAIN_IDS) {

@@ -4,7 +4,7 @@
 import { Fr } from "@aztec-labs/aztec.js/fields";
 import { keccak256, toHex } from "viem";
 
-import type { AccountSecrets } from "../src/account.js";
+import type { AccountSecrets } from "../src/core/account.js";
 
 /** keccak256(label) reduced into the BN254 scalar field. The label must say TEST ONLY. */
 export function testField(label: string): string {

@@ -16,10 +16,11 @@ import { loadContractArtifact } from "@aztec-labs/stdlib/abi";
 import { computeArtifactHash, getContractClassFromArtifact } from "@aztec-labs/stdlib/contract";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { deriveRecipientAccount } from "../src/account.js";
-import { backupContents, sealBackup } from "../src/backup.js";
+import { deriveRecipientAccount } from "../src/core/account.js";
+import { backupContents, sealBackup } from "../src/core/backup.js";
 import { run } from "../src/cli.js";
-import { OXDAI_MAINNET_REV2, type Corridor } from "../src/corridor.js";
+import { OXDAI_MAINNET_REV2, type Corridor } from "../src/core/corridor.js";
+import { NodeKeystoreCrypto } from "../src/node/sealed.js";
 import { TEST_SECRETS } from "./fixtures.js";
 
 const PASS = "artifact preflight TEST ONLY";
@@ -200,9 +201,10 @@ describe("OxideToken artifact preflight", () => {
 
       for (const artifact of invalid) {
         const account = await deriveRecipientAccount(TEST_SECRETS, artifact.corridor);
-        const sealed = sealBackup(
+        const sealed = await sealBackup(
           backupContents(artifact.corridor, TEST_SECRETS, account, null, null, 1_800_000_000),
           PASS,
+          new NodeKeystoreCrypto(),
         );
         const backupPath = join(root, `${artifact.name.replaceAll(" ", "-")}.sealed`);
         const dataDir = join(root, `${artifact.name.replaceAll(" ", "-")}-restore`);

@@ -4,8 +4,9 @@ import { fileURLToPath } from "node:url";
 
 import { BACKUP_FORMAT_V1_NAME } from "@xochi/signer";
 
-import { openBackup } from "./backup.js";
-import { OXDAI_MAINNET_REV2 } from "./corridor.js";
+import { openBackup } from "./core/backup.js";
+import { OXDAI_MAINNET_REV2 } from "./core/corridor.js";
+import { NodeKeystoreCrypto } from "./node/sealed.js";
 
 interface PackageMetadata {
   version: string;
@@ -34,10 +35,10 @@ export function assertSupportedRuntime(nodeVersion = process.versions.node): voi
   runtimePlatform();
 }
 
-export function diagnostics(backup?: {
-  bytes: Buffer;
+export async function diagnostics(backup?: {
+  bytes: Uint8Array;
   passphrase: string;
-}): Record<string, unknown> {
+}): Promise<Record<string, unknown>> {
   assertSupportedRuntime();
   const result: Record<string, unknown> = {
     ok: true,
@@ -54,7 +55,7 @@ export function diagnostics(backup?: {
     backupWriteFormat: BACKUP_FORMAT_V1_NAME,
   };
   if (backup) {
-    const contents = openBackup(backup.bytes, backup.passphrase);
+    const contents = await openBackup(backup.bytes, backup.passphrase, new NodeKeystoreCrypto());
     result.backupCompatible = SUPPORTED_BACKUP_FORMATS.includes(contents.format);
     result.backupCorridorCompatible =
       contents.corridor.corridorRevision === OXDAI_MAINNET_REV2.corridorRevision &&

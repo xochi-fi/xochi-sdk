@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { openEncryptedEphemeralWalletStore } from "../src/encrypted-wallet-store.js";
+import { openEncryptedEphemeralWalletStore } from "../src/node/encrypted-wallet-store.js";
 
 function filesUnder(path: string): string[] {
   return readdirSync(path).flatMap((entry) => {

@@ -8,6 +8,11 @@
  * then holds the origin pull to that intent (chain, token, amount, expiry, the
  * Permit2 contract) and, where the caller pinned one, its recipient.
  *
+ * An escrow-bearing quote (one carrying `escrow`, SPEC.md §5.2) takes the
+ * escrow path instead: `assertEscrowQuoteMatchesRequest` runs both checks above
+ * and the SPEC.md §2.3 binding against the caller's escrow pin. Without a pin
+ * it refuses.
+ *
  * Both are additive to the machine's own gates (`validateSolverPin`,
  * `validatePayoutPin`, the recipient echo, the claim-info factory), which keep
  * running where they always ran.
@@ -15,10 +20,13 @@
 
 import {
   XochiIntentMismatchError,
+  assertEscrowQuoteMatchesRequest,
   assertIntentMatchesRequest,
   assertPullMatchesIntent,
+  type PinnedEscrows,
   type PinnedPullRecipients,
   type QuoteRequestParams,
+  type VerifiedEscrowOrder,
 } from "@xochi/signer";
 import type { QuoteRequest, QuoteResponse } from "./wire.js";
 
@@ -54,41 +62,85 @@ export function quoteRequestParams(
   };
 }
 
+/** The caller's escrow pins (`MachineConfig.escrows` / `openAuthSigners`). */
+export interface EscrowPins {
+  escrows?: PinnedEscrows;
+  openAuthSigners?: readonly string[];
+}
+
 export type SignableQuoteCheck =
-  | { ok: true }
-  | { ok: false; kind: "intent_mismatch" | "pull_mismatch"; reason: string };
+  | { ok: true; escrow: VerifiedEscrowOrder | null }
+  | { ok: false; kind: "intent_mismatch" | "pull_mismatch" | "escrow_mismatch"; reason: string };
 
 /**
- * Run both signer checks over a quote that carries an intent to sign.
+ * The least destination amount an escrow opening may commit to: the signed
+ * `toAmount` the panel rendered, less the request's own slippage tolerance,
+ * rounded as Riddler rounds it (`amount - floor(amount * bps / 10000)`). Never
+ * the served `min_to_amount`: a floor the venue picks binds nothing.
+ */
+export function escrowMinOut(toAmount: unknown, slippageBps: number): bigint {
+  if (typeof toAmount !== "string" && typeof toAmount !== "number") {
+    throw new XochiIntentMismatchError(
+      `intent toAmount ${JSON.stringify(toAmount)} is not an amount`,
+    );
+  }
+  if (!Number.isSafeInteger(slippageBps) || slippageBps < 0 || slippageBps > 10_000) {
+    throw new XochiIntentMismatchError(`slippage ${slippageBps} bps is not a tolerance`);
+  }
+  const amount = BigInt(toAmount);
+  return amount - (amount * BigInt(slippageBps)) / 10_000n;
+}
+
+/**
+ * Run the signer checks over a quote that carries an intent to sign.
  *
  * `pullRecipients` is the CALLER's pin (per chain, per method); it is never
  * derived from `/api/capabilities`. Absent, the pull's recipient is left to the
  * machine's own solver allowlist, and the signer still binds chain, token,
- * amount and expiry.
+ * amount and expiry. `escrowPins` likewise: an escrow quote with no pin for its
+ * origin chain refuses.
  */
 export function checkSignableQuote(
   request: QuoteRequest,
   quote: QuoteResponse,
   pullRecipients: PinnedPullRecipients | undefined,
+  escrowPins: EscrowPins = {},
 ): SignableQuoteCheck {
   // The signer reads the wire spelling: `eip712`, `pull_authorization`, and the
-  // raw `escrow` envelope, which it refuses (this client runs no escrow binding).
+  // raw `escrow` envelope.
   const served = {
     eip712: quote.eip712Data,
     pull_authorization: quote.pullAuthorization,
     escrow: quote.escrow,
   };
+  if (served.escrow !== undefined && served.escrow !== null) {
+    try {
+      const escrow = assertEscrowQuoteMatchesRequest(quoteRequestParams(request, quote), served, {
+        expectedEscrows: escrowPins.escrows as PinnedEscrows,
+        minOut: escrowMinOut(quote.eip712Data?.message?.toAmount, request.slippageBps),
+        ...(escrowPins.openAuthSigners
+          ? { expectedOpenAuthSigners: escrowPins.openAuthSigners }
+          : {}),
+      });
+      return { ok: true, escrow };
+    } catch (err) {
+      return { ok: false, kind: "escrow_mismatch", reason: refusalReason(err) };
+    }
+  }
   try {
     assertIntentMatchesRequest(quoteRequestParams(request, quote), served);
   } catch (err) {
     return { ok: false, kind: "intent_mismatch", reason: refusalReason(err) };
   }
   try {
-    assertPullMatchesIntent(served, { expectedPullRecipients: pullRecipients });
+    assertPullMatchesIntent(served, {
+      expectedPullRecipients: pullRecipients,
+      ...(escrowPins.escrows ? { expectedEscrows: escrowPins.escrows } : {}),
+    });
   } catch (err) {
     return { ok: false, kind: "pull_mismatch", reason: refusalReason(err) };
   }
-  return { ok: true };
+  return { ok: true, escrow: null };
 }
 
 /**

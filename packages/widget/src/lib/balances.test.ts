@@ -192,6 +192,7 @@ describe("public wallet asset discovery", () => {
     ).toBe(false);
     expect(tokens.filter((token) => token.chainId === 5042)).toEqual([
       expect.objectContaining({ symbol: "USDC", decimals: 6 }),
+      expect.objectContaining({ symbol: "EURC", decimals: 6 }),
     ]);
     expect(tokens.some((token) => token.address === "native")).toBe(false);
   });

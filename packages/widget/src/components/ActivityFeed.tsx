@@ -43,7 +43,7 @@ import { Chevron } from "./Chevron.js";
 import { AuthorizedAgents } from "./AuthorizedAgents.js";
 import { CHAIN_ICONS, AZTEC_ICON } from "../assets/chains/index.js";
 import { normalizeZkMoneyTag, zkMoneyTagValid } from "../pages/trade/zkMoney.js";
-import { isTronChainId, verifyStoredDeposit } from "@xochi/client";
+import { isCantonDestinationChainId, isTronChainId, verifyStoredDeposit } from "@xochi/client";
 import { DEPOSIT_ATTESTATION_PIN } from "../config.js";
 
 /** USD helper: null when the swapped token is outside the priced set (avoids a
@@ -251,6 +251,9 @@ function SwapRow({
   // Human-readable state line so a fund-moving order never reads as a blank
   // spinner: "settling" (with a cross-chain hint + slow reassurance) while live,
   // and a distinct, reassuring "refunded" terminal. elapsed only matters live.
+  // A Canton delivery is Riddler's attested update and nothing else: a receipt
+  // hash or a `filled` substatus is not one there.
+  const cantonRow = isCantonDestinationChainId(data.toChainId);
   const stateCopy = describeSwapState(intentStatus, {
     isCrossChain: data.isCrossChain,
     destChainName,
@@ -261,8 +264,10 @@ function SwapRow({
     // The status-only view withholds the receipt hash and substatus; its
     // `settlement_confirmed` stands in, so a delivered private swap never reads
     // as stuck.
-    hasSettlementReceipt: !!data.settlementTxHash || data.settlementConfirmed === true,
-    substatus: data.substatus,
+    hasSettlementReceipt: cantonRow
+      ? !!data.cantonUpdateId
+      : !!data.settlementTxHash || data.settlementConfirmed === true,
+    substatus: cantonRow && data.substatus === "filled" ? null : data.substatus,
   });
 
   // Value: USD in/out and an estimated fee. Fee is reconstructed from the stored

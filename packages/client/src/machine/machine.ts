@@ -64,14 +64,18 @@ import {
   type SignPreflight,
 } from "./decisions.js";
 import { claimInfoError } from "./claimInfo.js";
-import { DEPOSIT_MIN_WINDOW_SECONDS, type PinnedPullRecipients } from "@xochi/signer";
+import {
+  DEPOSIT_MIN_WINDOW_SECONDS,
+  type PinnedEscrows,
+  type PinnedPullRecipients,
+} from "@xochi/signer";
 import {
   checkDepositQuote,
   recipientIsDestinationToken,
   type DepositAttestationResult,
   type StoredDepositAttestation,
 } from "./deposit.js";
-import { checkSignableQuote } from "./quoteChecks.js";
+import { checkSignableQuote, type EscrowPins } from "./quoteChecks.js";
 import { recipientEchoError } from "./recipientEcho.js";
 import { validatePayoutPin, validateSolverPin, type SolverPinConfig } from "./solverPin.js";
 import { INITIAL_INTENT_STATE, type IntentState, type StructuredError } from "./state.js";
@@ -190,6 +194,19 @@ export interface MachineConfig {
    * deposit route. Caller-supplied for the same reason as `pullRecipients`.
    */
   depositAttestationSigner: string | null;
+  /**
+   * The caller's `RiddlerEscrow` per origin chain (`@xochi/signer`
+   * `PinnedEscrows`), from a deployment manifest the integrator reviewed. An
+   * escrow-bearing quote is signable only when it binds to this pin (SPEC.md
+   * §2.3, `assertEscrowQuoteMatchesRequest`); absent, every escrow quote is
+   * refused. Never built from `/api/capabilities` or a quote.
+   */
+  escrows?: PinnedEscrows;
+  /**
+   * Optional pin of the venue's OpenAuth signers; when set, an escrow quote's
+   * `open_auth` must recover to one of them.
+   */
+  openAuthSigners?: readonly string[];
 }
 
 // ============================================================
@@ -991,7 +1008,10 @@ function onQuote(
   if (!result.ok) return quoteThrew(m, fx, flight, result.error);
 
   const quote = result.quote;
-  const refusal = quoteRefusal(quote, flight, m.config.pullRecipients);
+  const refusal = quoteRefusal(quote, flight, m.config.pullRecipients, {
+    escrows: m.config.escrows,
+    openAuthSigners: m.config.openAuthSigners,
+  });
   if (refusal) {
     log(fx, refusal.level, refusal.message, ...refusal.data);
     if (quote.errorCategory === "tag_unresolved") {
@@ -1046,6 +1066,7 @@ function quoteRefusal(
   quote: QuoteResponse,
   flight: QuoteFlight,
   pullRecipients: PinnedPullRecipients | undefined,
+  escrowPins: EscrowPins,
 ): QuoteRefusal | null {
   const ctx = flight.ctx;
   const address = ctx.wallet.address;
@@ -1182,7 +1203,7 @@ function quoteRefusal(
   if (!quote.depositAddress && quote.eip712Data) {
     const request = flight.request;
     const check = request
-      ? checkSignableQuote(request, quote, pullRecipients)
+      ? checkSignableQuote(request, quote, pullRecipients, escrowPins)
       : ({ ok: false, kind: "intent_mismatch", reason: "no request on record" } as const);
     if (!check.ok) {
       return {
@@ -1526,7 +1547,7 @@ function completePull(m: Model, fx: Effect[], flow: SignFlow): Model {
     m.intent.quotedFromAmount || (eip712.message?.fromAmount as string) || "0",
   );
   if (typeof expected !== "bigint") return signFlowFailed({ ...m, sign: flow }, fx, expected);
-  const pin = validateSolverPin(pull, m.config.solverPin, expected);
+  const pin = validateSolverPin(pull, pullPinFor(m), expected);
   if (!pin.ok) {
     log(fx, "error", `${LOG} Refusing to sign origin pull:`, pin);
     return transition({ ...m, sign: flow }, fx, "quoted", {
@@ -1539,6 +1560,32 @@ function completePull(m: Model, fx: Effect[], flow: SignFlow): Model {
     call: { op: "ensureApproval", flow: flow.id, amount: expected.toString() },
   });
   return { ...m, sign: { ...flow, stage: "approval" } };
+}
+
+/**
+ * Who an origin pull may name. A plain quote: the build's solver pin. An
+ * escrow quote: only the caller-pinned escrow its terms name, for both
+ * methods. Ingest already held `order_terms.escrow` to that pin, the pull to
+ * the terms and the `orderId` to the opening (`checkSignableQuote`), and a held
+ * quote cannot change while signing; a terms escrow absent from the pin leaves
+ * the allowlist empty and the pull refused.
+ */
+function pullPinFor(m: Model): SolverPinConfig {
+  const escrow = m.intent.quote?.escrow as
+    | { order_terms?: { escrow?: unknown } }
+    | null
+    | undefined;
+  if (escrow === undefined || escrow === null) return m.config.solverPin;
+  const termsEscrow = escrow.order_terms?.escrow;
+  const pinned = Object.values(m.config.escrows ?? {})
+    .filter(
+      (value): value is string =>
+        typeof value === "string" &&
+        typeof termsEscrow === "string" &&
+        value.trim().toLowerCase() === termsEscrow.toLowerCase(),
+    )
+    .map((value) => value.trim().toLowerCase());
+  return { erc3009Allowlist: pinned, permit2Allowlist: pinned, requirePin: true };
 }
 
 function onApproval(
@@ -2137,6 +2184,27 @@ function onStatus(
     const legsWithheld = s.legsWithheld === true;
     if (next.intent.intentId === id && next.intent.legsWithheld !== legsWithheld) {
       next = patch(next, { legsWithheld });
+    }
+    // An escrow order's own fields (`escrowProgress` reads them). A poll that
+    // omits them leaves the last ones, and an attested `cantonUpdateId` is kept
+    // once seen: a later read without it (a stored-row answer) is not a
+    // withdrawal of the attestation.
+    if (s.escrow !== undefined && next.intent.intentId === id) {
+      const prev = next.intent.escrow;
+      const escrow = {
+        ...s.escrow,
+        cantonUpdateId: s.escrow.cantonUpdateId ?? prev?.cantonUpdateId ?? null,
+      };
+      if (
+        prev === null ||
+        prev.address !== escrow.address ||
+        prev.orderId !== escrow.orderId ||
+        prev.fillDeadline !== escrow.fillDeadline ||
+        prev.wireStatus !== escrow.wireStatus ||
+        prev.cantonUpdateId !== escrow.cantonUpdateId
+      ) {
+        next = patch(next, { escrow });
+      }
     }
     // The server owns the active-polling decision; a phase change refills the
     // give-up budget, so the ceiling bounds a swap that is not moving. A

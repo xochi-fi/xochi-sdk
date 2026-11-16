@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 import {
+  CANTON_INSTRUMENTS,
   type AdvertisedRouteQuery,
   type CapabilityRoute,
   type RoutePrivacyMode as CapabilityRoutePrivacyMode,
   type SolverCapabilities,
+  type VmType,
 } from "@xochi/signer";
 import {
+  isCantonDestinationChainId,
   isSelectableChainId,
   isTronChainId,
   type ExtendedChainId,
@@ -20,10 +23,16 @@ export interface RouteToken extends TokenInfo {
   logoUri?: string;
 }
 export interface RouteModelOptions {
+  /**
+   * The caller's launch gate per chain and role, applied after the matrix
+   * offers a chain. Canton MainNet (`CANTON_MAINNET_CHAIN_ID`) is asked about
+   * as a destination only and is offered only when this answers true for it:
+   * a UI without a party-recipient input must answer false.
+   */
   chainEnabledForRole(chainId: number, role: "origin" | "destination"): boolean;
   presentationTokens: Readonly<Partial<Record<SelectableChainId, readonly RouteToken[]>>>;
 }
-import { capabilityVmType, type AddressableVmType } from "./capabilities.js";
+import { capabilityVmType } from "./capabilities.js";
 import { stealthDestinationChains } from "./capabilities.js";
 
 export type CapabilityState = "live" | "stale" | "fallback" | "failed";
@@ -116,6 +125,8 @@ function uniqueChainIds(
   return capabilities.chains.flatMap((chain) =>
     counts.get(chain.chainId) === 1 &&
     isSelectableChainId(chain.chainId) &&
+    // Canton is destination-only (SPEC.md §3.3), whatever the matrix says.
+    !(role === "origin" && isCantonDestinationChainId(chain.chainId)) &&
     capabilityVmType(capabilities, chain.chainId) !== null &&
     options.chainEnabledForRole(chain.chainId, role)
       ? [chain.chainId]
@@ -127,7 +138,7 @@ function presentationToken(
   chainId: SelectableChainId,
   symbol: string,
   address: string,
-  vm: AddressableVmType,
+  vm: VmType,
   TOKENS: RouteModelOptions["presentationTokens"],
 ): RouteToken | undefined {
   const sameAddress = (candidate: RouteToken): boolean =>
@@ -174,6 +185,8 @@ function validatedTokensByChain(
         (role === "destination" && capability.symbol === "USDC_E") ||
         address === undefined ||
         !validateAddressForVm(address, vm).valid ||
+        // A Canton leg names an instrument this SDK delivers there, verbatim.
+        (vm === "cvm" && !(CANTON_INSTRUMENTS[chainId] ?? []).includes(address)) ||
         capability.decimals === null ||
         !Number.isInteger(capability.decimals) ||
         capability.decimals < 0 ||
@@ -203,11 +216,16 @@ function validatedTokensByChain(
   return result;
 }
 
+/**
+ * The route's privacy modes this client trusts: Stealth only to a trusted
+ * Stealth chain, and a Canton destination public only (SPEC.md §3.3), whatever
+ * the route advertises.
+ */
 function trustedPrivacyModes(
   route: CapabilityRoute,
   stealthChains: ReadonlySet<number>,
 ): readonly RoutePrivacyMode[] {
-  if (!("chainId" in route.destination)) {
+  if (!("chainId" in route.destination) || isCantonDestinationChainId(route.destination.chainId)) {
     return route.privacyModes.includes("public") ? ["public"] : [];
   }
   const destinationChainId = route.destination.chainId;
@@ -225,7 +243,7 @@ function sameToken(left: RouteToken, right: RouteToken): boolean {
     left.chainId === right.chainId &&
     left.symbol === right.symbol &&
     left.decimals === right.decimals &&
-    (isTronChainId(left.chainId)
+    (isTronChainId(left.chainId) || isCantonDestinationChainId(left.chainId)
       ? left.address === right.address
       : left.address.toLowerCase() === right.address.toLowerCase())
   );

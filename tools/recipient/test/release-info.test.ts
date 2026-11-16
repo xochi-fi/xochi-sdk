@@ -22,9 +22,9 @@ if (
 const expectedVersion = packageMetadata.version;
 
 describe("release diagnostics", () => {
-  it("pins the private test version and privacy-safe public facts", () => {
+  it("pins the private test version and privacy-safe public facts", async () => {
     expect(packageVersion()).toBe(expectedVersion);
-    expect(diagnostics()).toMatchObject({
+    expect(await diagnostics()).toMatchObject({
       ok: true,
       version: expectedVersion,
       nodeMajor: 22,

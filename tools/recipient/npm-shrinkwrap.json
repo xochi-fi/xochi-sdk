@@ -21,7 +21,8 @@
         "@aztec-labs/stdlib": "6.0.0",
         "@aztec-labs/wallets": "6.0.0",
         "@hpke/core": "1.9.0",
-        "@xochi/signer": "0.7.0",
+        "@noble/hashes": "1.8.0",
+        "@xochi/signer": "0.8.0",
         "viem": "2.57.1",
         "zod4": "npm:zod@4.4.3"
       },
@@ -1033,7 +1034,6 @@
       "resolved": "https://registry.npmjs.org/@crate-crypto/node-eth-kzg-linux-arm64-gnu/-/node-eth-kzg-linux-arm64-gnu-0.10.0.tgz",
       "integrity": "sha512-euuqBTDLOpI9wNx0jO7AD24BdiCs9sz8cBybsdGJvyZ8QLUIezTnA/aXcrZBzsA5ZOrHYjaWS2NJpgDdAjLLuQ==",
       "cpu": ["arm64"],
-      "libc": ["glibc"],
       "license": "MIT",
       "optional": true,
       "os": ["linux"],
@@ -1046,7 +1046,6 @@
       "resolved": "https://registry.npmjs.org/@crate-crypto/node-eth-kzg-linux-x64-gnu/-/node-eth-kzg-linux-x64-gnu-0.10.0.tgz",
       "integrity": "sha512-b4klE/jp98PBZ7PWuFE1OscWBILSS8jP+JMbIJ+qE7y42s/6ImWH5bWmVdFOfh6u0o95cb9hCS0xIECM80SqBg==",
       "cpu": ["x64"],
-      "libc": ["glibc"],
       "license": "MIT",
       "optional": true,
       "os": ["linux"],
@@ -2161,7 +2160,6 @@
       "integrity": "sha512-FJiLGAblPBMlBEdbOqw6kW6QcXDWAf/oJu7gYs9ZJZwmg+K+/zjFLxPTIY9izJUzxzc24FHvmseyA0IvJSl17w==",
       "cpu": ["arm64"],
       "dev": true,
-      "libc": ["glibc"],
       "license": "MIT",
       "optional": true,
       "os": ["linux"],
@@ -2175,7 +2173,6 @@
       "integrity": "sha512-hrJpblMsrQ58U9veWpbXzkhV5zStunds6HWLprqq1qauvgBr1E6P+24kLj6lSLI9vjRn/RYpjprhkHQPKGWpNg==",
       "cpu": ["arm64"],
       "dev": true,
-      "libc": ["musl"],
       "license": "MIT",
       "optional": true,
       "os": ["linux"],
@@ -2189,7 +2186,6 @@
       "integrity": "sha512-qJd/dC6j6CwLG9/s/RP2nb1RZ0GIgj7Ioj7x/SYa3RzjVrlzrmH0fhIOpfvqQDeIsdP0loi+kHaMhJzY1PBIaA==",
       "cpu": ["ppc64"],
       "dev": true,
-      "libc": ["glibc"],
       "license": "MIT",
       "optional": true,
       "os": ["linux"],
@@ -2203,7 +2199,6 @@
       "integrity": "sha512-Vx7Xg5uUJuNcujJjI70OICaH0EYj80BtOLZTSN7uOYg8QOLlyKnaG0IW7Fn/J0IpJsaKzmDKMhOQv1JBM9m9vg==",
       "cpu": ["s390x"],
       "dev": true,
-      "libc": ["glibc"],
       "license": "MIT",
       "optional": true,
       "os": ["linux"],
@@ -2217,7 +2212,6 @@
       "integrity": "sha512-TNKhgE3uJTsTzatUSSYt0Kgo+Oa2uSlSjz4r1aEIea7HX6ULBym4fAlYUhG1i6pjNf2njfCUAfKwr6C3E9Xg1w==",
       "cpu": ["x64"],
       "dev": true,
-      "libc": ["glibc"],
       "license": "MIT",
       "optional": true,
       "os": ["linux"],
@@ -2231,7 +2225,6 @@
       "integrity": "sha512-7chXdpjXZ8qG0+mIxECN3cT9kvhZ3/oZhMX6Pp876P7CDrIy8nJswva6Mq357JR7eYXfuskwZxMeV1SzoZdHrA==",
       "cpu": ["x64"],
       "dev": true,
-      "libc": ["musl"],
       "license": "MIT",
       "optional": true,
       "os": ["linux"],
@@ -2633,17 +2626,33 @@
       }
     },
     "node_modules/@xochi/signer": {
-      "version": "0.7.0",
-      "resolved": "https://registry.npmjs.org/@xochi/signer/-/signer-0.7.0.tgz",
-      "integrity": "sha512-7zrN8XOZhlpwRIkA76vgWR3h0LDZk3OJGl4gvcdDw2Ynkyb+ePt8I58KQjjp9msnrFc+yNvLXwNdLeg8sBVIUg==",
+      "version": "0.8.0",
+      "resolved": "https://registry.npmjs.org/@xochi/signer/-/signer-0.8.0.tgz",
+      "integrity": "sha512-ZdfSEnVgmyWV3suB8co4TMF72/MB+g2kcBYLq3CklURGh4pb3MPhCLSi0Bz2hlQYH137QApYyFd93HhkUwOGtQ==",
       "license": "MIT",
       "dependencies": {
-        "@noble/curves": "^1.2.0",
+        "@noble/curves": "^1.9.0",
+        "@noble/hashes": "1.8.0",
         "@zkpassport/poseidon2": "0.6.2",
         "ethers": "^6.17.0"
       },
       "engines": {
         "node": ">=22"
+      }
+    },
+    "node_modules/@xochi/signer/node_modules/@noble/curves": {
+      "version": "1.9.7",
+      "resolved": "https://registry.npmjs.org/@noble/curves/-/curves-1.9.7.tgz",
+      "integrity": "sha512-gbKGcRUYIjA3/zCCNaWDciTMFI0dCkvou3TL8Zmy5Nc7sJ47a0jtOeZoTaMxkuqRo9cRhjOdZJXegxYE5FN/xw==",
+      "license": "MIT",
+      "dependencies": {
+        "@noble/hashes": "1.8.0"
+      },
+      "engines": {
+        "node": "^14.21.3 || >=16"
+      },
+      "funding": {
+        "url": "https://paulmillr.com/funding/"
       }
     },
     "node_modules/@zkpassport/poseidon2": {
@@ -4643,7 +4652,6 @@
       "integrity": "sha512-j2v/itmy4HlNxlc6voKXYgBqNi0Ng2LShg4z7GufpEgs05P+2suBVyi9I6YHq5uoVFx9ETin3eCEhLVyXGQnKg==",
       "cpu": ["arm64"],
       "dev": true,
-      "libc": ["glibc"],
       "license": "MPL-2.0",
       "optional": true,
       "os": ["linux"],
@@ -4661,7 +4669,6 @@
       "integrity": "sha512-yiO5ROMuYQgXbC60yjZU5CYSFZGKXL0HFATXt9mHJn1+zW55oCtMI9NfcVhYLMFDL7gV7oBPon/EmMMGg2OvtQ==",
       "cpu": ["arm64"],
       "dev": true,
-      "libc": ["musl"],
       "license": "MPL-2.0",
       "optional": true,
       "os": ["linux"],
@@ -4679,7 +4686,6 @@
       "integrity": "sha512-ar+Ju7LmcN0Jo4FpL4hpFybwNG9/3A/Br5KW2n2jyODg3MEZXaDYADdemoNS+BDNfMgKvylJLj4S5tyRActuAg==",
       "cpu": ["x64"],
       "dev": true,
-      "libc": ["glibc"],
       "license": "MPL-2.0",
       "optional": true,
       "os": ["linux"],
@@ -4697,7 +4703,6 @@
       "integrity": "sha512-RYiYbkokw0trfKqqzfF55lginwEPrD3OJDfTuJzFs1MK6iFnDenaz1fqLLtX4ITG3OktJQXOeTaw1awrBAlZPw==",
       "cpu": ["x64"],
       "dev": true,
-      "libc": ["musl"],
       "license": "MPL-2.0",
       "optional": true,
       "os": ["linux"],

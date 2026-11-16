@@ -5,13 +5,15 @@ import { describe, expect, it } from "vitest";
 import { keccak256 } from "viem";
 import { BACKUP_FORMAT_V1_NAME, oxideTokenImmutablesHash } from "@xochi/signer";
 
-import { deriveRecipientAccount } from "../src/account.js";
-import { backupContents, openBackup, sealBackup, writeBackupCopies } from "../src/backup.js";
-import { OXDAI_MAINNET_REV2 } from "../src/corridor.js";
-import { open, seal, SealError } from "../src/sealed.js";
+import { deriveRecipientAccount } from "../src/core/account.js";
+import { backupContents, openBackup, sealBackup } from "../src/core/backup.js";
+import { OXDAI_MAINNET_REV2 } from "../src/core/corridor.js";
+import { writeBackupCopies } from "../src/node/files.js";
+import { NodeKeystoreCrypto, open, seal, SealError } from "../src/node/sealed.js";
 import { TEST_SECRETS } from "./fixtures.js";
 
 const PASS = "correct horse TEST ONLY";
+const crypto = new NodeKeystoreCrypto();
 
 describe("sealed bytes", () => {
   it("round-trips and randomizes every seal", () => {
@@ -57,11 +59,13 @@ describe("recipient-encrypted backup (format v1)", () => {
     expect(contents.registeredSenders).toEqual(OXDAI_MAINNET_REV2.registeredSenders);
     expect(contents.scanCheckpoint).toEqual({ blockNumber: 1234 });
 
-    const sealed = sealBackup(contents, PASS);
+    const sealed = await sealBackup(contents, PASS, crypto);
     // The commitment the recipient acknowledges is keccak256 of the sealed bytes, not the plaintext.
     expect(sealed.commitment).toBe(keccak256(sealed.bytes));
-    expect(sealed.bytes.includes(Buffer.from(TEST_SECRETS.secret.slice(2)))).toBe(false);
-    expect(openBackup(sealed.bytes, PASS)).toEqual(contents);
+    expect(Buffer.from(sealed.bytes).includes(Buffer.from(TEST_SECRETS.secret.slice(2)))).toBe(
+      false,
+    );
+    expect(await openBackup(sealed.bytes, PASS, crypto)).toEqual(contents);
   });
 
   it("refuses a backup whose recorded immutables hash does not match its immutables", async () => {
@@ -82,7 +86,9 @@ describe("recipient-encrypted backup (format v1)", () => {
       },
     };
     const bytes = seal("backup", Buffer.from(JSON.stringify(forged)), PASS);
-    expect(() => openBackup(bytes, PASS)).toThrow(/do not hash to the recorded immutablesHash/);
+    await expect(openBackup(bytes, PASS, crypto)).rejects.toThrow(
+      /do not hash to the recorded immutablesHash/,
+    );
   });
 
   it("opens pre-upgrade v1 backups with empty journals", async () => {
@@ -97,7 +103,11 @@ describe("recipient-encrypted backup (format v1)", () => {
     );
     const { journals: _newField, ...legacy } = current;
     const bytes = seal("backup", Buffer.from(JSON.stringify(legacy)), PASS);
-    expect(openBackup(bytes, PASS).journals).toEqual({ operations: [], exits: [], receipts: [] });
+    expect((await openBackup(bytes, PASS, crypto)).journals).toEqual({
+      operations: [],
+      exits: [],
+      receipts: [],
+    });
   });
 });
 

@@ -56,6 +56,9 @@ configureWidget({
     requirePin: true,
   },
   depositAttestationSigner: "",
+  // Optional: the reviewed RiddlerEscrow per origin chain, used only for Canton
+  // escrow quotes while CANTON_DESTINATION_LIVE is on.
+  // escrows: { 8453: "0x4438a8b3EE5AAf58343B18629040a4BCB8b0feCb" },
 });
 applyInitialWidgetTheme(window.location.search);
 createRoot(document.getElementById("root")!).render(

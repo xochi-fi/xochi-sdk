@@ -245,6 +245,7 @@ const flowIntent = (
   attestedDeposit: null,
   pollExhausted: false,
   legsWithheld: null,
+  escrow: null,
   receipt: {
     phase: status === "quoted" ? "confirm" : "submitting",
     quote: { kind: "ready", executable: true, refreshing: false, expiresInSec: 30 },

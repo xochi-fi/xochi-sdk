@@ -3,7 +3,7 @@
  */
 
 import type { ChainId, IntentStatus, SelectableChainId, SettlementType } from "../shared/index.js";
-import type { QuoteResponse } from "./wire.js";
+import type { EscrowStatusData, QuoteResponse } from "./wire.js";
 import type { StoredDepositAttestation } from "./deposit.js";
 
 /**
@@ -160,6 +160,13 @@ export interface IntentState {
    * new quote, a successful Confirm or a reset clears it.
    */
   refusal: SignRefusal | null;
+  /**
+   * The latest status poll's escrow fields (`IntentStatusData.escrow`), for an
+   * escrow order: what `escrowProgress` reads, `cantonUpdateId` included. Kept
+   * from the last poll that carried them (a later poll without them does not
+   * blank them). Null until one does, and on every non-escrow route.
+   */
+  escrow: EscrowStatusData | null;
 }
 
 export const INITIAL_INTENT_STATE: IntentState = {
@@ -186,4 +193,5 @@ export const INITIAL_INTENT_STATE: IntentState = {
   mayHaveMoved: false,
   notSent: false,
   refusal: null,
+  escrow: null,
 };

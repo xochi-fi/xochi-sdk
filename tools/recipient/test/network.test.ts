@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 import { OXIDE_TOKEN_CLASS_IDS, oxideTokenImmutablesHash } from "@xochi/signer";
 import { readFileSync } from "node:fs";
 
-import { CorridorSchema, OXDAI_MAINNET_REV2 } from "../src/corridor.js";
-import { assertPinnedNetwork, NetworkPinRefused, type ObservedNetwork } from "../src/network.js";
+import { CorridorSchema, OXDAI_MAINNET_REV2 } from "../src/core/corridor.js";
+import {
+  assertPinnedNetwork,
+  NetworkPinRefused,
+  type ObservedNetwork,
+} from "../src/core/network.js";
 
 // What an Aztec v6 mainnet node reports (Riddler's @revision_fixed[2]; xochi#778).
 const MAINNET: ObservedNetwork = {

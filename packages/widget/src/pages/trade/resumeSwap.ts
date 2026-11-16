@@ -15,7 +15,11 @@
  * pickDefaultToken). See xochi#339.
  */
 
-import { getTokenInfoForChain, isSelectableChainId, type SelectableChainId } from "@xochi/client";
+import {
+  getTokenInfoForChain,
+  isCantonDestinationChainId,
+  type SelectableChainId,
+} from "@xochi/client";
 import { formatTokenAmount } from "../../utils/format.js";
 import { findTokenBySymbol } from "./config.js";
 import type { Token } from "../../types/intent.js";
@@ -27,6 +31,7 @@ import {
 } from "../../types/intent.js";
 import type { SwapActivityItem, DepositActivity } from "../../types/activity.js";
 import { normalizeZkMoneyTag, zkMoneyTagValid } from "./zkMoney.js";
+import { isOfferedChainId } from "./canton.js";
 
 export interface ResumePlan {
   /** The dispatched intent to adopt, so useIntent re-arms its status poll. */
@@ -83,13 +88,17 @@ export interface ResumePlan {
  * rebuild: the destination corridor is live, and the origin (deposit) corridor
  * is the one that most needs this, since it cannot be completed without leaving
  * the browser.
+ *
+ * A Canton destination rebuilds only while its corridor is live
+ * (`isOfferedChainId`), and Canton is never an origin.
  */
 export function planResume(record: SwapActivityItem | null | undefined): ResumePlan | null {
   if (!record?.id) return null;
 
   const { fromChainId, toChainId, fromToken, toToken, fromAmount } = record.data;
-  // Unknown chains or deployments cannot be restored faithfully.
-  if (!isSelectableChainId(fromChainId) || !isSelectableChainId(toChainId)) return null;
+  // Unknown, unoffered or impossible chains cannot be restored faithfully.
+  if (!isOfferedChainId(fromChainId) || !isOfferedChainId(toChainId)) return null;
+  if (isCantonDestinationChainId(fromChainId)) return null;
 
   const fromInfo = getTokenInfoForChain(fromToken, fromChainId);
   const toInfo = getTokenInfoForChain(toToken, toChainId);

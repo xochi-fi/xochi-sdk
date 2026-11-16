@@ -135,7 +135,7 @@ A changed vector is a wire change. Never regenerate one to make a check pass.
 Pin an exact version; never read a sibling checkout:
 
 ```bash
-npm install --save-dev --save-exact @xochi/spec@0.13.0
+npm install --save-dev --save-exact @xochi/spec@0.14.0
 ```
 
 ```ts
@@ -145,7 +145,7 @@ import conformance from "@xochi/spec/conformance/conformance.json" with { type: 
 Non-JS CI:
 
 ```bash
-npm pack @xochi/spec@0.13.0 && tar -xzf xochi-spec-0.13.0.tgz   # -> package/conformance/..., package/fee/...
+npm pack @xochi/spec@0.14.0 && tar -xzf xochi-spec-0.14.0.tgz   # -> package/conformance/..., package/fee/...
 ```
 
 ## Verifying an implementation

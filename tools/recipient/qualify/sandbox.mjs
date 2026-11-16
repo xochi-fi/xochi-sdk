@@ -48,14 +48,15 @@ import { computeSiloedPrivateInitializationNullifier } from "@aztec-labs/stdlib/
 import { TxHash } from "@aztec-labs/stdlib/tx";
 import { EmbeddedWallet } from "@aztec-labs/wallets/embedded";
 
-import { deriveRecipientAccount } from "../dist/account.js";
-import { OXDAI_MAINNET_REV2, parseCorridor } from "../dist/corridor.js";
-import { loadTokenArtifact, tokenImmutables } from "../dist/oxide-token.js";
+import { deriveRecipientAccount } from "../dist/core/account.js";
+import { OXDAI_MAINNET_REV2, parseCorridor } from "../dist/core/corridor.js";
+import { tokenImmutables } from "../dist/core/oxide-token.js";
+import { loadTokenArtifact } from "../dist/node/artifacts.js";
 import {
   isOxideTokenLockedToArtifact,
   publishAndLockOxideTokenWithArtifact,
-} from "../dist/oxide/vendor/oxide-client/token_registration.js";
-import { open } from "../dist/sealed.js";
+} from "../dist/core/oxide/vendor/oxide-client/token_registration.js";
+import { open } from "../dist/node/sealed.js";
 
 const { values: args } = parseArgs({
   options: {

@@ -103,6 +103,12 @@ export interface SwapActivity {
    * otherwise.
    */
   settlementChainId?: SelectableChainId | null;
+  /**
+   * A Canton destination's delivery: the update id Riddler's attester verified
+   * it against (`escrow.cantonUpdateId` on status), verbatim. Canton has no
+   * transaction hash, so the feed links this on ccview instead.
+   */
+  cantonUpdateId?: string | null;
   isCrossChain: boolean;
   /** Destination type. USDX is archived; "stealth" is reserved (no emitter yet). */
   destinationType?: "chain" | "aztec" | "stealth";

@@ -1,4 +1,4 @@
-// Escrow primitives, order v2 (RESERVED / INERT). Verifies canonical keys,
+// Escrow primitives, order v2. Verifies canonical keys,
 // the blinded destination commitment, the orderId sensitivity, strict uint
 // parsing on every escrow signer and every rejection path of the escrow-binding
 // guard (SPEC.md §2.3, ESCROW-RFC.md §2/§7/§12). Byte-level expectations live in

@@ -8,10 +8,11 @@ import { privateKeyToAccount } from "viem/accounts";
 import { keccak256, type Hex } from "viem";
 import { describe, expect, it } from "vitest";
 
-import { deriveRecipientAccount } from "../src/account.js";
-import { OXDAI_MAINNET_REV2 } from "../src/corridor.js";
-import { OperationJournal } from "../src/operation-journal.js";
-import { computeAccountAddress } from "../src/oxide/vendor/oxide-lib-tee/account_address.js";
+import { deriveRecipientAccount } from "../src/core/account.js";
+import { OXDAI_MAINNET_REV2 } from "../src/core/corridor.js";
+import type { OperationJournal } from "../src/core/operation-journal.js";
+import { openNodeJournals } from "../src/node/data-dir.js";
+import { computeAccountAddress } from "../src/core/oxide/vendor/oxide-lib-tee/account_address.js";
 import {
   RefundBundleSchema,
   applyRefundReconciliation,
@@ -253,7 +254,7 @@ describe("refund submission ambiguity", () => {
     const { account, bundle, rawTransaction } = await signedRefund();
     const directory = mkdtempSync(join(tmpdir(), "xochi-refund-journal-"));
     try {
-      const journal = new OperationJournal(directory);
+      const journal = openNodeJournals(directory).operations;
       let submissions = 0;
       await expect(
         submitRefund({
@@ -266,14 +267,14 @@ describe("refund submission ambiguity", () => {
           assertPins: async () => undefined,
           send: async () => {
             submissions += 1;
-            expect(journal.activeUnresolved()?.txHash).toMatch(/^0x[0-9a-f]{64}$/);
+            expect((await journal.activeUnresolved())?.txHash).toMatch(/^0x[0-9a-f]{64}$/);
             throw new Error("TEST ONLY lost response");
           },
         }),
       ).rejects.toThrow("operation outcome requires transaction reconciliation");
       expect(submissions).toBe(1);
-      expect(journal.activeUnresolved()?.status).toBe("in_doubt");
-      expect(() => journal.begin("refund-frozen-notes", { test: "TEST ONLY" })).toThrow(
+      expect((await journal.activeUnresolved())?.status).toBe("in_doubt");
+      await expect(journal.begin("refund-frozen-notes", { test: "TEST ONLY" })).rejects.toThrow(
         /reconcile/,
       );
     } finally {
@@ -286,23 +287,25 @@ describe("refund submission ambiguity", () => {
     const directory = mkdtempSync(join(tmpdir(), "xochi-refund-crash-"));
     try {
       let crashedOperationId = "";
-      const crashing = new OperationJournal(directory, undefined, (id) => {
-        crashedOperationId = id;
-        throw new Error("TEST ONLY crash after initial lock sync");
-      });
-      expect(() => beginLockedRefund(crashing, bundle, rawTransaction)).toThrow(
+      const crashing = openNodeJournals(directory, {
+        afterInitialLockSynced: (id) => {
+          crashedOperationId = id;
+          throw new Error("TEST ONLY crash after initial lock sync");
+        },
+      }).operations;
+      await expect(beginLockedRefund(crashing, bundle, rawTransaction)).rejects.toThrow(
         "TEST ONLY crash after initial lock sync",
       );
 
-      const restarted = new OperationJournal(directory);
-      expect(restarted.activeUnresolved()).toMatchObject({
+      const restarted = openNodeJournals(directory).operations;
+      expect(await restarted.activeUnresolved()).toMatchObject({
         id: crashedOperationId,
         status: "broadcast",
         txHash: keccak256(rawTransaction),
       });
-      expect(() => restarted.begin("refund-frozen-notes", { test: "new authorization" })).toThrow(
-        /reconcile/,
-      );
+      await expect(
+        restarted.begin("refund-frozen-notes", { test: "new authorization" }),
+      ).rejects.toThrow(/reconcile/);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -312,26 +315,26 @@ describe("refund submission ambiguity", () => {
     const { bundle, rawTransaction } = await signedRefund();
     const directory = mkdtempSync(join(tmpdir(), "xochi-refund-reverted-"));
     try {
-      const journal = new OperationJournal(directory);
-      const operation = beginLockedRefund(journal, bundle, rawTransaction);
+      const journal = openNodeJournals(directory).operations;
+      const operation = await beginLockedRefund(journal, bundle, rawTransaction);
       expect(
-        applyRefundReconciliation(
+        await applyRefundReconciliation(
           journal,
           OXDAI_MAINNET_REV2,
           reconciliationObservation(bundle, rawTransaction, "reverted"),
         ),
       ).toBe("finalized-failed");
-      expect(journal.get(operation.id)).toMatchObject({
+      expect(await journal.get(operation.id)).toMatchObject({
         status: "failed",
         receiptStatus: "finalized-failed",
         receiptBlockNumber: "40",
         receiptBlockHash: `0x${"ab".repeat(32)}`,
         error: "operation finalized with a reverted receipt",
       });
-      const explicitlyAuthorizedNext = journal.begin("refund-frozen-notes", {
+      const explicitlyAuthorizedNext = await journal.begin("refund-frozen-notes", {
         test: "new explicit authorization",
       });
-      journal.failOrAbort(explicitlyAuthorizedNext.id);
+      await journal.failOrAbort(explicitlyAuthorizedNext.id);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -341,10 +344,10 @@ describe("refund submission ambiguity", () => {
     const { bundle, rawTransaction } = await signedRefund();
     const directory = mkdtempSync(join(tmpdir(), "xochi-refund-orphan-"));
     try {
-      const journal = new OperationJournal(directory);
-      const operation = beginLockedRefund(journal, bundle, rawTransaction);
+      const journal = openNodeJournals(directory).operations;
+      const operation = await beginLockedRefund(journal, bundle, rawTransaction);
       const observation = reconciliationObservation(bundle, rawTransaction, "success");
-      expect(() =>
+      await expect(
         applyRefundReconciliation(journal, OXDAI_MAINNET_REV2, {
           ...observation,
           canonicalBlock: {
@@ -352,8 +355,8 @@ describe("refund submission ambiguity", () => {
             hash: `0x${"cd".repeat(32)}`,
           },
         }),
-      ).toThrow("refund transaction evidence does not match the locked authorization");
-      expect(journal.activeUnresolved()).toMatchObject({
+      ).rejects.toThrow("refund transaction evidence does not match the locked authorization");
+      expect(await journal.activeUnresolved()).toMatchObject({
         id: operation.id,
         status: "broadcast",
       });
@@ -366,10 +369,10 @@ describe("refund submission ambiguity", () => {
     const { bundle, rawTransaction } = await signedRefund();
     const directory = mkdtempSync(join(tmpdir(), "xochi-refund-block-mismatch-"));
     try {
-      const journal = new OperationJournal(directory);
-      const operation = beginLockedRefund(journal, bundle, rawTransaction);
+      const journal = openNodeJournals(directory).operations;
+      const operation = await beginLockedRefund(journal, bundle, rawTransaction);
       const observation = reconciliationObservation(bundle, rawTransaction, "success");
-      expect(() =>
+      await expect(
         applyRefundReconciliation(journal, OXDAI_MAINNET_REV2, {
           ...observation,
           transaction: {
@@ -377,8 +380,8 @@ describe("refund submission ambiguity", () => {
             blockHash: `0x${"ef".repeat(32)}`,
           },
         }),
-      ).toThrow("refund transaction evidence does not match the locked authorization");
-      expect(journal.activeUnresolved()).toMatchObject({
+      ).rejects.toThrow("refund transaction evidence does not match the locked authorization");
+      expect(await journal.activeUnresolved()).toMatchObject({
         id: operation.id,
         status: "broadcast",
       });
@@ -391,12 +394,14 @@ describe("refund submission ambiguity", () => {
     const { bundle, rawTransaction } = await signedRefund();
     const directory = mkdtempSync(join(tmpdir(), "xochi-refund-finalized-"));
     try {
-      const journal = new OperationJournal(directory);
-      const operation = beginLockedRefund(journal, bundle, rawTransaction);
+      const journal = openNodeJournals(directory).operations;
+      const operation = await beginLockedRefund(journal, bundle, rawTransaction);
       const observation = reconciliationObservation(bundle, rawTransaction, "success");
       expect("frozen" in observation).toBe(false);
-      expect(applyRefundReconciliation(journal, OXDAI_MAINNET_REV2, observation)).toBe("finalized");
-      expect(journal.get(operation.id)).toMatchObject({
+      expect(await applyRefundReconciliation(journal, OXDAI_MAINNET_REV2, observation)).toBe(
+        "finalized",
+      );
+      expect(await journal.get(operation.id)).toMatchObject({
         status: "complete",
         receiptStatus: "finalized",
         receiptBlockNumber: "40",

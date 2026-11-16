@@ -7,6 +7,7 @@
  */
 
 import { z } from "zod";
+import { isCantonPartyId } from "@xochi/signer";
 import { ETH_ADDRESS_REGEX } from "./validators.js";
 import { NOT_EXECUTED_SUBSTATUS } from "./intents.js";
 
@@ -27,11 +28,37 @@ export const tronAddress = z
   .regex(/^T[1-9A-HJ-NP-Za-km-z]{33}$/, "Must be a Tron base58 address");
 
 /**
+ * A Canton party id (`hint::1220<64 lowercase hex>`, SPEC.md §3.3): the
+ * signer's `isCantonPartyId`, verbatim. Case-sensitive, never trimmed.
+ */
+export const cantonParty = z
+  .string()
+  .refine((value) => isCantonPartyId(value), "Must be a Canton party id");
+
+/**
  * Recipient address for a non-EVM destination: the user's own address on the
  * destination chain (EVM routes settle to the signing wallet, so it is
- * optional). EVM hex20 or Tron base58.
+ * optional). EVM hex20, Tron base58, or a Canton party id.
  */
-export const recipientAddress = z.union([ethAddress, tronAddress]);
+export const recipientAddress = z.union([ethAddress, tronAddress, cantonParty]);
+
+/**
+ * The served escrow envelope (SPEC.md §5.2.1): `address`, `order_id`,
+ * `fill_deadline` (unix seconds, a decimal string on the wire), plus the
+ * quote's `order_terms` / `dest_opening` / `open_auth` and the status's
+ * re-derived `dest_opening`, held verbatim for the signer's escrow binding.
+ * `null` means escrow off.
+ */
+export const EscrowEnvelopeSchema = z
+  .object({
+    address: z.string(),
+    order_id: z.string(),
+    fill_deadline: z.union([z.string().regex(/^\d+$/), z.number().int().nonnegative()]),
+  })
+  .passthrough();
+
+/** `refundable_at`: unix seconds, `fill_deadline + claimWindow` (ESCROW-RFC.md §3). */
+export const refundableAt = z.number().int().nonnegative();
 
 /** Settlement type */
 export const settlementType = z
@@ -506,6 +533,10 @@ export const QuoteResponseSchema = z
       .describe(
         "The solver's live per-corridor floor: the smallest order it will fill at all, which is its own cost to fill. Reported for transparency. Do NOT retry with this figure -- an order at exactly the solver's cost delivers almost nothing. Use `minimum_amount_usd`.",
       ),
+    // The escrow envelope on an escrow corridor (SPEC.md §5.2.1; Base USDC ->
+    // Canton Coin): verbatim for the signer's binding. Absent or null: escrow off.
+    escrow: EscrowEnvelopeSchema.nullable().optional(),
+    refundable_at: refundableAt.optional(),
     max_order_usd: z
       .number()
       .positive()
@@ -562,6 +593,9 @@ export const ExecuteResponseSchema = z
       .describe(
         "`not_executed` on a `failed` where nothing moved, served by the execute 502 of the worker's own finishes (the resend budget's, a not-accepted refusal whose un-claim's write failed, no solver configured, a solver refusal carrying `details.funds_moved: false`) and echoed from the row by the lost-race 502 and the in-doubt 200: safe to re-quote. Absent on any other failure. Every source: docs/contracts/xochi-intent-api.md, \"The worker's not_executed marker\".",
       ),
+    // An escrow order's envelope and refund time (SPEC.md §5.2.1, ESCROW-RFC.md §3).
+    escrow: EscrowEnvelopeSchema.nullable().optional(),
+    refundable_at: refundableAt.optional(),
     // Per-intent read capability; rules: `IntentReadOptions` (transport/client.ts).
     // The one declared field that never fails the body: a malformed token is
     // dropped, because this body reports an execute that may already have moved

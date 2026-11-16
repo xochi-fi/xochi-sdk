@@ -22,7 +22,8 @@ import type {
   OriginApproval,
   RaceWebSocketMessage,
 } from "../types/intent.js";
-import { EXTENDED_CHAIN_NAMES, isTronChainId } from "@xochi/client";
+import { EXTENDED_CHAIN_NAMES, isCantonDestinationChainId, isTronChainId } from "@xochi/client";
+import type { EscrowStatusData } from "@xochi/client";
 import {
   type Receipt,
   type SignRefusal,
@@ -37,6 +38,7 @@ import { IntentTimeline } from "./IntentTimeline.js";
 import { SolverRace } from "./SolverRace.js";
 import { shouldOfferInAppBrowser } from "../lib/mobileWallet.js";
 import { SwapResult } from "./swap-flow/SwapResult.js";
+import { CantonEscrowPanel } from "./swap-flow/CantonEscrowPanel.js";
 import { useCountdown } from "./ErrorDisplay.js";
 import { DepositInstructions } from "./swap-flow/DepositInstructions.js";
 import { buildDepositScreen } from "./swap-flow/depositScreen.js";
@@ -113,6 +115,11 @@ export interface IntentView {
   settlementChainId: SelectableChainId | null;
   /** Riddler's granular fill substatus; distinguishes a delivered leg (xochi#376). */
   substatus: string | null;
+  /**
+   * A Canton order's escrow fields from the status poll. Its progress is read
+   * off these and the lock (`CantonEscrowPanel`), never off the phase.
+   */
+  escrow?: EscrowStatusData | null;
   quote: QuoteResponse | null;
   permitType: PermitType;
   /** Whether the pull needs an approval transaction first; the confirm copy states it. */
@@ -251,6 +258,21 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
   const errorMessage = typeof error === "string" ? error : (error?.message ?? null);
   const structuredError = typeof error === "object" && error !== null ? error : null;
   const phase = receipt.phase;
+  // A Canton order past signing renders its escrow (the lock, Riddler's
+  // attested delivery, the claim or the refund), never the phase's success or
+  // delivered copy: a gateway-reported completion is not a delivery.
+  const cantonOrder = isCantonDestinationChainId(props.toChainId);
+  const cantonEscrowPhase =
+    cantonOrder &&
+    (phase === "bridging" ||
+      phase === "settling" ||
+      phase === "success" ||
+      phase === "pending" ||
+      phase === "refunded");
+  // The verified quote's order id (checked at ingest), else the status poll's.
+  const quotedOrderId = (quote?.escrow as { order_id?: unknown } | null | undefined)?.order_id;
+  const cantonOrderId =
+    typeof quotedOrderId === "string" ? quotedOrderId : (intent.escrow?.orderId ?? null);
 
   // Move focus to the primary action on entering a terminal phase.
   const contentRef = useRef<HTMLDivElement>(null);
@@ -371,7 +393,7 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
       >
         <div className="modal-header">
           <h3 id="swap-flow-title" className="modal-title">
-            {PHASE_TITLES[phase]}
+            {cantonEscrowPhase ? "Canton delivery" : PHASE_TITLES[phase]}
           </h3>
           <button className="modal-close" onClick={onClose} aria-label="Close">
             <svg
@@ -390,7 +412,7 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
 
         {/* Polite announcement of phase changes for screen readers */}
         <span className="sr-only" aria-live="polite">
-          {PHASE_TITLES[phase]}
+          {cantonEscrowPhase ? "Canton delivery" : PHASE_TITLES[phase]}
         </span>
 
         {props.destination.recipientTag &&
@@ -559,8 +581,7 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
         {((phase === "awaiting-wallet" && !awaitingPull) ||
           phase === "submitting" ||
           phase === "not-sent" ||
-          phase === "bridging" ||
-          phase === "settling") && (
+          (!cantonEscrowPhase && (phase === "bridging" || phase === "settling"))) && (
           <div className="swap-flow-body">
             {/* The signed payout never leaves the screen while the order fills
                 (trade-widget-mvp.md Phase 5; pass-1 3.4). Same payout binding
@@ -665,40 +686,60 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
           </p>
         )}
 
-        {(phase === "success" ||
-          phase === "refunded" ||
-          phase === "failed" ||
-          phase === "may-have-moved" ||
-          phase === "pending") && (
+        {cantonOrder && (cantonEscrowPhase || phase === "may-have-moved") && (
           <div className="swap-flow-body">
-            <SwapResult
-              variant={phase}
-              isStealth={props.destination.type === "stealth"}
-              recipientTag={props.destination.recipientTag}
+            <CantonEscrowPanel
               fromChainId={props.fromChainId}
-              toChainId={props.toChainId}
-              isCrossChain={props.isCrossChain}
-              txHash={txHash}
-              receivingTxHash={receivingTxHash}
-              settlementTxHash={settlementTxHash}
-              settlementChainId={settlementChainId}
-              substatus={substatus}
-              receivedAmount={props.receivedAmount}
-              toSymbol={props.toSymbol}
-              fillMs={fillMs}
-              failureRef={failureRef}
-              errorCode={structuredError?.code}
-              errorCategory={quote?.errorCategory ?? structuredError?.errorCategory}
-              retryAfter={structuredError?.retryAfter}
-              refundReason={refundReason}
-              refundAddress={depositView?.refund_address}
-              originTokens={originTokens}
-              onRetry={props.onRetry}
-              onClose={onClose}
-              onGoToClaims={props.onGoToClaims}
+              orderId={cantonOrderId}
+              escrow={intent.escrow ?? null}
+              lockTxHash={txHash}
             />
+            {cantonEscrowPhase && (
+              <button
+                className="modal-btn modal-btn--cancel swap-result__primary"
+                onClick={onClose}
+              >
+                Close
+              </button>
+            )}
           </div>
         )}
+
+        {!cantonEscrowPhase &&
+          (phase === "success" ||
+            phase === "refunded" ||
+            phase === "failed" ||
+            phase === "may-have-moved" ||
+            phase === "pending") && (
+            <div className="swap-flow-body">
+              <SwapResult
+                variant={phase}
+                isStealth={props.destination.type === "stealth"}
+                recipientTag={props.destination.recipientTag}
+                fromChainId={props.fromChainId}
+                toChainId={props.toChainId}
+                isCrossChain={props.isCrossChain}
+                txHash={txHash}
+                receivingTxHash={receivingTxHash}
+                settlementTxHash={settlementTxHash}
+                settlementChainId={settlementChainId}
+                substatus={substatus}
+                receivedAmount={props.receivedAmount}
+                toSymbol={props.toSymbol}
+                fillMs={fillMs}
+                failureRef={failureRef}
+                errorCode={structuredError?.code}
+                errorCategory={quote?.errorCategory ?? structuredError?.errorCategory}
+                retryAfter={structuredError?.retryAfter}
+                refundReason={refundReason}
+                refundAddress={depositView?.refund_address}
+                originTokens={originTokens}
+                onRetry={props.onRetry}
+                onClose={onClose}
+                onGoToClaims={props.onGoToClaims}
+              />
+            </div>
+          )}
       </div>
     </div>,
     document.body,

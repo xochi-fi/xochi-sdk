@@ -45,6 +45,7 @@ import { useAmountFit, type AmountFit } from "./useAmountFit.js";
 import { type EmbedLock } from "@xochi/widget-lib";
 import { ROUTE_LIST_UNAVAILABLE } from "./useSwapRoute.js";
 import { ZKMONEY_ACCOUNT_URL, ZKMONEY_PRIVACY_COPY, zkMoneyRefusal } from "./zkMoney.js";
+import { CANTON_READINESS_NOTE, CANTON_RECIPIENT_HINT, cantonDecline } from "./canton.js";
 
 interface SwapPanelProps {
   /** Values to seed the panel with when the user retries a past swap. */
@@ -139,7 +140,8 @@ export function SwapPanel({
     setRecipientAddress,
     recipientInvalid,
     recipientCheck,
-    trimmedRecipient,
+    sentRecipient,
+    cantonDestination,
     zkMoneyDestination,
     zkMoneyOffered,
     zkMoneyBlockedReason,
@@ -278,6 +280,9 @@ export function SwapPanel({
   const quoteErrorCategory =
     intent.quote?.errorCategory ||
     (typeof intent.error === "object" ? intent.error?.errorCategory : undefined);
+  // A refused Canton quote, worded as what to do about it (nothing locked).
+  const cantonRefusal =
+    cantonDestination && intent.error ? cantonDecline(quoteErrorCategory) : null;
 
   return (
     <div className="trade-card">
@@ -618,7 +623,7 @@ export function SwapPanel({
                   under the recipient field instead, or a read that failed), so
                   an unknown balance never reads as a zero one. */}
               {/* A tag is credited on zk.money, not in the connected wallet. */}
-              {isConnected && !zkMoneyDestination && (
+              {isConnected && !zkMoneyDestination && !cantonDestination && (
                 <span
                   className="balance-display balance-display--static"
                   aria-label={
@@ -807,13 +812,15 @@ export function SwapPanel({
               </div>
             )}
 
-            {/* Recipient address: a non-EVM destination (Tron) settles to an address
-            the user types, not the connected wallet. */}
+            {/* Recipient address: a non-EVM destination (Tron, Canton) settles to
+            an address the user types, not the connected wallet. A Canton party is
+            sent byte for byte as typed, so the field never autocapitalizes. */}
             {isNonEvmDest && (
               <div className="recipient-field">
                 <div className="recipient-field__head">
                   <label className="recipient-field__label" htmlFor="swap-recipient">
-                    {EXTENDED_CHAIN_NAMES[toChainId]} recipient address
+                    {EXTENDED_CHAIN_NAMES[toChainId]} recipient{" "}
+                    {cantonDestination ? "party" : "address"}
                   </label>
                   {/* Tron only: TronLink is the one extension that can hand us a
                   base58 address, so the offer is not made on other non-EVM VMs. */}
@@ -832,11 +839,17 @@ export function SwapPanel({
                   id="swap-recipient"
                   type="text"
                   className={`recipient-field__input ${
-                    recipientInvalid && trimmedRecipient.length > 0
+                    recipientInvalid && sentRecipient.length > 0
                       ? "recipient-field__input--invalid"
                       : ""
                   }`}
-                  placeholder={isTronChainId(toChainId) ? "T..." : "Recipient address"}
+                  placeholder={
+                    isTronChainId(toChainId)
+                      ? "T..."
+                      : cantonDestination
+                        ? "name::1220... (public only)"
+                        : "Recipient address"
+                  }
                   value={recipientAddress}
                   onChange={(e) => {
                     setRecipientAddress(e.target.value);
@@ -845,13 +858,15 @@ export function SwapPanel({
                   }}
                   autoComplete="off"
                   autoCorrect="off"
+                  autoCapitalize="none"
                   spellCheck={false}
-                  aria-invalid={recipientInvalid && trimmedRecipient.length > 0}
+                  aria-invalid={recipientInvalid && sentRecipient.length > 0}
+                  aria-describedby={cantonDestination ? "swap-recipient-readiness" : undefined}
                 />
                 {/* The field's own validation still judges the value, whether it
                 was typed or filled, so there is one verdict and not two. The
                 TronLink note only explains where the text came from. */}
-                {recipientInvalid && trimmedRecipient.length > 0 && recipientCheck.error ? (
+                {recipientInvalid && sentRecipient.length > 0 && recipientCheck.error ? (
                   <span className="recipient-field__error">{recipientCheck.error}</span>
                 ) : recipientFill.note ? (
                   <span
@@ -863,6 +878,8 @@ export function SwapPanel({
                   >
                     {recipientFill.note.text}
                   </span>
+                ) : cantonDestination ? (
+                  <span className="recipient-field__hint">{CANTON_RECIPIENT_HINT}</span>
                 ) : recipientBalance.available ? (
                   // Confirmation that the address is real and in use. A zero is
                   // normal (fresh address, first payment), so it is stated
@@ -876,6 +893,13 @@ export function SwapPanel({
                   <span className="recipient-field__hint">
                     Where should we send the {toToken.symbol}? Paste the{" "}
                     {EXTENDED_CHAIN_NAMES[toChainId]} address.
+                  </span>
+                )}
+                {/* Readiness before the quote: an unready party is refused before
+                anything locks, and a transfer to one is only a pending offer. */}
+                {cantonDestination && (
+                  <span id="swap-recipient-readiness" className="recipient-field__hint">
+                    {CANTON_READINESS_NOTE}
                   </span>
                 )}
               </div>
@@ -1125,13 +1149,32 @@ export function SwapPanel({
               </div>
             )}
 
+          {/* A refused Canton quote: what to fix, never a generic failure. The
+          venue refuses before any lock, so nothing moved. */}
+          {!flowOpen && !QUOTE_BUSY_STATES.includes(intent.status) && cantonRefusal && (
+            <div className="decline-guidance" role="status">
+              <span className="decline-guidance__title">{cantonRefusal.title}</span>
+              <p className="decline-guidance__body">{cantonRefusal.detail}</p>
+              {cantonRefusal.requote && (
+                <button
+                  type="button"
+                  className="btn btn--primary btn--sm decline-guidance__cta"
+                  onClick={retryQuote}
+                  disabled={intent.status === "quoting"}
+                >
+                  Get a new quote
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Quote-phase error (pre-submit). Execution errors are shown in the flow
           modal, so suppress the inline copy whenever the modal is open, and past
           quoting: Close holds an order that was not sent, with the execute's error,
           and the machine ignores a re-quote there, so Retry would do nothing. The
           stealth-fallback notice above supersedes the generic error when it is a
-          settlement-mode rejection, and the guidance block above supersedes it
-          on a below-the-minimum decline. */}
+          settlement-mode rejection, and the guidance blocks above supersede it
+          on a below-the-minimum decline and on a refused Canton quote. */}
           {!routeBlocked &&
             !orderOutOfBounds &&
             !excessiveSlippage &&
@@ -1139,6 +1182,7 @@ export function SwapPanel({
             !QUOTE_BUSY_STATES.includes(intent.status) &&
             !stealthUnavailable &&
             !amountGuidance &&
+            !cantonRefusal &&
             intent.error && (
               <ErrorDisplay
                 error={

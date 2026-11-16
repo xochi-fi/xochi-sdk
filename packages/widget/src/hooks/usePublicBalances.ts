@@ -1,8 +1,10 @@
 /**
  * Read wallet holdings independently of trade-route availability. Each browser
  * chain has its own query, so a failed or unconfigured chain cannot discard
- * successful reads elsewhere. Arc USDC uses the first-party balance endpoint;
- * its native and ERC-20 views are the same funds and are counted only once.
+ * successful reads elsewhere. Every Arc ERC-20 (USDC, EURC, any advertised
+ * token) is read through the first-party balance endpoint, which takes any
+ * token address; Arc's native and ERC-20 USDC views are the same funds and are
+ * counted only once.
  */
 
 import { useCallback, useMemo } from "react";
@@ -11,7 +13,7 @@ import { readContractsQueryOptions } from "@wagmi/core/query";
 import { useAccount, useBalance, useConfig } from "wagmi";
 import { erc20Abi } from "viem";
 import { ARC_BROWSER_ENABLED, GNOSIS_ENABLED, TIMEOUTS } from "../config.js";
-import { useRecipientBalance } from "./useRecipientBalance.js";
+import { recipientBalanceQuery, recipientBalanceResult } from "./useRecipientBalance.js";
 import { useCapabilities } from "./useCapabilities.js";
 import {
   publicBalanceTokens,
@@ -57,15 +59,32 @@ export function usePublicBalances() {
             `Balance chains not configured: ${[...new Set(unconfigured.map((t) => t.chainId))].join(", ")}`,
           )
         : null,
-      arc: tokens.find(({ chainId, symbol }) => chainId === ARC_CHAIN_ID && symbol === "USDC"),
+      arc: tokens.filter(({ chainId }) => chainId === ARC_CHAIN_ID),
     };
   }, [capabilities, config.chains]);
 
-  const arcBalance = useRecipientBalance(
-    discovery.arc ? ARC_CHAIN_ID : undefined,
-    discovery.arc?.address,
-    enabled ? address : undefined,
-  );
+  const arc = useQueries({
+    queries: discovery.arc.map((token) =>
+      recipientBalanceQuery(ARC_CHAIN_ID, token.address, enabled ? address : undefined),
+    ),
+    combine: (queries) => {
+      const reads = queries.map((query) => recipientBalanceResult(query, enabled));
+      return {
+        balances: discovery.arc.map((token, index): PublicBalance => {
+          const balance = reads[index]?.balance ?? null;
+          return {
+            ...token,
+            balance: balance ?? 0n,
+            isNative: false,
+            ...(balance === null ? { unread: true as const } : {}),
+          };
+        }),
+        error: reads.find((read) => read.error)?.error ?? null,
+        isLoading: reads.some((read) => read.isLoading),
+        refetches: reads.map((read) => read.refetch),
+      };
+    },
+  });
 
   const erc20 = useQueries({
     queries: discovery.groups.map((tokens) => ({
@@ -172,18 +191,9 @@ export function usePublicBalances() {
       ...nativeBalances,
       ...erc20.balances,
       ...erc20Balances(discovery.unconfigured, undefined),
-      ...(discovery.arc
-        ? [
-            {
-              ...discovery.arc,
-              balance: arcBalance.balance ?? 0n,
-              isNative: false,
-              ...(arcBalance.balance === null ? { unread: true as const } : {}),
-            },
-          ]
-        : []),
+      ...arc.balances,
     ],
-    [nativeBalances, erc20.balances, discovery, arcBalance.balance],
+    [nativeBalances, erc20.balances, discovery, arc.balances],
   );
 
   const holdings = useMemo(() => aggregateBySymbol(balances), [balances]);
@@ -194,14 +204,14 @@ export function usePublicBalances() {
   const error = enabled
     ? (erc20.error ??
       discovery.configurationError ??
-      arcBalance.error ??
+      arc.error ??
       natives.find(({ query }) => query.isError)?.query.error ??
       null)
     : null;
 
   const refetch = () => {
     for (const refetchChain of erc20.refetches) void refetchChain();
-    if (discovery.arc) arcBalance.refetch();
+    for (const refetchArc of arc.refetches) refetchArc();
     for (const { chainId, query } of natives) {
       if (config.chains.some((chain) => chain.id === chainId)) void query.refetch();
     }
@@ -213,8 +223,7 @@ export function usePublicBalances() {
     readBalanceOf,
     hasUnread: enabled && balances.some((balance) => balance.unread),
     isLoading:
-      enabled &&
-      (erc20.isLoading || arcBalance.isLoading || natives.some(({ query }) => query.isLoading)),
+      enabled && (erc20.isLoading || arc.isLoading || natives.some(({ query }) => query.isLoading)),
     isError: error !== null,
     error,
     refetch,
