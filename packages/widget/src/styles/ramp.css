@@ -1,0 +1,137 @@
+/* Live Peer rail availability (Trade/Buy, Send/payment app). One column at
+   the card's width, 44px targets, and state carried by text: the status
+   colour only repeats what the status label already says. */
+
+.ramp-rails {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.ramp-facts {
+  padding: 0.75rem;
+  background: var(--inset-bg);
+  border: 1px solid var(--line-subtle);
+  border-radius: 12px;
+}
+
+.ramp-facts__title {
+  margin: 0 0 0.4rem;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.ramp-facts__list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.ramp-rails__group {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.ramp-rails__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ramp-rail {
+  box-sizing: border-box;
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  min-height: 44px;
+  padding: 0.7rem 0.8rem;
+  background: var(--panel-bg);
+  border: 1px solid var(--line-subtle);
+  border-radius: 12px;
+}
+
+.ramp-rail--selectable {
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.ramp-rail--selectable input {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin: 0.1rem 0 0;
+  accent-color: var(--muted-gold);
+}
+
+.ramp-rail--selectable:has(input:checked) {
+  border-color: var(--muted-gold-25);
+  box-shadow: 0 0 0 1px var(--muted-gold-25);
+}
+
+.ramp-rail--selectable:has(input:focus-visible) {
+  outline: 2px solid var(--muted-gold);
+  outline-offset: 2px;
+}
+
+.ramp-rail__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.ramp-rail__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.6rem;
+  align-items: baseline;
+}
+
+.ramp-rail__name {
+  font-weight: 600;
+  color: var(--pearl-cream);
+}
+
+.ramp-rail__status {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.ramp-rail__status--available {
+  color: var(--color-success);
+}
+
+.ramp-rail__text {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ramp-rail--selectable {
+    transition: none;
+  }
+}
