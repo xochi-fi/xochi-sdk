@@ -62,3 +62,33 @@ it.each([undefined, "production", "preproduction", "staging"] as const)(
     );
   },
 );
+
+it("keeps the Peer referral code and cash-out canary cap unset unless configured", async () => {
+  vi.resetModules();
+  const config = await import("./config.js");
+  const base = {
+    apiUrl: "https://api.example.test",
+    solverPin: { erc3009Allowlist: [], permit2Allowlist: [], requirePin: true },
+    depositAttestationSigner: "",
+  };
+  config.configureWidget(base);
+  expect(config.PEER_REFERRAL_CODE).toBeUndefined();
+  expect(config.OFFRAMP_CANARY_CAP_ATOMIC).toBeUndefined();
+
+  vi.resetModules();
+  const set = await import("./config.js");
+  set.configureWidget({ ...base, peerReferralCode: "ABC123", offrampCanaryCapAtomic: "5000000" });
+  expect(set.PEER_REFERRAL_CODE).toBe("ABC123");
+  expect(set.OFFRAMP_CANARY_CAP_ATOMIC).toBe("5000000");
+
+  for (const bad of [
+    { peerReferralCode: "abc" },
+    { peerReferralCode: "ABC-12" },
+    { offrampCanaryCapAtomic: "5.0" },
+    { offrampCanaryCapAtomic: "0" },
+  ]) {
+    vi.resetModules();
+    const fresh = await import("./config.js");
+    expect(() => fresh.configureWidget({ ...base, ...bad })).toThrow();
+  }
+});

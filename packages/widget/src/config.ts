@@ -6,6 +6,18 @@ export interface WidgetSettings {
   apiUrl: string;
   /** Non-production Peer deployments require explicit host configuration. */
   peerEnvironment?: "production" | "preproduction" | "staging";
+  /**
+   * Peer referral code (six alphanumeric characters) attached to payment-app
+   * cash-out deposits. Unset by default, and then no code is sent. Enable only
+   * after legal sign-off on Peer referral income; never hard-coded.
+   */
+  peerReferralCode?: string;
+  /**
+   * Per-operation canary cap: the most Base USDC (canonical atomic units, e.g.
+   * "5000000" for 5 USDC) one payment-app cash-out may deposit. Unset means no
+   * cap beyond Peer's own live limits.
+   */
+  offrampCanaryCapAtomic?: string;
   authApiUrl?: string;
   development?: boolean;
   appVersion?: string;
@@ -38,6 +50,8 @@ export interface WidgetSettings {
 }
 
 export let PEER_ENVIRONMENT: NonNullable<WidgetSettings["peerEnvironment"]> = "production";
+export let PEER_REFERRAL_CODE: string | undefined;
+export let OFFRAMP_CANARY_CAP_ATOMIC: string | undefined;
 export let API_URL = "https://api.xochi.fi";
 export let AUTH_API_URL = API_URL;
 export let isDevelopment = false;
@@ -69,7 +83,19 @@ export function configureWidget(settings: WidgetSettings): void {
     !["production", "preproduction", "staging"].includes(settings.peerEnvironment)
   )
     throw new Error("Invalid Peer environment");
+  if (
+    settings.peerReferralCode !== undefined &&
+    !/^[A-Za-z0-9]{6}$/.test(settings.peerReferralCode)
+  )
+    throw new Error("Invalid Peer referral code");
+  if (
+    settings.offrampCanaryCapAtomic !== undefined &&
+    !/^[1-9][0-9]{0,30}$/.test(settings.offrampCanaryCapAtomic)
+  )
+    throw new Error("Invalid cash-out canary cap");
   PEER_ENVIRONMENT = settings.peerEnvironment ?? "production";
+  PEER_REFERRAL_CODE = settings.peerReferralCode;
+  OFFRAMP_CANARY_CAP_ATOMIC = settings.offrampCanaryCapAtomic;
   API_URL = settings.apiUrl;
   AUTH_API_URL = settings.authApiUrl || API_URL;
   isDevelopment = settings.development ?? false;
