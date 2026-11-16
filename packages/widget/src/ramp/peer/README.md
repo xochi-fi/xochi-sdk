@@ -2,9 +2,9 @@
 
 The standalone exports `fetchPeerCapabilities`, `normalizePeerQuotes`,
 `normalizePeerMakerEvidence`, and `previewPeerOffer` live in the trusted widget
-runtime. They do not execute payments, define a ramp provider/client, or retain
-provider payloads. S4 wires the functions into its operation lifecycle; S5 owns
-maker protocol and account semantics.
+runtime. The discovery exports do not execute payments or retain
+provider payloads. The S5 maker adapter described below wires them into S4
+and owns maker protocol and account semantics.
 
 The dependency is exactly `@zkp2p/sdk@0.15.0-rc.11`, matching the approved
 compatibility example. No Cash dependency or second SDK graph is introduced.
@@ -121,3 +121,85 @@ The burn-address probe is read-only and does not establish a real user's setup.
 The default maker reader intentionally prints unknown availability. Optional
 `PEER_ENVIRONMENT` and canonical `PEER_USDC_ATOMIC` narrow the request. No request
 is made without `--live`; CI never invokes the live probe.
+
+## Maker execution (S5)
+
+`createPeerOfframpProvider({io, discovery, store})` implements `RampProvider` for
+`offramp`. Use it with S4's `createRampClient`. The discovery reader must supply
+fresh maker evidence as described above; `io.readiness` independently checks the
+oracle/feed pause, identity attestation and seller setup. Wise, PayPal and Alipay
+always require attestation. Unknown seller setup fails closed. An explicit Seller
+Autopilot/credential refusal becomes `setup_required` on subsequent discovery,
+with `capability_unavailable` in the bounded ramp snapshot and `setup_required`
+as the safe `orderStatus().reason`; no exception text escapes.
+
+The separate `createSDKMakerIO` port accepts only registration and unsigned SDK
+preparation methods. Registration uses the SDK's `POST /v2/makers/create` path;
+creation reuses its private payee hash. Approval encodes an exact Base USDC ERC-20
+allowance for the environment's escrow. Partial withdrawal uses `removeFunds.prepare`;
+full withdrawal uses `withdrawDeposit.prepare`. Execution terms (live intent bounds
+and the SDK's 18-decimal conversion rate) must come from the trusted provider/oracle
+read layer, with an explicit expiry. No catalog limit or buyer rate authorizes a
+maker transaction. Current effective rates can include ARM oracle pricing; a stale
+feed pauses execution. This port never configures a guessed ARM policy or Autopilot
+workaround.
+
+The application supplies the trusted read ports for account/ARM readiness,
+allowance, chain receipts, deposit state and indexed fills/withdrawals. These are
+required dependencies, not a default live maker-read implementation: no dedicated
+public maker capability endpoint exists, and maker reads may need an approved
+provider API key. `reconcile` must compare a confirmed transaction's sender, chain,
+target, calldata and value against the expected unsigned transaction, and extract
+only its own deposit ID from the escrow receipt. Unknown receipts remain pending.
+`deposit` must validate owner, escrow/asset identity, confirmed chain state and
+indexer coherence; missing, stale or inconsistent observations must throw. Its
+`remaining` includes active-intent reservations; `unmatched` excludes reservations
+and fees. `filled` is gross USDC debited by verified fills, including protocol fees.
+Remaining + filled + withdrawn must equal the original deposit. Payment-pending
+intents are never fills. SDK read exceptions must not be logged by the application.
+
+The trusted UI/wallet sequence is:
+
+1. Discover, preview and review the `maker_estimate` and asynchronous partial-fill
+   disclosures. The estimate is approximate, never a locked rate or ETA.
+2. Call `setOwnAccount(operationId, account, "own_account")` with the user's own
+   payment account, then explicitly approve the preview through the ramp client.
+   Third-party payees are out of scope; this declaration is not a technical ownership
+   attestation for rails that do not provide one.
+3. `interact` prepares one named wallet action. `takeUnsignedPlan` returns it once
+   for explicit review/signing by the caller's wallet and immediately records
+   uncertainty. Actions are `approve_usdc`, `create_deposit`, or `withdraw_unmatched`.
+   No method broadcasts, signs or receives a private key. Wallet calldata is
+   wallet-only material; never forward it through host callbacks or bridge events.
+4. Report the public transaction hash with `recordSubmission`, then reconcile
+   `check_status`. A confirmed allowance requests another explicit `interact` for
+   deposit creation. If the wallet definitively rejected before broadcast, call
+   `recordWalletRejection`; a missing hash alone is never evidence of rejection.
+5. Poll `orderStatus` to rebuild `awaiting_buyer`, `matched`, `delivering`,
+   `delivered`, or `returned`. Pending phases map to `processing`, verified complete
+   delivery to `completed`, and withdrawal/partial-fill plus return to `refunded`.
+   A returned order may already have verified partial fills; it is not a reversal
+   of those payments. Unknown status maps to `in_doubt` with reconciliation only.
+6. Review a distinct withdrawal amount and call `prepareWithdrawal` with a new
+   command context. Its unsigned plan requires another explicit wallet approval.
+   Active intents block full closure but permit the unmatched partial amount;
+   funds/reservations are checked again at wallet handoff. A rejected full close
+   returns bounded `active_intent_blocks_withdrawal` in the safe order reason.
+
+`PeerMakerPrivateStore` holds mappings, registration data and command receipts in
+module-private memory. Reusing it across provider instances resumes the existing
+deposit; its JSON representation is empty. It has no public mapping accessors.
+The raw account is discarded after deposit confirmation. It is **not durable across
+a page/process reload**: the host must keep the trusted runtime alive or supply a
+future protected persistence integration; sanitized public snapshots alone cannot
+recover provider handles or authorize recreation. Do not serialize this object,
+put payees into browser storage, or rebuild a deposit from a public snapshot.
+Public snapshots contain only the widget-minted operation reference and bounded
+states/codes. `orderStatus` adds only safe phase/reason enums.
+
+The in-memory maker/SDK implementations exercise the same ports without signing,
+network calls, sleeps or mocking libraries. They use the sanitized recorded S2
+quote fixture for candidate rails and explicitly synthetic maker facts; they are
+not evidence of live seller eligibility or an executed cash-out. No live deposit
+was performed. Staging is Base mainnet and requires coordinator approval before
+spending, with at most 2 USDC for the approved check.

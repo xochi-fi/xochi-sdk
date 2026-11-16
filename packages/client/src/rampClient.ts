@@ -377,7 +377,15 @@ export function createRampClient(options: {
       if (
         cmd.action === "check_status" &&
         ["processing", "in_doubt"].includes(before[cmd.leg]!.state) &&
-        !["processing", "completed", "failed", "refunded", "in_doubt"].includes(next.state)
+        !["processing", "completed", "failed", "refunded", "in_doubt"].includes(next.state) &&
+        // An offramp can resolve an uncertain ERC-20 approval before asking the wallet
+        // to create its deposit. A processing deposit still cannot regress to execution.
+        !(
+          reserved.direction === "offramp" &&
+          cmd.leg === "peer" &&
+          before.peer.state === "in_doubt" &&
+          next.state === "action_required"
+        )
       )
         throw new Error("invalid_request");
       if (cmd.action === "execute_route" && next.state === "action_required")
