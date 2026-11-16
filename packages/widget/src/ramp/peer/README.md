@@ -243,6 +243,7 @@ quote fixture for candidate rails and explicitly synthetic maker facts; they are
 not evidence of live seller eligibility or an executed cash-out. No live deposit
 was performed. Staging is Base mainnet and requires coordinator approval before
 spending, with at most 2 USDC for the approved check.
+
 ## Cancellation, estimates and host environment
 
 Pass `signal?: AbortSignal` in discovery/preview options. Cancellation aborts the
@@ -265,3 +266,33 @@ The Peer entry imports its declared `reflect-metadata` dependency before the SDK
 its side effect is preserved in package metadata. After building the widget, run
 `node scripts/verify-peer-consumer.mjs` at the repository root to verify the public
 entry builds and executes in a fresh browser realm without consumer polyfills.
+
+### Maker read cancellation and public order totals
+
+Maker `capabilities(intent, signal)`, `preview(intent, offer, signal)`,
+`status(operationId, signal)` and `orderStatus(operationId, signal)` accept an
+optional `AbortSignal`. Maker approval, interaction, recovery, unsigned-plan
+handoff and withdrawal preparation also accept a trailing signal for their reads.
+The trusted read port accepts it for readiness, allowance,
+reconciliation, deposits and mapping rebuilds; execution-term/oracle and indexer
+reads accept it too. Aborts reject with the bounded `AbortError` and never return
+offers or order state. Default quote, indexer and HTTP/fallback RPC requests bind
+the signal to their actual network transport. A custom RPC transport must provide
+`MakerPublicClient.withSignal(signal)`; unsupported transports fail closed for
+cancellable reads. Concurrent requests have independent transport scopes.
+
+`orderStatus` adds optional `amounts` containing canonical Base USDC atomic strings:
+`deposited`, `filled`, `reserved`, `withdrawable`, and `withdrawn`. These come from
+the same validated chain/indexer facts used for the phase and withdrawal checks.
+`filled` is the gross debit for fiat-verified fills (including protocol fees), never
+pending fiat; `reserved` includes active intent reservations and reserved fees.
+The invariant is `deposited = filled + reserved + withdrawable + withdrawn`.
+Totals are absent before confirmed creation or while state is `in_doubt`, rather
+than exposing stale values. No payee, buyer data or provider/intent identifiers are
+added to this public result; generic `ramp/1` snapshots remain unchanged.
+
+W4 follow-ups outside this adapter remain with their owners: setup-card prose is
+W1 UI work, resume event deduplication is W4/S3 lifecycle work, and a production
+wallet/curator/simulation check requires explicit approval for Base mainnet funds.
+The default readiness reads continue to fail closed where authoritative seller
+eligibility is unavailable; registration alone does not grant availability.

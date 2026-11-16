@@ -1,6 +1,10 @@
 import { atomic, type RampIntent } from "@xochi/client";
-import { peerConfiguration } from "./discovery.js";
-import { createDefaultMakerReads, type MakerPublicClient } from "./liveReads.js";
+import { boundedPeerRead, checkPeerAbort, peerConfiguration, peerReads } from "./discovery.js";
+import {
+  createDefaultMakerReads,
+  makerClientWithSignal,
+  type MakerPublicClient,
+} from "./liveReads.js";
 import { createPeerOfframpProvider, MakerSetupRequired, type PeerMakerIO } from "./offramp.js";
 import { createSDKMakerIO, type UnsignedMakerSDK } from "./sdkMaker.js";
 import { browserMakerStorage, type MakerMappingStorage } from "./protectedMapping.js";
@@ -46,8 +50,8 @@ export function createLivePeerOfframpProvider(options: {
         throw new Error("provider_declined");
       }
     },
-    async prepareDeposit(input) {
-      const tx = await sdkIO.prepareDeposit(input);
+    async prepareDeposit(input, signal) {
+      const tx = await sdkIO.prepareDeposit(input, signal);
       if (
         tx.chainId !== 8453 ||
         tx.to.toLowerCase() !== peerConfiguration(discovery).escrow.toLowerCase()
@@ -56,13 +60,18 @@ export function createLivePeerOfframpProvider(options: {
       // The real registered hash, current balance, allowance, rail/gating and rate must
       // pass eth_call from the actual maker. No signature or transaction is sent.
       try {
-        await options.publicClient.call({
-          account: options.wallet as `0x${string}`,
-          to: tx.to,
-          data: tx.data,
-          value: tx.value,
-        });
+        await boundedPeerRead(
+          (bound) =>
+            makerClientWithSignal(options.publicClient, bound).call({
+              account: options.wallet as `0x${string}`,
+              to: tx.to,
+              data: tx.data,
+              value: tx.value,
+            }),
+          signal,
+        );
       } catch {
+        checkPeerAbort(signal);
         throw new Error("capability_unavailable");
       }
       return tx;
@@ -87,24 +96,20 @@ export function createLivePeerOfframpProvider(options: {
     });
   }
 }
-import { apiGetQuote, apiGetQuotesBestByPlatform } from "@zkp2p/sdk";
 function defaultDiscoveryReads(
-  makerEvidence: (intent: RampIntent, rail: string) => Promise<unknown>,
+  makerEvidence: (intent: RampIntent, rail: string, signal?: AbortSignal) => Promise<unknown>,
   options: PeerDiscoveryOptions,
 ) {
-  const url =
-    options.environment === "staging"
-      ? "https://api-staging.zkp2p.xyz"
-      : options.environment === "preproduction"
-        ? "https://api-preprod.zkp2p.xyz"
-        : "https://api.zkp2p.xyz";
   return {
-    bestByPlatform: (request: Parameters<typeof apiGetQuotesBestByPlatform>[0]) =>
-      apiGetQuotesBestByPlatform(request, url, 10_000),
-    quote: (request: Parameters<typeof apiGetQuote>[0]) => apiGetQuote(request, url, 10_000),
-    makerEvidence: async (intent: RampIntent, rail: string) => {
+    ...peerReads(options),
+    makerEvidence: async (
+      intent: RampIntent,
+      rail: string,
+      _user?: string,
+      signal?: AbortSignal,
+    ) => {
       atomic(intent.exact.money.atomic);
-      return makerEvidence(intent, rail);
+      return makerEvidence(intent, rail, signal);
     },
   };
 }

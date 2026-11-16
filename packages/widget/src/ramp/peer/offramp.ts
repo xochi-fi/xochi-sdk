@@ -19,7 +19,7 @@ import {
   type MakerMappingStorage,
   type ProtectedMakerMapping,
 } from "./protectedMapping.js";
-import { fetchPeerCapabilities } from "./discovery.js";
+import { boundedPeerRead, checkPeerAbort, fetchPeerCapabilities } from "./discovery.js";
 import { previewPeerOffer } from "./preview.js";
 import type { PeerDiscoveryOptions, PeerDiscoveryResult } from "./types.js";
 
@@ -37,6 +37,15 @@ export interface MakerUnsignedPlan {
   /** The connected wallet must match this public sender before signing. */
   readonly account: string;
   readonly expiresAt: string;
+}
+/** Public Base USDC atomic totals; filled includes fees debited by verified fills. */
+export interface MakerOrderAmounts {
+  readonly deposited: string;
+  readonly filled: string;
+  /** Active reservations, including reserved fees unavailable for withdrawal. */
+  readonly reserved: string;
+  readonly withdrawable: string;
+  readonly withdrawn: string;
 }
 export interface MakerReadiness {
   readonly oracleFresh: boolean;
@@ -64,19 +73,23 @@ export interface PeerMakerIO {
   rebuild?(
     mapping: ProtectedMakerMapping,
     pendingWithdrawalHash?: string,
+    signal?: AbortSignal,
   ): Promise<{ state: "pending" } | { state: "confirmed"; depositId: string; amount: string }>;
 
-  readiness(intent: RampIntent, rail: string): Promise<MakerReadiness>;
+  readiness(intent: RampIntent, rail: string, signal?: AbortSignal): Promise<MakerReadiness>;
   /** POST /v2/makers/create, via SDK registerPayeeDetails. Own account only. */
   registerOwnPayee(rail: string, ownAccount: string): Promise<string>;
-  allowance(owner: string, amount: string): Promise<boolean>;
+  allowance(owner: string, amount: string, signal?: AbortSignal): Promise<boolean>;
   prepareApproval(amount: string): Promise<PreparedTransaction>;
-  prepareDeposit(input: {
-    intent: RampIntent;
-    rail: string;
-    amount: string;
-    payeeHash: string;
-  }): Promise<PreparedTransaction>;
+  prepareDeposit(
+    input: {
+      intent: RampIntent;
+      rail: string;
+      amount: string;
+      payeeHash: string;
+    },
+    signal?: AbortSignal,
+  ): Promise<PreparedTransaction>;
   /** Confirm the receipt AND exact sender, chain, target, calldata and value against expected.
    * For creation, return only the deposit ID decoded from that successful escrow receipt.
    * Missing/unknown receipts remain pending; never infer absence or resubmit. */
@@ -85,12 +98,18 @@ export interface PeerMakerIO {
     action: MakerWalletAction,
     owner: string,
     expected: PreparedTransaction,
+    signal?: AbortSignal,
   ): Promise<MakerReconciliation>;
   /** Validate deposit owner, Base USDC identity, confirmation/finality and indexer/chain
    * coherence; derive totals from deposit, active intents and verified fills/withdrawals.
    * Never label signalled or payment-pending intents as filled. Throw on missing/stale data. */
-  deposit(depositId: string, owner: string): Promise<MakerDepositFacts>;
-  prepareWithdrawal(depositId: string, amount: string, full: boolean): Promise<PreparedTransaction>;
+  deposit(depositId: string, owner: string, signal?: AbortSignal): Promise<MakerDepositFacts>;
+  prepareWithdrawal(
+    depositId: string,
+    amount: string,
+    full: boolean,
+    signal?: AbortSignal,
+  ): Promise<PreparedTransaction>;
 }
 /** Safe bounded failures; never use Error.message from a provider response. */
 export class MakerSetupRequired extends Error {
@@ -116,6 +135,7 @@ interface Entry {
   claimed?: MakerWalletAction;
   hash?: string;
   approved: boolean;
+  amounts?: MakerOrderAmounts;
   phase?: MakerPhase;
   withdrawalAmount?: string;
   reason?: MakerReason;
@@ -181,12 +201,29 @@ function readinessCode(
   if (value.sellerSetup !== "ready") return "capability_unavailable";
 }
 export interface PeerOfframpProvider extends RampProvider {
+  approve(
+    preview: RampPreview,
+    context: RampCommandContext,
+    signal?: AbortSignal,
+  ): Promise<RampSnapshot>;
+  interact(
+    operationId: string,
+    context: RampCommandContext,
+    signal?: AbortSignal,
+  ): Promise<RampSnapshot>;
+  recover(
+    operationId: string,
+    action: RampAction,
+    context: RampCommandContext,
+    signal?: AbortSignal,
+  ): Promise<RampSnapshot>;
+  status(operationId: string, signal?: AbortSignal): Promise<RampSnapshot>;
   /** Explicit setup-only registration; returns no payee/provider identifier. */
   setupOwnAccount(rail: string, account: string, ownership: "own_account"): Promise<void>;
   /** Trusted local UI input. This confirms the handle belongs to the connected user. */
   setOwnAccount(operationId: string, account: string, ownership: "own_account"): Promise<void>;
   /** Single-use handoff to the caller's wallet. Claiming creates uncertainty until reconciled. */
-  takeUnsignedPlan(operationId: string): Promise<MakerUnsignedPlan>;
+  takeUnsignedPlan(operationId: string, signal?: AbortSignal): Promise<MakerUnsignedPlan>;
   recordSubmission(
     operationId: string,
     action: MakerWalletAction,
@@ -198,10 +235,17 @@ export interface PeerOfframpProvider extends RampProvider {
     operationId: string,
     amount: string,
     context: RampCommandContext,
+    signal?: AbortSignal,
   ): Promise<RampSnapshot>;
   orderStatus(
     operationId: string,
-  ): Promise<{ snapshot: RampSnapshot; phase?: MakerPhase; reason?: MakerReason }>;
+    signal?: AbortSignal,
+  ): Promise<{
+    snapshot: RampSnapshot;
+    phase?: MakerPhase;
+    reason?: MakerReason;
+    amounts?: MakerOrderAmounts;
+  }>;
 }
 export function createPeerOfframpProvider(options: {
   io: PeerMakerIO;
@@ -245,6 +289,7 @@ export function createPeerOfframpProvider(options: {
   async function restore(
     entries: Map<string, Entry>,
     id: string,
+    signal?: AbortSignal,
   ): Promise<RampSnapshot | undefined> {
     const saved = mappings?.get(id);
     if (!saved) fail();
@@ -260,7 +305,13 @@ export function createPeerOfframpProvider(options: {
       updated_at: new Date(now()).toISOString(),
       terminal: false,
     };
-    const rebuilt = await io.rebuild?.(saved, recoveredWithdrawalHashes.get(id));
+    const rebuilt = await (io.rebuild
+      ? boundedPeerRead(
+          (bound) => io.rebuild!(saved, recoveredWithdrawalHashes.get(id), bound),
+          signal,
+        )
+      : undefined);
+    checkPeerAbort(signal);
     if (!rebuilt || rebuilt.state === "pending") return snapshot;
     const amount = atomic(rebuilt.amount);
     const intent: RampIntent = {
@@ -310,15 +361,21 @@ export function createPeerOfframpProvider(options: {
       receipts: new Map(),
     });
   }
-  async function readReady(intent: RampIntent, rail: string): Promise<MakerReadiness> {
+  async function readReady(
+    intent: RampIntent,
+    rail: string,
+    signal?: AbortSignal,
+  ): Promise<MakerReadiness> {
     try {
-      const result = await io.readiness(intent, rail);
+      const result = await boundedPeerRead((bound) => io.readiness(intent, rail, bound), signal);
+      checkPeerAbort(signal);
       return {
         ...result,
         requiresIdentityAttestation:
           result.requiresIdentityAttestation || ["wise", "paypal", "alipay"].includes(rail),
       };
     } catch {
+      checkPeerAbort(signal);
       fail("capability_unavailable");
     }
   }
@@ -361,18 +418,17 @@ export function createPeerOfframpProvider(options: {
     persist(e);
     return copy(e.snapshot);
   }
-  async function fresh(e: Entry) {
+  async function fresh(e: Entry, signal?: AbortSignal) {
     if (Date.parse(e.preview.expires_at) <= now()) fail("quote_expired");
-    const ready = await readReady(e.intent, e.offer.rail.id);
+    const ready = await readReady(e.intent, e.offer.rail.id, signal);
     const code = refusedRails.has(e.offer.rail.id) ? "setup_required" : readinessCode(ready);
     if (code) fail(code);
     // Re-read authoritative maker bounds/rate/fees, and require another review if changed.
-    const preview = await previewPeerOffer(
-      e.offer,
-      e.intent,
-      e.preview.operation_id,
-      options.discovery,
-    );
+    const preview = await previewPeerOffer(e.offer, e.intent, e.preview.operation_id, {
+      ...options.discovery,
+      signal,
+    });
+    checkPeerAbort(signal);
     if (!preview.ok) fail(preview.code);
   }
   function validatePlan(
@@ -389,11 +445,17 @@ export function createPeerOfframpProvider(options: {
       fail("provider_declined");
     return { action, transaction: copy(transaction), expiresAt, account: options.discovery.user! };
   }
-  async function refresh(e: Entry): Promise<RampSnapshot> {
+  async function refresh(e: Entry, signal?: AbortSignal): Promise<RampSnapshot> {
+    checkPeerAbort(signal);
     if (e.snapshot.terminal) return copy(e.snapshot);
     if (e.claimed) {
       if (!e.hash) return update(e, "in_doubt", ["check_status"], "peer_in_doubt");
-      const result = await io.reconcile(e.hash, e.claimed, e.intent.recipient, e.plan!.transaction);
+      const result = await boundedPeerRead(
+        (bound) =>
+          io.reconcile(e.hash!, e.claimed!, e.intent.recipient, e.plan!.transaction, bound),
+        signal,
+      );
+      checkPeerAbort(signal);
       if (result.state === "pending")
         return update(e, "in_doubt", ["check_status"], "peer_in_doubt");
       const action = e.claimed;
@@ -414,11 +476,22 @@ export function createPeerOfframpProvider(options: {
         return update(e, "action_required", ["interact", "check_status"]);
     }
     if (!e.depositId) return copy(e.snapshot);
-    const facts = await io.deposit(e.depositId, e.intent.recipient);
+    const facts = await boundedPeerRead(
+      (bound) => io.deposit(e.depositId!, e.intent.recipient, bound),
+      signal,
+    );
+    checkPeerAbort(signal);
     if (!factsValid(facts, e.preview.pay.atomic)) fail("provider_declined");
     const filled = BigInt(facts.filled),
       withdrawn = BigInt(facts.withdrawn),
       remaining = BigInt(facts.remaining);
+    e.amounts = {
+      deposited: atomic(e.preview.pay.atomic),
+      filled: atomic(facts.filled),
+      reserved: atomic(remaining - BigInt(facts.unmatched)),
+      withdrawable: atomic(facts.unmatched),
+      withdrawn: atomic(facts.withdrawn),
+    };
     e.phase =
       remaining === 0n && facts.activeIntents === 0
         ? withdrawn > 0n
@@ -444,9 +517,11 @@ export function createPeerOfframpProvider(options: {
     name: string,
     context: RampCommandContext,
     run: (e: Entry) => Promise<RampSnapshot>,
+    signal?: AbortSignal,
   ) {
     return access(store, async (entries) => {
-      const e = entry(entries, id);
+      checkPeerAbort(signal);
+      const e = copy(entry(entries, id));
       const fingerprint = JSON.stringify([name, context]);
       const receipt = e.receipts.get(context.idempotency_key);
       if (receipt)
@@ -469,6 +544,7 @@ export function createPeerOfframpProvider(options: {
       try {
         snapshot = await run(e);
       } catch (error) {
+        checkPeerAbort(signal);
         if (error instanceof MakerSetupRequired) {
           refusedRails.add(e.offer.rail.id);
           e.reason = "setup_required";
@@ -491,9 +567,41 @@ export function createPeerOfframpProvider(options: {
               : "provider_declined",
         );
       }
+      checkPeerAbort(signal);
+      entries.set(id, e);
       e.receipts.set(context.idempotency_key, { fingerprint, snapshot: copy(snapshot) });
       return snapshot;
     });
+  }
+  async function readStatus(
+    entries: Map<string, Entry>,
+    id: string,
+    signal?: AbortSignal,
+  ): Promise<RampSnapshot> {
+    checkPeerAbort(signal);
+    // Stage reconciliation so cancellation cannot publish a partially read order.
+    const staged = new Map(entries);
+    if (staged.has(id)) staged.set(id, copy(staged.get(id)!));
+    if (!staged.has(id)) {
+      try {
+        const pending = await restore(staged, id, signal);
+        if (pending) return pending;
+      } catch {
+        checkPeerAbort(signal);
+        fail("peer_in_doubt");
+      }
+    }
+    const e = entry(staged, id);
+    let snapshot: RampSnapshot;
+    try {
+      snapshot = await refresh(e, signal);
+    } catch {
+      checkPeerAbort(signal);
+      snapshot = update(e, "in_doubt", ["check_status"], "peer_in_doubt");
+    }
+    checkPeerAbort(signal);
+    entries.set(id, e);
+    return snapshot;
   }
   const provider: PeerOfframpProvider = {
     id: "peer",
@@ -517,26 +625,29 @@ export function createPeerOfframpProvider(options: {
         fail("provider_declined");
       }
     },
-    async capabilities(intent) {
+    async capabilities(intent, signal) {
+      checkPeerAbort(signal);
       if (intent.direction !== "offramp") return { offers: [] };
-      const result = await fetchPeerCapabilities(intent, options.discovery);
+      const result = await fetchPeerCapabilities(intent, { ...options.discovery, signal });
       for (const offer of result.offers) {
         try {
           const code = refusedRails.has(offer.rail.id)
             ? "setup_required"
-            : readinessCode(await readReady(intent, offer.rail.id));
+            : readinessCode(await readReady(intent, offer.rail.id, signal));
           if (code)
             offer.availability =
               code === "setup_required"
                 ? { state: "setup_required", requirement_codes: ["maker_account_setup"] }
                 : { state: "temporarily_unavailable", reason_code: code };
         } catch {
+          checkPeerAbort(signal);
           offer.availability = {
             state: "availability_unknown",
             reason_code: "capability_unavailable",
           };
         }
       }
+      checkPeerAbort(signal);
       const available = result.offers.filter((o) => o.availability.state === "available");
       result.availability = available.length
         ? {
@@ -567,20 +678,22 @@ export function createPeerOfframpProvider(options: {
           : [];
       });
     },
-    async preview(intent, offer) {
+    async preview(intent, offer, signal) {
+      checkPeerAbort(signal);
       if (
         intent.direction !== "offramp" ||
         options.discovery.user?.toLowerCase() !== intent.recipient.toLowerCase()
       )
         fail();
       const id = (options.mintOperationId ?? (() => crypto.randomUUID()))();
-      const result = await previewPeerOffer(offer, intent, id, options.discovery);
+      const result = await previewPeerOffer(offer, intent, id, { ...options.discovery, signal });
       if (!result.ok) fail(result.code);
       const code = refusedRails.has(offer.rail.id)
         ? "setup_required"
-        : readinessCode(await readReady(intent, offer.rail.id));
+        : readinessCode(await readReady(intent, offer.rail.id, signal));
       if (code) fail(code);
       return access(store, async (entries) => {
+        checkPeerAbort(signal);
         if (entries.has(id)) fail("session_conflict");
         const preview = result.preview;
         const snapshot: RampSnapshot = {
@@ -614,7 +727,7 @@ export function createPeerOfframpProvider(options: {
         return copy(preview);
       });
     },
-    approve(preview, context) {
+    approve(preview, context, signal) {
       return command(
         preview.operation_id,
         `approve:${JSON.stringify(preview)}`,
@@ -622,70 +735,81 @@ export function createPeerOfframpProvider(options: {
         async (e) => {
           if (JSON.stringify(e.preview) !== JSON.stringify(preview) || e.depositId || e.approved)
             fail("quote_changed");
-          await fresh(e);
+          await fresh(e, signal);
           e.approved = true;
           return update(e, "action_required", ["interact", "check_status"]);
         },
+        signal,
       );
     },
-    interact(id, context) {
-      return command(id, "interact", context, async (e) => {
-        if (e.depositId) return refresh(e); // Withdrawal requires a separately named amount/review.
-        if (e.plan) return copy(e.snapshot);
-        if (!e.approved) fail();
-        await fresh(e);
-        if (!e.ownAccount) fail("setup_required");
-        if (!(await io.allowance(e.intent.recipient, e.preview.pay.atomic))) {
-          e.plan = validatePlan(
-            await io.prepareApproval(e.preview.pay.atomic),
-            "approve_usdc",
-            e.preview.expires_at,
-          );
-        } else {
+    interact(id, context, signal) {
+      return command(
+        id,
+        "interact",
+        context,
+        async (e) => {
+          if (e.depositId) return refresh(e, signal); // Withdrawal requires a separately named amount/review.
+          if (e.plan) return copy(e.snapshot);
+          if (!e.approved) fail();
+          await fresh(e, signal);
           if (!e.ownAccount) fail("setup_required");
-          e.payeeHash ??= await io.registerOwnPayee(e.offer.rail.id, e.ownAccount);
-          e.plan = validatePlan(
-            await io.prepareDeposit({
-              intent: e.intent,
-              rail: e.offer.rail.id,
-              amount: e.preview.pay.atomic,
-              payeeHash: e.payeeHash,
-            }),
-            "create_deposit",
-            e.preview.expires_at,
-          );
-        }
-        return update(e, "action_required", ["check_status"]);
-      });
-    },
-    async status(id) {
-      return access(store, async (entries) => {
-        if (!entries.has(id)) {
-          try {
-            const pending = await restore(entries, id);
-            if (pending) return pending;
-          } catch {
-            fail("peer_in_doubt");
+          if (
+            !(await boundedPeerRead(
+              (bound) => io.allowance(e.intent.recipient, e.preview.pay.atomic, bound),
+              signal,
+            ))
+          ) {
+            e.plan = validatePlan(
+              await io.prepareApproval(e.preview.pay.atomic),
+              "approve_usdc",
+              e.preview.expires_at,
+            );
+          } else {
+            checkPeerAbort(signal);
+            if (!e.ownAccount) fail("setup_required");
+            e.payeeHash ??= await io.registerOwnPayee(e.offer.rail.id, e.ownAccount);
+            checkPeerAbort(signal);
+            e.plan = validatePlan(
+              await io.prepareDeposit(
+                {
+                  intent: e.intent,
+                  rail: e.offer.rail.id,
+                  amount: e.preview.pay.atomic,
+                  payeeHash: e.payeeHash,
+                },
+                signal,
+              ),
+              "create_deposit",
+              e.preview.expires_at,
+            );
           }
-        }
-        const e = entry(entries, id);
-        try {
-          return await refresh(e);
-        } catch {
-          return update(e, "in_doubt", ["check_status"], "peer_in_doubt");
-        }
-      });
+          checkPeerAbort(signal);
+          return update(e, "action_required", ["check_status"]);
+        },
+        signal,
+      );
     },
-    async recover(id, action, context) {
-      if (action === "check_status") return provider.status(id);
+    async status(id, signal) {
+      checkPeerAbort(signal);
+      return access(store, (entries) => readStatus(entries, id, signal));
+    },
+    async recover(id, action, context, signal) {
+      checkPeerAbort(signal);
+      if (action === "check_status") return provider.status(id, signal);
       if (action !== "recover_peer" && action !== "requote") fail();
-      return command(id, action, context, async (e) => {
-        if (e.depositId) return refresh(e);
-        // A new quote/approval is required after a reverted transaction or stale estimate.
-        delete e.plan;
-        e.approved = false;
-        return update(e, "quoted", ["requote"]);
-      });
+      return command(
+        id,
+        action,
+        context,
+        async (e) => {
+          if (e.depositId) return refresh(e, signal);
+          // A new quote/approval is required after a reverted transaction or stale estimate.
+          delete e.plan;
+          e.approved = false;
+          return update(e, "quoted", ["requote"]);
+        },
+        signal,
+      );
     },
     async setOwnAccount(id, account, ownership) {
       await access(store, async (entries) => {
@@ -703,7 +827,8 @@ export function createPeerOfframpProvider(options: {
         e.ownAccount = account;
       });
     },
-    async takeUnsignedPlan(id) {
+    async takeUnsignedPlan(id, signal) {
+      checkPeerAbort(signal);
       return access(store, async (entries) => {
         const e = entry(entries, id);
         if (!e.plan || e.claimed) fail();
@@ -711,13 +836,17 @@ export function createPeerOfframpProvider(options: {
           delete e.plan;
           fail("quote_expired");
         }
-        if (e.plan.action !== "withdraw_unmatched") await fresh(e);
+        if (e.plan.action !== "withdraw_unmatched") await fresh(e, signal);
         else {
           if (!e.depositId || !e.withdrawalAmount) fail();
           let facts: MakerDepositFacts;
           try {
-            facts = await io.deposit(e.depositId, e.intent.recipient);
+            facts = await boundedPeerRead(
+              (bound) => io.deposit(e.depositId!, e.intent.recipient, bound),
+              signal,
+            );
           } catch {
+            checkPeerAbort(signal);
             fail("peer_in_doubt");
           }
           if (
@@ -727,6 +856,7 @@ export function createPeerOfframpProvider(options: {
           )
             throw new MakerWithdrawalBlocked();
         }
+        checkPeerAbort(signal);
         e.claimed = e.plan.action;
         update(e, "in_doubt", ["check_status"], "peer_in_doubt");
         return copy(e.plan);
@@ -779,37 +909,54 @@ export function createPeerOfframpProvider(options: {
         );
       });
     },
-    prepareWithdrawal(id, amount, context) {
-      return command(id, `withdraw:${amount}`, context, async (e) => {
-        if (!e.depositId || e.plan) fail();
-        const requested = BigInt(atomic(amount));
-        const facts = await io.deposit(e.depositId, e.intent.recipient);
-        if (
-          !factsValid(facts, e.preview.pay.atomic) ||
-          requested <= 0n ||
-          requested > BigInt(facts.unmatched)
-        )
-          fail();
-        const full = requested === BigInt(facts.remaining);
-        if (full && facts.activeIntents > 0) throw new MakerWithdrawalBlocked();
-        e.withdrawalAmount = amount;
-        e.plan = validatePlan(
-          await io.prepareWithdrawal(e.depositId, amount, full),
-          "withdraw_unmatched",
-          new Date(now() + 30_000).toISOString(),
-        );
-        return update(e, "action_required", ["check_status"]);
-      });
+    prepareWithdrawal(id, amount, context, signal) {
+      return command(
+        id,
+        `withdraw:${amount}`,
+        context,
+        async (e) => {
+          if (!e.depositId || e.plan) fail();
+          const requested = BigInt(atomic(amount));
+          const facts = await boundedPeerRead(
+            (bound) => io.deposit(e.depositId!, e.intent.recipient, bound),
+            signal,
+          );
+          if (
+            !factsValid(facts, e.preview.pay.atomic) ||
+            requested <= 0n ||
+            requested > BigInt(facts.unmatched)
+          )
+            fail();
+          const full = requested === BigInt(facts.remaining);
+          if (full && facts.activeIntents > 0) throw new MakerWithdrawalBlocked();
+          e.withdrawalAmount = amount;
+          e.plan = validatePlan(
+            await io.prepareWithdrawal(e.depositId, amount, full, signal),
+            "withdraw_unmatched",
+            new Date(now() + 30_000).toISOString(),
+          );
+          checkPeerAbort(signal);
+          return update(e, "action_required", ["check_status"]);
+        },
+        signal,
+      );
     },
-    async orderStatus(id) {
-      const snapshot = await provider.status(id);
-      return access(store, async (entries) => ({
-        snapshot,
-        ...(snapshot.peer.state !== "in_doubt" && entries.get(id)?.phase
-          ? { phase: entries.get(id)?.phase }
-          : {}),
-        ...(entries.get(id)?.reason ? { reason: entries.get(id)?.reason } : {}),
-      }));
+    async orderStatus(id, signal) {
+      checkPeerAbort(signal);
+      return access(store, async (entries) => {
+        const snapshot = await readStatus(entries, id, signal);
+        checkPeerAbort(signal);
+        return {
+          snapshot,
+          ...(snapshot.peer.state !== "in_doubt" && entries.get(id)?.amounts
+            ? { amounts: copy(entries.get(id)!.amounts) }
+            : {}),
+          ...(snapshot.peer.state !== "in_doubt" && entries.get(id)?.phase
+            ? { phase: entries.get(id)?.phase }
+            : {}),
+          ...(entries.get(id)?.reason ? { reason: entries.get(id)?.reason } : {}),
+        };
+      });
     },
   };
   return provider;

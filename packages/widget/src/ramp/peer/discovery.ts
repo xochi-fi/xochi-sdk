@@ -40,10 +40,10 @@ export class PeerReadAborted extends Error {
 export function checkPeerAbort(signal?: AbortSignal): void {
   if (signal?.aborted) throw new PeerReadAborted();
 }
-export async function boundedPeerRead(
-  read: (signal: AbortSignal) => Promise<unknown>,
+export async function boundedPeerRead<T>(
+  read: (signal: AbortSignal) => Promise<T>,
   signal?: AbortSignal,
-): Promise<unknown> {
+): Promise<T> {
   checkPeerAbort(signal);
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -98,7 +98,7 @@ export function peerConfiguration(options: PeerDiscoveryOptions = {}): PeerConfi
     rails: getPaymentMethodsCatalog(8453, environment),
   };
 }
-function peerReads(options: PeerDiscoveryOptions): PeerDiscoveryReads {
+export function peerReads(options: PeerDiscoveryOptions): PeerDiscoveryReads {
   const url = URLS[options.environment ?? PEER_ENVIRONMENT];
   // The pinned SDK quote adapters do not forward signals. Mirror their V3
   // read-only wire format and use fetch directly to cancel the actual request.

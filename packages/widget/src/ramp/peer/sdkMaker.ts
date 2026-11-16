@@ -1,7 +1,12 @@
 import { atomic, type RampIntent } from "@xochi/client";
 import type { PreparedTransaction, Zkp2pClient } from "@zkp2p/sdk";
 import { encodeFunctionData, erc20Abi, type Address } from "viem";
-import { peerConfiguration } from "./discovery.js";
+import {
+  boundedPeerRead,
+  checkPeerAbort,
+  PeerReadAborted,
+  peerConfiguration,
+} from "./discovery.js";
 import {
   MakerSetupRequired,
   MakerWithdrawalBlocked,
@@ -42,7 +47,11 @@ export function createSDKMakerIO(options: {
   sdk: UnsignedMakerSDK;
   discovery?: PeerDiscoveryOptions;
   reads: Pick<PeerMakerIO, "readiness" | "allowance" | "reconcile" | "deposit">;
-  executionTerms(intent: RampIntent, rail: string): Promise<MakerExecutionTerms>;
+  executionTerms(
+    intent: RampIntent,
+    rail: string,
+    signal?: AbortSignal,
+  ): Promise<MakerExecutionTerms>;
 }): PeerMakerIO {
   const config = peerConfiguration(options.discovery);
   const now = options.discovery?.now ?? Date.now;
@@ -52,6 +61,7 @@ export function createSDKMakerIO(options: {
     try {
       return await run();
     } catch (error) {
+      if (error instanceof PeerReadAborted) throw error;
       // Read only an explicit bounded discriminator, never the raw message or response body.
       const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
       const explicitRefusal =
@@ -72,8 +82,12 @@ export function createSDKMakerIO(options: {
   }
   return {
     ...options.reads,
-    async readiness(intent, rail): Promise<MakerReadiness> {
-      const ready = await options.reads.readiness(intent, rail);
+    async readiness(intent, rail, signal): Promise<MakerReadiness> {
+      const ready = await boundedPeerRead(
+        (bound) => options.reads.readiness(intent, rail, bound),
+        signal,
+      );
+      checkPeerAbort(signal);
       // The identity requirement is independently documented even when catalog metadata omits it.
       return {
         ...ready,
@@ -108,9 +122,14 @@ export function createSDKMakerIO(options: {
         }),
       };
     },
-    prepareDeposit(input) {
+    prepareDeposit(input, signal) {
+      checkPeerAbort(signal);
       return guarded(async () => {
-        const terms = await options.executionTerms(input.intent, input.rail);
+        const terms = await boundedPeerRead(
+          (bound) => options.executionTerms(input.intent, input.rail, bound),
+          signal,
+        );
+        checkPeerAbort(signal);
         const amount = BigInt(atomic(input.amount));
         const min = BigInt(atomic(terms.minimum)),
           max = BigInt(atomic(terms.maximum));
@@ -149,6 +168,7 @@ export function createSDKMakerIO(options: {
             : {}),
           retainOnEmpty: false,
         });
+        checkPeerAbort(signal);
         return result.prepared;
       });
     },

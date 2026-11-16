@@ -24,6 +24,7 @@ export type {
   MakerReadiness,
   MakerUnsignedPlan,
   MakerDepositFacts,
+  MakerOrderAmounts,
   MakerReconciliation,
   MakerPhase,
   MakerReason,

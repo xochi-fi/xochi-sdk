@@ -183,6 +183,98 @@ async function deposited() {
   return s;
 }
 describe("Peer maker unsigned lifecycle", () => {
+  it("cancels maker readiness and never returns aborted offers", async () => {
+    const s = setup();
+    const controller = new AbortController();
+    let started!: () => void;
+    const reading = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let readSignal: AbortSignal | undefined;
+    s.io.readiness = async (_intent?: RampIntent, _rail?: string, signal?: AbortSignal) => {
+      readSignal = signal;
+      started();
+      return new Promise<MakerReadiness>(() => {});
+    };
+    const pending = s.provider.capabilities(intent, controller.signal);
+    await reading;
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(readSignal?.aborted).toBe(true);
+  });
+  it("cancels approval reads without consuming the command receipt", async () => {
+    const s = setup();
+    const offers = s.provider.normalizeCapabilities(await s.provider.capabilities(intent), intent);
+    const preview = await s.provider.preview(
+      intent,
+      offers.find((offer) => offer.rail.id === "wise")!,
+    );
+    const original = s.io.readiness.bind(s.io);
+    let started!: () => void;
+    const reading = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    s.io.readiness = async () => {
+      started();
+      return new Promise<MakerReadiness>(() => {});
+    };
+    const controller = new AbortController();
+    const context = { expected_revision: "0", idempotency_key: "approve-cancelled" };
+    const pending = s.provider.approve(preview, context, controller.signal);
+    await reading;
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    s.io.readiness = original;
+    expect((await s.provider.approve(preview, context)).peer.state).toBe("action_required");
+  });
+  it("rejects pre-aborted preview and status without publishing state", async () => {
+    const s = await deposited();
+    const signal = AbortSignal.abort();
+    await expect(s.provider.status(s.preview.operation_id, signal)).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    await expect(s.provider.orderStatus(s.preview.operation_id, signal)).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    const offers = s.provider.normalizeCapabilities(await s.provider.capabilities(intent), intent);
+    await expect(s.provider.preview(intent, offers[0], signal)).rejects.toMatchObject({
+      name: "AbortError",
+    });
+  });
+  it("cancels an in-flight order read without changing its revision", async () => {
+    const s = await deposited();
+    const before = await s.provider.status(s.preview.operation_id);
+    const original = s.io.deposit.bind(s.io);
+    const controller = new AbortController();
+    let started!: () => void;
+    const reading = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let finish!: (facts: MakerDepositFacts) => void;
+    s.io.deposit = async () => {
+      started();
+      return new Promise<MakerDepositFacts>((resolve) => {
+        finish = resolve;
+      });
+    };
+    const pending = s.provider.orderStatus(s.preview.operation_id, controller.signal);
+    await reading;
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    finish({ ...s.io.facts, remaining: "0", unmatched: "0", filled: "25000000", closed: true });
+    s.io.deposit = original;
+    const after = await s.provider.status(s.preview.operation_id);
+    expect(BigInt(after.revision)).toBe(BigInt(before.revision) + 2n);
+    expect(after.peer.state).toBe("processing");
+  });
+  it("omits totals while reconciliation is unknown or incoherent", async () => {
+    const s = await deposited();
+    s.io.facts.remaining = "1";
+    const status = await s.provider.orderStatus(s.preview.operation_id);
+    expect(status.snapshot.peer.state).toBe("in_doubt");
+    expect(status.amounts).toBeUndefined();
+  });
+
   it("prepares approval then deposit, leaving every wallet action explicit", async () => {
     const s = await previewed(false);
     s.snapshot = await s.provider.interact(
@@ -247,6 +339,13 @@ describe("Peer maker unsigned lifecycle", () => {
     Object.assign(s.io.facts, { remaining: "15000000", unmatched: "10000000", filled: "10000000" });
     const partial = await s.provider.orderStatus(s.preview.operation_id);
     expect(partial.phase).toBe("delivering");
+    expect(partial.amounts).toEqual({
+      deposited: "25000000",
+      filled: "10000000",
+      reserved: "5000000",
+      withdrawable: "10000000",
+      withdrawn: "0",
+    });
     expect(partial.snapshot.terminal).toBe(false);
     Object.assign(s.io.facts, {
       remaining: "0",
@@ -257,6 +356,13 @@ describe("Peer maker unsigned lifecycle", () => {
     });
     const delivered = await s.provider.orderStatus(s.preview.operation_id);
     expect(delivered.phase).toBe("delivered");
+    expect(delivered.amounts).toEqual({
+      deposited: "25000000",
+      filled: "25000000",
+      reserved: "0",
+      withdrawable: "0",
+      withdrawn: "0",
+    });
     expect(delivered.snapshot.peer.state).toBe("completed");
   });
   it("allows partial unmatched withdrawal while a buyer blocks full withdrawal", async () => {
@@ -306,6 +412,13 @@ describe("Peer maker unsigned lifecycle", () => {
     });
     const returned = await s.provider.orderStatus(s.preview.operation_id);
     expect(returned.phase).toBe("returned");
+    expect(returned.amounts).toEqual({
+      deposited: "25000000",
+      filled: "0",
+      reserved: "0",
+      withdrawable: "0",
+      withdrawn: "25000000",
+    });
     expect(returned.snapshot.peer.state).toBe("refunded");
   });
   it("expires estimates before preparation and before single-use handoff", async () => {
