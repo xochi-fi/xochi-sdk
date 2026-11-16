@@ -7,17 +7,15 @@
  *   - `address`: a public ERC-20 transfer to a wallet address (AddressSend);
  *   - `stealth`: the existing Stealth settlement to the user's own stealth
  *     keys, handed to the Swap card (StealthSend);
- *   - `payment_app`: cashing out to the user's own payment-app account through
- *     Peer. Shows live Peer cash-out rails (ramp/availability); choosing one
- *     executes nothing yet.
+ *   - `payment_app`: cashing out Base USDC to the user's own payment-app
+ *     account through a Peer maker deposit (ramp/offramp/PaymentAppSend).
  *
  * Neither `address` nor `stealth` touches Peer. Each destination stays mounted
  * while hidden, so switching kinds keeps what was typed.
  */
 
 import { useId } from "react";
-import { useAccount } from "wagmi";
-import { RampRails } from "../../ramp/availability/RampRails.js";
+import { PaymentAppSend } from "../../ramp/offramp/PaymentAppSend.js";
 import type { SwapPrefill } from "../trade/SwapPanel.js";
 import {
   WidgetTabs,
@@ -57,7 +55,6 @@ export function SendPanel({
   fiatCurrency,
 }: SendPanelProps) {
   const baseId = useId();
-  const { address } = useAccount();
   const tabs: WidgetTab<SendDestinationKind>[] = destinations.map((kind) => ({
     id: kind,
     label: LABELS[kind],
@@ -96,9 +93,7 @@ export function SendPanel({
       )}
       {destinations.includes("payment_app") && (
         <div {...panel("payment_app")}>
-          <RampRails
-            direction="offramp"
-            account={address}
+          <PaymentAppSend
             fiatCurrency={fiatCurrency}
             active={active && destination === "payment_app"}
           />

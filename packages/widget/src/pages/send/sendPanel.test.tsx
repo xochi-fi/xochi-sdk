@@ -12,7 +12,8 @@
  *   - `stealth`: opening it signs nothing, key setup is its own explicit step,
  *     and continuing hands the order to Swap with Stealth selected;
  *   - `payment_app`: states own-account payout and approximate estimates
- *     before any rail, and offers only rails Peer proves available live.
+ *     before any rail, and offers only rails Peer proves available live
+ *     (the full cash-out flow: ramp/offramp/paymentAppSend.test.tsx).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -26,8 +27,8 @@ import { intentAPI } from "../../lib/intentAPI.js";
 import { listLocalSends } from "../../lib/localSends.js";
 import { clearWalletSession } from "../../lib/walletSession.js";
 import { WAIT, testBudget } from "../../test/waitBudget.js";
-import { RampDiscoveryContext } from "../../ramp/availability/useRampDiscovery.js";
-import { RECORDED_AT, recordedPort } from "../../test/rampPort.js";
+import { OfframpPortContext } from "../../ramp/offramp/port.js";
+import { memoryOfframpPort } from "../../test/offrampPort.js";
 
 vi.setConfig({ testTimeout: testBudget({ renders: 1, waits: 4 }) });
 
@@ -255,15 +256,11 @@ describe("send privately", () => {
 describe("send to a payment app", () => {
   it("states the payout facts first and offers only live-proven rails", async () => {
     const calls = stubWallet();
-    const port = recordedPort({
-      account: TEST_ACCOUNT,
-      clock: { t: RECORDED_AT },
-      makerRails: ["wise"],
-    });
+    const port = memoryOfframpPort({ account: TEST_ACCOUNT, makerRails: ["wise"] });
     await renderTrade(
-      <RampDiscoveryContext value={port}>
+      <OfframpPortContext value={port}>
         <Trade look={FULL_LOOK} />
-      </RampDiscoveryContext>,
+      </OfframpPortContext>,
       { connected: true },
     );
     fireEvent.click(topTab("Send"));
@@ -285,6 +282,7 @@ describe("send to a payment app", () => {
     );
     fireEvent.click(within(panel).getByLabelText(/Wise/));
     expect(prompts(calls)).toEqual([]);
+    expect(port.signed).toEqual([]);
   });
 });
 
