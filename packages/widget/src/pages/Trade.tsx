@@ -432,6 +432,7 @@ export function Trade({ look, hostConnection = hostBridge }: TradeProps) {
         toToken: item.data.toToken,
         fromAmount: item.data.fromAmount,
         settlement: item.data.settlementType,
+        stealthPayee: item.data.stealthPayee,
         recipientTag: item.data.recipientTag,
         refundAddress: item.data.deposit?.attested.refund_address ?? undefined,
       });

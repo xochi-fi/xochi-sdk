@@ -236,7 +236,11 @@ function SwapRow({
   // A completed stealth row's next action is the claim, not an explorer link:
   // the funds sit at the one-time address until claimed (Phase 6).
   const canGoToClaims =
-    onClaimNudge !== undefined && intentStatus === "completed" && data.settlementType === "stealth";
+    onClaimNudge !== undefined &&
+    intentStatus === "completed" &&
+    data.settlementType === "stealth" &&
+    // Someone else's payment is theirs to claim.
+    data.stealthPayee !== "other";
   // The recipient's receipt step on a shielded payout, behind its kill switch.
   const command = receiptCommand(item, RECIPIENT_RECEIPTS_LIVE);
   const refundAddress = useMemo(() => {

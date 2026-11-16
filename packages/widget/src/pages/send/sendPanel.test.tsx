@@ -10,7 +10,9 @@
  *     approval button, and then for exactly the reviewed transfer; the public
  *     hash is shown and the send lands in Activity;
  *   - `stealth`: opening it signs nothing, key setup is its own explicit step,
- *     and continuing hands the order to Swap with Stealth selected;
+ *     and continuing hands the order to Swap with Stealth selected; someone
+ *     else's meta-address is parsed strictly, reviewed, needs no keys of the
+ *     wallet's own, and is the only key material the quote request carries;
  *   - `payment_app`: says it is unavailable and offers nothing to press.
  */
 
@@ -25,6 +27,8 @@ import { intentAPI } from "../../lib/intentAPI.js";
 import { listLocalSends } from "../../lib/localSends.js";
 import { clearWalletSession } from "../../lib/walletSession.js";
 import { WAIT, testBudget } from "../../test/waitBudget.js";
+import { quoteWire } from "../../test/intentHarness.js";
+import vectors from "../../lib/reverse-stealth-vectors.json";
 
 vi.setConfig({ testTimeout: testBudget({ renders: 1, waits: 4 }) });
 
@@ -38,9 +42,12 @@ interface WalletCall {
 }
 
 /** Stub the platform boundary and record every request the mock wallet forwards. */
-function stubWallet(walletResults: Record<string, unknown> = {}): WalletCall[] {
+function stubWallet(
+  walletResults: Record<string, unknown> = {},
+  routes: Parameters<typeof apiStub>[0] = {},
+): WalletCall[] {
   const calls: WalletCall[] = [];
-  const stub = apiStub({}, { walletResults });
+  const stub = apiStub(routes, { walletResults });
   vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     if (url === "http://harness.invalid/rpc" && typeof init?.body === "string") {
@@ -246,6 +253,116 @@ describe("send privately", () => {
     expect(panel.getByLabelText<HTMLSelectElement>("From network").value).toBe("1");
     await waitFor(() => expect(panel.getByRole("status").textContent).toMatch(/USDC/), WAIT);
     expect(panel.queryByLabelText("Arrives on")).toBeNull();
+  });
+});
+
+describe("send privately to someone else", () => {
+  const recipient = vectors[0];
+  const META = `st:eth:0x${recipient.spending_pub.slice(2)}${recipient.viewing_pub.slice(2)}`;
+
+  async function openOther() {
+    const bodies: Record<string, unknown>[] = [];
+    const calls = stubWallet(
+      {},
+      {
+        "/api/intent/quote": {
+          answer: (request) => {
+            bodies.push(request as Record<string, unknown>);
+            return quoteWire({
+              can_solve: false,
+              error: "No fill",
+              error_category: "no_liquidity",
+            });
+          },
+        },
+      },
+    );
+    await openSend({ tokenBalance: 10_000_000n });
+    fireEvent.click(kindTab("Stealth"));
+    const panel = within(kindPanel("Stealth"));
+    fireEvent.change(panel.getByLabelText("From network"), { target: { value: "8453" } });
+    await panel.findByLabelText("Arrives on", {}, WAIT);
+    fireEvent.click(panel.getByLabelText("Someone else"));
+    return { bodies, calls, panel };
+  }
+
+  it("refuses a malformed meta-address with its reason and reviews nothing", async () => {
+    const { calls, panel } = await openOther();
+    fireEvent.change(panel.getByLabelText("Amount"), { target: { value: "5" } });
+    const field = panel.getByLabelText("Recipient stealth meta-address");
+    fireEvent.change(field, { target: { value: META.slice(0, -2) } });
+    fireEvent.click(panel.getByRole("button", { name: "Review Stealth send" }));
+    expect(field.getAttribute("aria-invalid")).toBe("true");
+    expect(panel.getByText(/it must be 132/)).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Review Stealth send" })).toBeNull();
+
+    fireEvent.change(field, { target: { value: `0x${"22".repeat(20)}` } });
+    expect(panel.getByText(/starts with st:eth:0x/)).toBeTruthy();
+    expect(prompts(calls)).toEqual([]);
+  });
+
+  it("reviews the meta-address, then quotes Stealth to those keys with no key setup", async () => {
+    const { bodies, calls, panel } = await openOther();
+    fireEvent.change(panel.getByLabelText("Amount"), { target: { value: "5" } });
+    fireEvent.change(panel.getByLabelText("Recipient stealth meta-address"), {
+      target: { value: META },
+    });
+    // No key ceremony is offered or needed for someone else's keys.
+    expect(panel.queryByRole("button", { name: "Set up Stealth keys" })).toBeNull();
+    fireEvent.click(panel.getByRole("button", { name: "Review Stealth send" }));
+
+    const review = screen.getByRole("region", { name: "Review Stealth send" });
+    expect(within(review).getByText("5 USDC")).toBeTruthy();
+    expect(within(review).getByText("Base")).toBeTruthy();
+    expect(within(review).getByText("Ethereum")).toBeTruthy();
+    const shown = within(review).getByTitle(META);
+    expect(shown.textContent).toBe(`st:eth:0x${META.slice(9, 15)}...${META.slice(-6)}`);
+    expect(review.textContent).toMatch(/does not hide your funding transaction/);
+    expect(prompts(calls)).toEqual([]);
+
+    fireEvent.click(within(review).getByRole("button", { name: "Continue to Stealth swap" }));
+    expect(topTab("Trade").getAttribute("aria-selected")).toBe("true");
+    const card = document.querySelector(".trade-card") as HTMLElement;
+    await waitFor(
+      () => expect(within(card).getByLabelText<HTMLInputElement>("Send").value).toBe("5"),
+      WAIT,
+    );
+    const note = within(card).getByRole("region", { name: "Stealth recipient" });
+    expect(within(note).getByTitle(META)).toBeTruthy();
+
+    await waitFor(
+      () => expect(bodies.some((b) => b.settlement_preference === "stealth")).toBe(true),
+      WAIT,
+    );
+    for (const body of bodies) {
+      expect(body.settlement_preference).toBe("stealth");
+      expect(body.stealth_meta_address).toEqual({
+        spending_pub_key: recipient.spending_pub,
+        viewing_pub_key: recipient.viewing_pub,
+        chain_id: 1,
+      });
+    }
+    // Nothing was signed on the way: no key setup, no quote signature yet.
+    expect(prompts(calls)).toEqual([]);
+  });
+
+  it("drops the recipient and says so when the order leaves Stealth", async () => {
+    const { panel } = await openOther();
+    fireEvent.change(panel.getByLabelText("Amount"), { target: { value: "5" } });
+    fireEvent.change(panel.getByLabelText("Recipient stealth meta-address"), {
+      target: { value: META },
+    });
+    fireEvent.click(panel.getByRole("button", { name: "Review Stealth send" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue to Stealth swap" }));
+    const card = document.querySelector(".trade-card") as HTMLElement;
+    await within(card).findByRole("region", { name: "Stealth recipient" }, WAIT);
+
+    fireEvent.click(within(card).getByRole("button", { name: /^Public/ }));
+    await waitFor(
+      () => expect(within(card).queryByRole("region", { name: "Stealth recipient" })).toBeNull(),
+      WAIT,
+    );
+    expect(screen.getByText(/Removed the stealth recipient/)).toBeTruthy();
   });
 });
 

@@ -67,6 +67,8 @@ export interface ResumePlan {
    * record with no marker reads as public, as every other reader treats it.
    */
   destination: IntentDestination;
+  /** The record's `stealthPayee`: whose keys a resumed Stealth ending describes. */
+  stealthPayee: "self" | "other";
   /**
    * When the swap was submitted, so the modal's elapsed counter reads real time
    * in flight rather than restarting from zero (which would tell a user waiting
@@ -143,6 +145,7 @@ export function planResume(record: SwapActivityItem | null | undefined): ResumeP
       : record.data.settlementType === "stealth"
         ? STEALTH_DESTINATION
         : DEFAULT_DESTINATION,
+    stealthPayee: record.data.stealthPayee === "other" ? "other" : "self",
     startedAt: record.timestamp,
   };
 }
@@ -162,6 +165,8 @@ export interface ResumedSwap {
   deposit: DepositActivity | null;
   /** The dispatched order's destination, keyed to the intent id like the rest. */
   destination: IntentDestination;
+  /** Whose stealth keys it paid; absent reads as the wallet's own. */
+  stealthPayee?: "self" | "other";
 }
 
 /**

@@ -63,6 +63,7 @@ import {
 import { verifyStoredDeposit } from "@xochi/client";
 import { DEPOSIT_ATTESTATION_PIN } from "../../config.js";
 import { normalizeZkMoneyTag, zkMoneyTagValid } from "./zkMoney.js";
+import type { StealthRecipient } from "../send/stealthRecipient.js";
 
 // The submit button's label while the selected privacy mode is unavailable.
 // "wallet" never shows here: the disconnected branch outranks it.
@@ -115,6 +116,14 @@ export interface SwapPrefill {
   settlement?: SettlementType;
   recipientTag?: string;
   refundAddress?: string;
+  /**
+   * Another person's stealth meta-address, from Send > Stealth: public keys
+   * only, and only with `settlement: "stealth"`. Absent pays the wallet's own
+   * keys.
+   */
+  stealthRecipient?: StealthRecipient;
+  /** A history row's marker that its order paid someone else's keys. */
+  stealthPayee?: "other";
 }
 
 export interface UseSwapFlowParams {
@@ -151,6 +160,9 @@ export interface UseSwapFlowParams {
   clearRecipient: () => void;
   restoreRecipientTag: (tag: string) => void;
   restoreRefundAddress: (address: string) => void;
+  /** The live form's payee: someone else's meta-address (`"other"`) or the wallet's own keys. */
+  stealthPayee: "self" | "other";
+  restoreStealthRecipient: (next: StealthRecipient | null) => void;
   /** Flow-modal state, held by the composition (it also pauses the quote). */
   flowOpen: boolean;
   setFlowOpen: (open: boolean) => void;
@@ -176,6 +188,8 @@ export interface UseSwapFlowResult {
   handleStartOver: () => void;
   flowReopenable: boolean;
   flowDestination: IntentDestination;
+  /** Whose keys the modal's Stealth ending describes, bound like `flowDestination`. */
+  flowStealthPayee: "self" | "other";
   executionStartTime: number | null;
   resumedDeposit: DepositActivity | null;
   /** The one CTA, from one precedence chain: label and action cannot disagree. */
@@ -211,6 +225,8 @@ export function useSwapFlow({
   clearRecipient,
   restoreRecipientTag,
   restoreRefundAddress,
+  stealthPayee,
+  restoreStealthRecipient,
   flowOpen,
   setFlowOpen,
   resumed,
@@ -229,6 +245,9 @@ export function useSwapFlow({
   // resumed order was never confirmed here, so its bound copy is the record's
   // (`resumedDestination` below).
   const [executedDestination, setExecutedDestination] = useState<IntentDestination | null>(null);
+  // Bound and released with `executedDestination`: who the dispatched Stealth
+  // order pays, which the live form can no longer change.
+  const [executedPayee, setExecutedPayee] = useState<"self" | "other" | null>(null);
 
   /**
    * True while the panel is showing a RESUMED intent, i.e. one restored from the
@@ -300,6 +319,16 @@ export function useSwapFlow({
       showToast("Couldn't reload that trade. Set it up again.", "error");
       return;
     }
+    // A history row that paid someone else's keys keeps no keys to pay again,
+    // and retrying it as-is would pay this wallet's own keys instead.
+    if (prefill.stealthPayee === "other" && prefill.stealthRecipient === undefined) {
+      showToast("That send paid someone else's stealth keys. Start it again from Send.", "error");
+      return;
+    }
+    if (prefill.stealthRecipient !== undefined && prefill.settlement !== "stealth") {
+      showToast("Couldn't reload that trade. Set it up again.", "error");
+      return;
+    }
 
     intent.reset();
     // Restore the order's selected mode even if its route is no longer
@@ -323,6 +352,7 @@ export function useSwapFlow({
           : "public",
     );
     clearRecipient();
+    restoreStealthRecipient(prefill.stealthRecipient ?? null);
     restoreRecipientTag(recipientTag ?? "");
     restoreRefundAddress(prefill.refundAddress ?? "");
     applyRoute({
@@ -392,6 +422,7 @@ export function useSwapFlow({
       toAmount: plan.toAmount,
       deposit: null,
       destination: plan.destination,
+      stealthPayee: plan.stealthPayee,
     });
     // Elapsed counts from the original submit, not from now: a user ten minutes
     // into a settling swap must not be told they just started.
@@ -554,6 +585,10 @@ export function useSwapFlow({
             : "public"
           : settlement,
         recipientTag: executedDestination?.recipientTag ?? intent.quote?.recipientTag,
+        // The marker only, never the keys (see SwapActivity.stealthPayee).
+        ...((executedDestination ? executedPayee : stealthPayee) === "other" && {
+          stealthPayee: "other" as const,
+        }),
         isCrossChain: fromChainId !== toChainId,
         // The VERIFIED deposit binding, stored verbatim, so a resumed swap gets
         // a usable screen back rather than a modal with no address on it.
@@ -646,6 +681,7 @@ export function useSwapFlow({
     setFlowOpen(false);
     setExecutionStartTime(null);
     setExecutedDestination(null);
+    setExecutedPayee(null);
     return true;
   }, [intent.status, intent.cancelSign, intent.reset, setFlowOpen]);
 
@@ -752,6 +788,7 @@ export function useSwapFlow({
     }
     setExecutionStartTime(Date.now());
     setExecutedDestination(quotedDestination);
+    setExecutedPayee(stealthPayee);
     intent.sign();
   }, [
     hasCurrentSettlementAuthority,
@@ -760,6 +797,7 @@ export function useSwapFlow({
     intent.sign,
     invalidateHeldQuote,
     quotedDestination,
+    stealthPayee,
   ]);
 
   // A dismissed wallet prompt has not dispatched anything. End the machine's
@@ -770,6 +808,7 @@ export function useSwapFlow({
     if (!intent.cancelSign()) return;
     setExecutionStartTime(null);
     setExecutedDestination(null);
+    setExecutedPayee(null);
   }, [intent]);
 
   // Single close for the flow modal.
@@ -826,6 +865,7 @@ export function useSwapFlow({
       intent.reset();
       setExecutionStartTime(null);
       setExecutedDestination(null);
+      setExecutedPayee(null);
       // `resumed` needs no clearing here: it is keyed to the intent id, so the
       // reset above already stops it applying. Left to be dropped on the next
       // resume rather than cleared on one of several exit paths, since missing
@@ -858,6 +898,7 @@ export function useSwapFlow({
     intent.reset();
     setExecutionStartTime(null);
     setExecutedDestination(null);
+    setExecutedPayee(null);
   }, [intent, address, setFlowOpen]);
 
   // In flight with the modal closed: the CTA is the way back into the
@@ -940,6 +981,8 @@ export function useSwapFlow({
     // a resume), the live form's otherwise. Never the live toggle for an
     // executed order (see executedDestination above).
     flowDestination: executedDestination ?? resumedDestination ?? quotedDestination,
+    flowStealthPayee:
+      executedPayee ?? (isResumedIntent ? (resumed.stealthPayee ?? "self") : null) ?? stealthPayee,
     executionStartTime,
     resumedDeposit,
     needsChainSwitch,
