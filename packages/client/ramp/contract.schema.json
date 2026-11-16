@@ -1220,6 +1220,13 @@
             "recoverable": {
               "type": "boolean"
             },
+            "payout_state": {
+              "type": "string",
+              "enum": [
+                "held",
+                "released"
+              ]
+            },
             "transaction_hash": {
               "type": "string",
               "pattern": "^0x[0-9a-fA-F]{64}$"
@@ -1275,6 +1282,13 @@
             },
             "recoverable": {
               "type": "boolean"
+            },
+            "payout_state": {
+              "type": "string",
+              "enum": [
+                "held",
+                "released"
+              ]
             },
             "transaction_hash": {
               "type": "string",

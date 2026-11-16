@@ -193,6 +193,8 @@ export const RampLegSnapshotSchema = z.object({
   state: RampLegStateSchema,
   failure_code: RampErrorCodeSchema.optional(),
   recoverable: z.boolean(),
+  /** Held payouts remain processing until recipient receipt is verified. */
+  payout_state: z.enum(["held", "released"]).optional(),
   transaction_hash: z
     .string()
     .regex(/^0x[0-9a-fA-F]{64}$/)
@@ -388,6 +390,14 @@ function previewCoherent(preview: RampPreview): boolean {
 }
 
 function snapshotCoherent(snapshot: RampSnapshot): boolean {
+  if (
+    snapshot.xochi?.payout_state !== undefined ||
+    (snapshot.peer.payout_state === "held" &&
+      snapshot.peer.state !== "processing" &&
+      snapshot.peer.state !== "in_doubt") ||
+    (snapshot.peer.payout_state === "released" && snapshot.peer.state !== "completed")
+  )
+    return false;
   const expectedOrder = snapshot.xochi
     ? snapshot.direction === "onramp"
       ? ["peer", "xochi"]
