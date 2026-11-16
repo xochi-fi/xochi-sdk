@@ -51,4 +51,7 @@ export type {
   SolverCapabilities,
   ZkMoneyRouteDestination,
 } from "@xochi/signer";
+export * from "./rampProvider.js";
+export * from "./rampOperationStore.js";
+export * from "./rampClient.js";
 export * from "./rampDiscovery.js";

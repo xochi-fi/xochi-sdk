@@ -9,3 +9,26 @@ export type {
   PeerDiscoveryResult,
 } from "./types.js";
 export type { PeerPreviewResult } from "./preview.js";
+export {
+  createPeerOfframpProvider,
+  PeerMakerPrivateStore,
+  MakerSetupRequired,
+  MakerWithdrawalBlocked,
+} from "./offramp.js";
+export type {
+  PeerOfframpProvider,
+  PeerMakerIO,
+  MakerReadiness,
+  MakerUnsignedPlan,
+  MakerDepositFacts,
+  MakerReconciliation,
+  MakerPhase,
+  MakerReason,
+  MakerWalletAction,
+} from "./offramp.js";
+export { createSDKMakerIO } from "./sdkMaker.js";
+export type { MakerExecutionTerms, UnsignedMakerSDK } from "./sdkMaker.js";
+
+export { createLivePeerOfframpProvider } from "./liveProvider.js";
+export type { MakerPublicClient } from "./liveReads.js";
+export type { MakerMappingStorage } from "./protectedMapping.js";

@@ -30,6 +30,10 @@ const evidence = z.object({
     .max(32),
   credential: z.enum(["verified", "missing", "unknown"]),
   wallet: z.string().optional(),
+  pricing_revision: z
+    .string()
+    .regex(/^0x[0-9a-f]{64}$/)
+    .optional(),
 });
 export function normalizePeerMakerEvidence(
   raw: unknown,
@@ -91,7 +95,20 @@ export function normalizePeerMakerEvidence(
         );
         receive = atomic(intent.exact.side === "fiat" ? exact : (exact * numerator) / denominator);
         validUntil = new Date(Math.min(expiry, observed + PEER_FRESHNESS_MS)).toISOString();
-        revision = [e, validUntil];
+        // Observation timestamps enforce freshness, not economic identity. A new observation
+        // of unchanged terms must not force a perpetual requote during wallet preparation.
+        revision = [
+          e.rail,
+          e.currency,
+          e.asset_id,
+          e.region,
+          e.rate,
+          e.bounds,
+          e.fees,
+          e.credential,
+          e.wallet,
+          e.pricing_revision,
+        ];
         fees = e.fees.map((fee) => ({
           code: fee.code,
           money: { asset: config.settlement, atomic: atomic(fee.atomic) },
