@@ -24,3 +24,4 @@ export const Widget = lazy(async () => {
   await import("./browser.js");
   return import("./EmbedApp.js");
 });
+export * from "./ramp/peer/index.js";

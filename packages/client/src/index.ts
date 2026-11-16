@@ -40,3 +40,4 @@ export type {
   SolverCapabilities,
   ZkMoneyRouteDestination,
 } from "@xochi/signer";
+export * from "./rampDiscovery.js";
