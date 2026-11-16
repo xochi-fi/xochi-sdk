@@ -35,6 +35,7 @@ import { StealthClaims } from "../components/StealthClaims.js";
 import { AccountChip } from "../components/AccountChip.js";
 import { SendActivityList } from "../components/SendActivityList.js";
 import { useLocalSends } from "../hooks/useLocalSends.js";
+import { OfframpActivityList, useLocalOfframps } from "../ramp/offramp/OfframpActivityList.js";
 import { SwapPanel, type SwapPrefill } from "./trade/SwapPanel.js";
 import { BuyPanel } from "./trade/BuyPanel.js";
 import { SendPanel } from "./send/SendPanel.js";
@@ -173,6 +174,7 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
     onComplete: handleSwapComplete,
   });
   const localSends = useLocalSends();
+  const localOfframps = useLocalOfframps();
 
   // Subscribe to the user's authorized agents' streams. Verified agent activity
   // is fed into the same local log (tagged "agent"), so it flows through
@@ -614,6 +616,7 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
               {isConnected && <AssetsStrip />}
 
               <SendActivityList sends={localSends} />
+              <OfframpActivityList items={localOfframps} />
 
               <section className="launch-txlog" aria-label="Transaction log">
                 <ActivityFeed
