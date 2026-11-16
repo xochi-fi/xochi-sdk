@@ -15,6 +15,8 @@ import {
   MAX_PENDING_RPC,
   WIDGET_PROTOCOL_VERSION,
   createXochiWidget,
+  createXochiRampWidget,
+  parseEmbedParams,
   normalizeWidgetOrigin,
   type Eip1193Provider,
   type XochiWidget,
@@ -1146,5 +1148,76 @@ describe("destroy", () => {
     expect(() => widget.updateParams({})).toThrow(/destroyed/);
     expect(() => widget.updateProvider(null)).toThrow(/destroyed/);
     expect(() => widget.updateTheme("dim")).toThrow(/destroyed/);
+  });
+});
+
+describe("ramp facade and events", () => {
+  it.each(["onramp", "offramp"] as const)(
+    "opens %s and updates params on the same iframe",
+    (direction) => {
+      const container = document.createElement("div");
+      document.body.append(container);
+      const widget = createXochiRampWidget(container, { direction });
+      mounted.push(widget);
+      const iframe = container.querySelector("iframe")!;
+      expect(parseEmbedParams(new URL(iframe.src).search)).toEqual(
+        direction === "onramp"
+          ? { initialTab: "trade", initialMode: "onramp" }
+          : { initialTab: "send", sendDestinations: ["payment_app"] },
+      );
+      widget.updateParams({
+        initialTab: "trade",
+        tabs: ["trade"],
+        initialMode: "swap",
+        modes: ["swap"],
+        fiatCurrency: "EUR",
+        rampProviders: [],
+        sendDestinations: [],
+      });
+      expect(container.querySelector("iframe")).toBe(iframe);
+      expect(parseEmbedParams(new URL(iframe.src).search)).toEqual({
+        initialTab: "trade",
+        tabs: ["trade"],
+        initialMode: "swap",
+        modes: ["swap"],
+        fiatCurrency: "EUR",
+        rampProviders: [],
+        sendDestinations: [],
+      });
+    },
+  );
+
+  it("validates ramp events and keeps source, origin and size checks", () => {
+    const seen: XochiWidgetEvent[] = [];
+    const { frame } = mount({
+      listeners: {
+        "ramp:started": (e) => seen.push(e),
+        "ramp:status": (e) => seen.push(e),
+        "ramp:recovery-required": (e) => seen.push(e),
+        "ramp:terminal": (e) => seen.push(e),
+      },
+    });
+    const rampRef = `ramp_${"a".repeat(32)}`;
+    const events = [
+      { name: "ramp:started", rampRef, direction: "onramp" },
+      { name: "ramp:status", rampRef, peer: "in_doubt", xochi: "not_started" },
+      { name: "ramp:recovery-required", rampRef, leg: "peer", code: "peer_in_doubt" },
+      { name: "ramp:terminal", rampRef, peer: "refunded", xochi: "skipped" },
+    ];
+    for (const event of events)
+      fromFrame(frame(), { type: "xochi:event", event: { ...event, extra: "drop" } });
+    const send = (event: unknown) => fromFrame(frame(), { type: "xochi:event", event });
+    send({ ...events[0], rampRef: "invalid" });
+    send({ ...events[0], rampRef: `${rampRef}\n` });
+    send({ ...events[0], direction: "swap" });
+    send({ ...events[1], peer: "unknown" });
+    send({ ...events[1], xochi: "unknown" });
+    send({ ...events[2], code: "unknown" });
+    send({ ...events[2], leg: "unknown" });
+    send({ ...events[0], extra: "a".repeat(MAX_MESSAGE_LENGTH) });
+    fromFrame(window, { type: "xochi:event", event: events[0] });
+    fromFrame(frame(), { type: "xochi:event", event: events[0] }, "https://other.example");
+    send({ ...events[0], name: "ramp:unknown" });
+    expect(seen).toEqual(events);
   });
 });

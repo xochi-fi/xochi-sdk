@@ -136,3 +136,21 @@ Source availability does not grant access to a production API, solver or iframe 
 Import `@xochi/widget/styles.css` explicitly. The tarball ships its CSS, relative hashed image/font assets and declarations; no private asset checkout is needed. CSS and browser compatibility initialization are declared side effects. Styles preserve the hosted appearance rather than introducing a new design.
 
 Xochi source and the extracted shared subset are MIT. Monaspace fonts remain SIL OFL 1.1 with reserved names and the full notice. RainbowKit's bundled CSS notice is retained. Artwork is covered by the requester's explicit authorization to redistribute the 25 listed files unchanged, not by a claimed MIT license. See `THIRD_PARTY_NOTICES.txt` and `licenses/assets.json` for scope and evidence limits.
+
+## Embed IA and ramp lifecycle hooks
+
+`readWidgetEmbedConfig(search?)`, exported from the existing public entry point and
+`src/config.ts`, reads the current frame URL by default. It exposes validated
+`initialTab`, `tabs`, `initialMode`, `modes`, `sendDestinations`, `fiatCurrency` and
+`rampProviders`. Defaults excluded by a restriction are omitted. Explicit empty
+lists remain empty. UI consumers must intersect these restrictions with their
+supported surfaces and fresh live capabilities; a default or restriction never
+grants executable availability. This config intentionally excludes trade `amount`.
+The UI task owns rendering and selecting tabs/modes/destinations.
+
+Frame flows can use `createRampEmitter(direction)` from `src/lib/rampLifecycle.ts`.
+It uses the existing mounted `hostBridge`, mints one opaque `rampRef`, emits
+`ramp:started`, and returns `status`, `recoveryRequired` and `terminal` methods for
+that reference. Call it once per Peer operation, never for address or stealth sends.
+Pass normalized `ramp/1` leg states and error codes only. It adds no bridge or
+provider session mapping and receives no amounts, assets or provider handles.

@@ -128,3 +128,69 @@ Changes: [CHANGELOG.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages
 ## License
 
 MIT
+
+## Tabs and ramp integration
+
+`WidgetTab` is `trade | send | activity | claims`. Trade has Buy (`onramp`) and
+Swap (`swap`); cash-out (`offramp`) lives in Send's `payment_app` destination.
+
+```ts
+import { createXochiRampWidget } from "@xochi/widget-lib";
+
+const widget = createXochiRampWidget(container, {
+  direction: "onramp", // default; opens Trade / Buy
+  listeners: {
+    "ramp:status": ({ rampRef, peer, xochi }) => {
+      // Correlate only; rampRef cannot authorize or retrieve an operation.
+    },
+  },
+});
+widget.updateParams({
+  initialTab: "send",
+  tabs: ["trade", "send", "activity", "claims"],
+  initialMode: "swap",
+  modes: ["onramp", "swap"],
+  sendDestinations: ["payment_app"],
+  fiatCurrency: "USD",
+  rampProviders: ["peer"],
+});
+```
+
+The offramp facade opens Send narrowed to `payment_app`, preselecting cash-out to
+the user's own payment account. `updateParams` retains the iframe element and
+navigates its document when the encoded parameters change, as it does for existing
+parameters; it restarts frame readiness and wallet handshaking. For wallet changes
+use `updateProvider`.
+
+The new defaults are `initialTab`, `initialMode`, and `fiatCurrency` (three uppercase
+currency letters, validated against live offers before execution). The narrowing
+lists are `tabs`, `modes`, `sendDestinations` (`address | stealth | payment_app`), and
+`rampProviders` (Phase 1: `peer`). These lists only hide surfaces; they never grant
+capability, eligibility or executable rail availability. Omission uses frame defaults;
+an explicit empty list hides every entry. URL parsing drops unknown defaults and
+unknown list entries and deduplicates lists; an all-unknown or oversized restriction
+remains empty, never unrestricted. Encoding rejects unknown values, duplicates and
+oversized lists. Existing trade `amount` has no meaning for ramp amounts.
+
+Ramp events extend `XochiWidgetEvent` on the existing `xochi:event` channel:
+
+- `ramp:started`: `rampRef`, `direction` (`onramp | offramp`).
+- `ramp:status` and `ramp:terminal`: `rampRef`, `peer`, optional `xochi`.
+- `ramp:recovery-required`: `rampRef`, `leg` (`peer | xochi`), `code`.
+
+Leg states are the normalized `ramp/1` states in `RAMP_LEG_STATES`; recovery codes
+are limited to `RAMP_RECOVERY_CODES`, matching `ramp/1` error codes. Unknown codes
+must be normalized to `internal` by the trusted adapter before emitting. The frame
+mints `rampRef` with `mintRampRef`: `ramp_` and 128 random bits in lowercase hex.
+It is opaque and non-authorizing. Both bridge ends rebuild validated public fields;
+invalid events are rejected by the emitter and ignored by the host. Events exclude
+amounts, assets, provider IDs and handles, URLs, payment/identity/proof data,
+signatures and raw provider errors. Address and stealth sends never emit ramp events.
+
+**Bridge version decision: retain protocol v1.** These are additive event names and
+URL fields; the handshake and wallet RPC contract are unchanged. The frozen original
+v1 host decoder in `legacyEvent.v1.test.ts` ignores all four ramp names and still
+accepts trade events. `bridge.test.ts` exercises the new events over the same v1
+origin-pinned bridge. Older frames ignore the new URL keys, so v1 readiness alone
+does not establish ramp UI support: deploy the compatible frame before ramp hosts.
+Custom TypeScript exhaustive event switches must add the new union members.

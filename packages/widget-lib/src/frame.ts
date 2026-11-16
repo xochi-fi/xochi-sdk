@@ -18,6 +18,7 @@
  * refused with the code and message the host would answer.
  */
 
+import { toRampWidgetEvent } from "./rampEvents.js";
 import { asJson, isRecord, normalizeOrigin, truncate } from "./internal.js";
 import { EMBED_THEMES, type EmbedTheme } from "./params.js";
 import {
@@ -126,6 +127,11 @@ export function mintTradeRef(): string {
   return `tr_${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
 }
 
+/** A non-authorizing reference minted only by the frame; never a provider handle. */
+export function mintRampRef(): string {
+  return mintTradeRef().replace(/^tr_/, "ramp_");
+}
+
 function rpcError(value: unknown): RpcErrorObject {
   if (isRecord(value) && Number.isSafeInteger(value.code) && typeof value.message === "string") {
     return {
@@ -143,7 +149,12 @@ function rejected(code: number, message: string): Promise<never> {
 
 /** The event rebuilt from its checked fields, the error cut to the cap. */
 function toWireEvent(event: XochiWidgetEvent): XochiWidgetEvent {
-  const { name, tradeRef } = event;
+  if (event.name.startsWith("ramp:")) {
+    const wire = toRampWidgetEvent(event);
+    if (wire === null) throw new TypeError("invalid ramp event");
+    return wire;
+  }
+  const { name, tradeRef } = event as Exclude<XochiWidgetEvent, { rampRef: string }>;
   if (typeof tradeRef !== "string" || !TRADE_REF_PATTERN.test(tradeRef)) {
     throw new TypeError(`trade event tradeRef must match ${TRADE_REF_PATTERN}: ${tradeRef}`);
   }

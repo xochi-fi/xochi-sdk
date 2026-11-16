@@ -1,3 +1,4 @@
+import { parseEmbedParams, type EmbedParams } from "@xochi/widget-lib";
 import { SUPPORTED_CHAIN_IDS, type PinnedPullRecipients } from "@xochi/client";
 
 /** Deployment settings only. Trading policy and security checks remain in the public packages. */
@@ -106,3 +107,38 @@ export const TIMEOUTS = {
 } as const;
 
 export const RETRY = { maxAttempts: 3, baseDelay: 1_000, maxDelay: 10_000 } as const;
+
+/** UI defaults and restrictions only; live capabilities remain the execution authority.
+ * Read on mount (including after updateParams navigates the existing iframe).
+ * Trade amount is intentionally excluded from this ramp/IA config surface.
+ */
+export type WidgetEmbedConfig = Pick<
+  EmbedParams,
+  | "initialTab"
+  | "tabs"
+  | "initialMode"
+  | "modes"
+  | "sendDestinations"
+  | "fiatCurrency"
+  | "rampProviders"
+>;
+
+export function readWidgetEmbedConfig(
+  search = typeof window === "undefined" ? "" : window.location.search,
+): WidgetEmbedConfig {
+  const { initialTab, tabs, initialMode, modes, sendDestinations, fiatCurrency, rampProviders } =
+    parseEmbedParams(search);
+  return {
+    ...(initialTab === undefined || (tabs !== undefined && !tabs.includes(initialTab))
+      ? {}
+      : { initialTab }),
+    ...(tabs === undefined ? {} : { tabs }),
+    ...(initialMode === undefined || (modes !== undefined && !modes.includes(initialMode))
+      ? {}
+      : { initialMode }),
+    ...(modes === undefined ? {} : { modes }),
+    ...(sendDestinations === undefined ? {} : { sendDestinations }),
+    ...(fiatCurrency === undefined ? {} : { fiatCurrency }),
+    ...(rampProviders === undefined ? {} : { rampProviders }),
+  };
+}
