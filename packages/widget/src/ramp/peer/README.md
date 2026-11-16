@@ -296,3 +296,71 @@ W1 UI work, resume event deduplication is W4/S3 lifecycle work, and a production
 wallet/curator/simulation check requires explicit approval for Base mainnet funds.
 The default readiness reads continue to fail closed where authoritative seller
 eligibility is unavailable; registration alone does not grant availability.
+## Buyer execution (W2)
+
+Trade/Buy uses `createRampClient` with a provider-private `createPeerOnrampProvider`
+and SDK-backed `createPeerBuyerDriver`. Discovery/preview share the explicit widget
+Peer environment setting. Chrome/Brave desktop readiness comes from extension
+`getState()` plus the per-platform minimum extension version. Mobile web cannot
+signal an intent. Installing, connecting, signaling, capture, and fulfillment each
+require their own named user action; the extension opens synchronously from the
+capture button, before asynchronous S4 reservation work.
+
+Review binds the quote, exact economics, expiry, rail, currency and recipient.
+Changing a bound field clears the review and approval; expiration also clears
+approval. Submitted purchases stay pinned and freeze their input fields. Curator
+signing runs before the wallet transaction, and its payee information stays in the
+provider interaction. Buyer TEE capture is restricted to one active operation and
+matched to its platform, lifetime, exact amount, currency and maker recipient;
+fulfillment then checks the live on-chain intent binding again. The only attestor
+origin is `https://attestation-service.zkp2p.xyz`, with no fallback endpoints.
+
+Only a successful, confirmed fulfillment receipt with the exact reviewed USDC
+transfer can complete a direct payout. Deferred payouts remain `processing` with
+`payout_state: "held"`. A closed StakeVault lock is ambiguous (release or dispute),
+so release additionally requires a confirmed protocol `ProtectionReleased` receipt
+and the exact vault-to-recipient USDC transfer. No optional route can start while
+held. Long-range RPC log limitations produce uncertainty instead of completion.
+
+The provider retains payee data, intent hashes, encrypted captures and proofs only
+in transient memory. S4 stores sanitized summaries and receipts; S3 emits only
+frame-minted `rampRef` and bounded lifecycle states. An interrupted operation is
+reconciled, never recreated automatically (see "Recovery (W3)"). No Peer credentials, Privy login or wallet keys are
+accepted by this integration.
+
+A Curator authentication or linked-wallet requirement becomes bounded
+`setup_required` / `peer_wallet_linked_session`. The optional read-only probe is
+`node packages/widget/scripts/probe-peer-sign.mjs --live`; it uses a public burn
+address and a 1 USDC quote, never submits a transaction, and emits only bounded
+HTTP/auth observations. On 2026-11-16 production returned quote HTTP 200 and sign
+HTTP 401 without credentials. This demonstrates that wallet-only unauthenticated
+signing was denied for that request; no Privy login or funded end-to-end run was
+attempted. A live run needs desktop Chrome/Brave, the connected Peer extension, a
+Peer account, and explicitly approved Base mainnet funds (Peer has no testnet).
+
+## Recovery (W3)
+
+`ramp/recovery/summaries.ts` keeps one sanitized summary per operation under
+`xochi_local_ramps`: widget-minted `operation_id`, public bound wallet, rail id and
+label, reviewed pay/receive, quote expiry, `submitted`, bounded leg state, terminal,
+payout state and first held time. Strict schemas project every write and read; a row
+with any other field is refused. S4's store keeps the snapshot and receipts.
+`submitted` is written before the wallet boundary and never reverts on its own.
+
+After a reload (or when the purchase view unmounts), Trade/Buy renders
+`ResumeOnramp` for a summary no live runtime owns. A submitted operation is rebound
+with `runtime.resume`, which calls the driver's read-only `resume(binding)`: the
+production driver looks up the owner's intents in the Peer indexer by public wallet,
+rail payment-method hash, currency and approval time, requires exactly one match,
+re-reads the live intent on chain and re-fetches the payee handle into provider
+memory. It never signs, signals or submits, and a resumed operation has no signal
+function. Ambiguity, indexer lag or failure leave the leg `in_doubt`; `check_status`
+retries the lookup. A captured proof is never persisted, so a purchase interrupted
+after capture returns to its payment step with "do not pay again" copy and is
+re-captured from the existing payment.
+
+A purchase bound to another wallet cannot continue: the provider refuses a summary
+for another `user`, and the UI names the original wallet. Only an unsubmitted
+purchase may be abandoned; a submitted, unsettled one blocks new rails for its
+wallet. Known limit: a purchase fulfilled after its intent left the indexer window,
+or released manually by the maker, stays `in_doubt` here and must be checked in Peer.

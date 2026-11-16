@@ -172,3 +172,5 @@ the optional route adapter, which owns fresh independent route quotes and explic
 wallet approvals. Its `quoteId()` returns the non-authorizing reference for an
 approved route; `execute()` receives that reference to prevent quote substitution.
 The engine never supplies a wallet signer or provider launch URL.
+
+Peer leg snapshots may include optional `payout_state: "held" | "released"`. A held payout remains `processing` and is nonterminal; it is not confirmed Base USDC. `released` requires verified payment to the recipient, not merely a closed StakeVault lock (which can also close after a dispute). Older snapshots omit this field. Consumers, including Raxol, must accept the additive field.

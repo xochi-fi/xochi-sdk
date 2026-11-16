@@ -23,6 +23,11 @@
  * an explicit host mode, and a restored order remain sticky. Setup is explicit;
  * Stealth quotes require a wallet, keys, and live exact-route authorization.
  * Opening confirm and signing also require a matching private quote.
+ *
+ * A Stealth order pays the wallet's own keys unless Send handed over another
+ * person's meta-address (`stealthRecipient`). That recipient needs no keys of
+ * the wallet's own, rides only a Stealth quote, and is dropped, with a toast,
+ * the moment the order stops being Stealth: it never becomes a Public payout.
  */
 
 import {
@@ -67,6 +72,7 @@ import {
 } from "../../lib/settlementAvailability.js";
 import { normalizeZkMoneyTag, zkMoneyTagError, zkMoneyTagValid } from "./zkMoney.js";
 import { cantonRecipientCheck } from "./canton.js";
+import type { StealthRecipient } from "../send/stealthRecipient.js";
 
 /** The explicit settlement notice; live destination guidance is derived separately. */
 export type PanelNotice = "stealth_needs_wallet" | "shielded_soon";
@@ -169,6 +175,10 @@ export interface UseSettlementGatingResult {
   clearRecipient: () => void;
   /** Drop the refund address: it is origin-chain-VM-shaped. */
   clearRefund: () => void;
+  /** Another person's meta-address the Stealth order pays; null pays the wallet's own keys. */
+  stealthRecipient: StealthRecipient | null;
+  /** Set or drop it from a Send hand-off (the prefill), never from typing here. */
+  restoreStealthRecipient: (next: StealthRecipient | null) => void;
 }
 
 export function useSettlementGating({
@@ -206,6 +216,7 @@ export function useSettlementGating({
   const [selectedSettlement, setSettlement] = useState<SettlementType | null>(
     initialSettlement ?? null,
   );
+  const [stealthRecipient, setStealthRecipient] = useState<StealthRecipient | null>(null);
 
   // A Canton party goes out byte for byte as typed (SPEC.md §3.3): validated
   // untrimmed, so a padded paste is refused rather than silently repaired.
@@ -279,7 +290,17 @@ export function useSettlementGating({
   const stealthRouteAuthorized =
     STEALTH_SETTLEMENT_LIVE && routeAdvertisesStealth && stealthDestinationSupported;
   const shieldedRouteAuthorized = SHIELDED_SETTLEMENT_LIVE && routeAdvertisesShielded;
-  const stealthAuthorized = stealthRouteAuthorized && isConnected && stealth.metaAddress !== null;
+  // Someone else's meta-address needs no keys of this wallet's own.
+  const payeeMetaAddress = stealthRecipient
+    ? {
+        spendingPubKey: stealthRecipient.spendingPubKey,
+        viewingPubKey: stealthRecipient.viewingPubKey,
+        // The chain the payout settles and is announced on, where the
+        // recipient's scanner looks for it.
+        chainId: toChainId as ChainId,
+      }
+    : stealth.metaAddress;
+  const stealthAuthorized = stealthRouteAuthorized && isConnected && payeeMetaAddress !== null;
   // zk.money is the typed Public tag-deposit rail even though its navigation
   // affordance lives under Shielded. Every other selection is requested as-is:
   // an unauthorized private choice must never silently mint a Public quote.
@@ -308,7 +329,7 @@ export function useSettlementGating({
     // valid: a half-typed value must not reach the solver as the refund target.
     refundAddress: effectiveRefundAddress,
     stealthMetaAddress:
-      requestedSettlement === "stealth" && stealth.metaAddress ? stealth.metaAddress : undefined,
+      requestedSettlement === "stealth" && payeeMetaAddress ? payeeMetaAddress : undefined,
     // Modal open -> the refresh timer runs in SILENT mode (updates the quote in
     // place, no "quoting" flash, failures non-destructive), so the confirm quote
     // stays live and never dead-ends on "expired" while the user reviews it.
@@ -323,7 +344,8 @@ export function useSettlementGating({
   // (stealth intents may never reach "completed" upstream, so settling counts).
   const stealthSettledRef = useRef<string | null>(null);
   useEffect(() => {
-    if (settlement !== "stealth" || !onStealthSettled) return;
+    // Someone else's payment is theirs to find; this wallet has nothing to scan.
+    if (settlement !== "stealth" || stealthRecipient !== null || !onStealthSettled) return;
     const id = intent.intentId;
     if (!id) return;
     const settled =
@@ -332,7 +354,14 @@ export function useSettlementGating({
       stealthSettledRef.current = id;
       onStealthSettled();
     }
-  }, [settlement, intent.intentId, intent.status, intent.reconciling, onStealthSettled]);
+  }, [
+    settlement,
+    stealthRecipient,
+    intent.intentId,
+    intent.status,
+    intent.reconciling,
+    onStealthSettled,
+  ]);
 
   // Exact route advertisement grants the mode; quote options can only narrow
   // that grant at runtime. A positive quote option cannot add a mode omitted
@@ -427,7 +456,7 @@ export function useSettlementGating({
         hasStealthChains: stealthChains.length > 0,
         connected: isConnected,
         destinationSupported: stealthDestinationSupported,
-        metaAddressReady: stealth.metaAddress !== null,
+        metaAddressReady: payeeMetaAddress !== null,
         quotedSettlement:
           settlement === "stealth" && intent.quote ? intent.receipt.settlement.mode : undefined,
         routeAvailable: stealthRouteAvailable,
@@ -449,10 +478,20 @@ export function useSettlementGating({
     (intent.quote && intent.receipt.settlement.mode !== requestedSettlement ? "quote" : null);
 
   const setupStealth = useCallback(async (): Promise<void> => {
-    if (!isConnected || stealth.isLoading || stealth.metaAddress) return;
+    if (!isConnected || stealth.isLoading || stealth.metaAddress || stealthRecipient) return;
     const ok = await stealth.initializeKeys();
     if (!ok) showToast("Stealth setup failed. Retry or choose Public.", "error");
-  }, [isConnected, stealth, showToast]);
+  }, [isConnected, stealth, stealthRecipient, showToast]);
+
+  // The recipient belongs to a Stealth order only. Leaving Stealth (a tap on
+  // Public, a Canton or zk.money destination) drops it and says so, so the
+  // order that remains visibly pays this wallet rather than silently going
+  // Public to the wrong party or quietly keeping a recipient it cannot pay.
+  useEffect(() => {
+    if (stealthRecipient === null || settlement === "stealth") return;
+    setStealthRecipient(null);
+    showToast("Removed the stealth recipient. This order now pays your own wallet.", "info");
+  }, [settlement, stealthRecipient, showToast]);
 
   // Browsing Stealth never requests keys or repairs either financial leg.
   const handleSettlementChange = useCallback(
@@ -568,5 +607,7 @@ export function useSettlementGating({
     restoreSettlement: setSettlement,
     clearRecipient,
     clearRefund,
+    stealthRecipient,
+    restoreStealthRecipient: setStealthRecipient,
   };
 }

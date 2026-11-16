@@ -3268,6 +3268,76 @@
         "accepted_disclosure_codes": ["base_settlement"]
       },
       "valid": false
+    },
+    {
+      "id": "payout_absent",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "onramp",
+        "leg_order": [
+          "peer"
+        ],
+        "peer": {
+          "name": "peer",
+          "state": "completed",
+          "recoverable": false
+        },
+        "allowed_actions": [],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": true
+      },
+      "valid": true
+    },
+    {
+      "id": "payout_held",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "onramp",
+        "leg_order": [
+          "peer"
+        ],
+        "peer": {
+          "name": "peer",
+          "state": "processing",
+          "recoverable": false,
+          "payout_state": "held"
+        },
+        "allowed_actions": [
+          "check_status"
+        ],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": false
+      },
+      "valid": true
+    },
+    {
+      "id": "payout_released",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "onramp",
+        "leg_order": [
+          "peer"
+        ],
+        "peer": {
+          "name": "peer",
+          "state": "completed",
+          "recoverable": false,
+          "payout_state": "released"
+        },
+        "allowed_actions": [],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": true
+      },
+      "valid": true
     }
   ],
   "atomic_cases": [

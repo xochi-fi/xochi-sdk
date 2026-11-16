@@ -9,8 +9,8 @@
  * selection is held for the execution flow that follows (W2/W4).
  */
 
-import { useId, useState } from "react";
-import type { RampDirection } from "@xochi/client";
+import { useId, useState, type ReactNode } from "react";
+import type { RampDirection, RampIntent, RampOffer } from "@xochi/client";
 import {
   formatRampTime,
   overallCard,
@@ -47,10 +47,22 @@ interface RampRailsProps {
   fiatCurrency?: string;
   /** Whether this surface is the visible one; hidden surfaces read nothing. */
   active: boolean;
+  renderSelected?: (
+    intent: RampIntent,
+    offer: RampOffer,
+    lock: (value?: boolean) => void,
+  ) => ReactNode;
 }
 
-export function RampRails({ direction, account, fiatCurrency = "USD", active }: RampRailsProps) {
+export function RampRails({
+  direction,
+  account,
+  fiatCurrency = "USD",
+  active,
+  renderSelected,
+}: RampRailsProps) {
   const id = useId();
+  const [locked, setLocked] = useState<{ intent: RampIntent; offer: RampOffer }>();
   const copy = COPY[direction];
   const [amountText, setAmountText] = useState("");
   const [currency, setCurrency] = useState(fiatCurrency);
@@ -109,6 +121,7 @@ export function RampRails({ direction, account, fiatCurrency = "USD", active }: 
           <span className="send-field__label">{copy.amountLabel}</span>
           <input
             className="send-field__control"
+            disabled={locked !== undefined}
             inputMode="decimal"
             autoComplete="off"
             placeholder="0.00"
@@ -131,6 +144,7 @@ export function RampRails({ direction, account, fiatCurrency = "USD", active }: 
           <select
             className="send-field__control"
             value={currency}
+            disabled={locked !== undefined}
             onChange={(e) => {
               setCurrency(e.target.value);
               setSelected(undefined);
@@ -160,6 +174,7 @@ export function RampRails({ direction, account, fiatCurrency = "USD", active }: 
           {selectable.map((card) => (
             <label key={card.id} className="ramp-rail ramp-rail--selectable">
               <input
+                disabled={locked !== undefined}
                 type="radio"
                 name={`${id}-rail`}
                 value={card.id}
@@ -190,12 +205,38 @@ export function RampRails({ direction, account, fiatCurrency = "USD", active }: 
       )}
 
       {state.status === "done" && (
-        <button type="button" className="send-secondary" onClick={refresh}>
+        <button
+          type="button"
+          className="send-secondary"
+          disabled={locked !== undefined}
+          onClick={refresh}
+        >
           Check again
         </button>
       )}
 
-      {chosen && (
+      {renderSelected &&
+        (locked
+          ? renderSelected(locked.intent, locked.offer, (value = true) => {
+              if (!value) {
+                setLocked(undefined);
+                setSelected(undefined);
+                refresh();
+              }
+            })
+          : chosen && state.status === "done"
+            ? renderSelected(
+                state.intent,
+                state.result.offers.find((offer) => offer.offer_id === chosen.id)!,
+                () =>
+                  setLocked({
+                    intent: state.intent,
+                    offer: state.result.offers.find((offer) => offer.offer_id === chosen.id)!,
+                  }),
+              )
+            : null)}
+
+      {chosen && !renderSelected && (
         <p className="send-note" role="note">
           {`${chosen.name} selected. ${copy.selected}`}
         </p>

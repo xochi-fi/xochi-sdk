@@ -36,6 +36,8 @@ import { AccountChip } from "../components/AccountChip.js";
 import { SendActivityList } from "../components/SendActivityList.js";
 import { useLocalSends } from "../hooks/useLocalSends.js";
 import { OfframpActivityList, useLocalOfframps } from "../ramp/offramp/OfframpActivityList.js";
+import { RampActivityList } from "../components/RampActivityList.js";
+import { useRampSummaries } from "../hooks/useRampSummaries.js";
 import { SwapPanel, type SwapPrefill } from "./trade/SwapPanel.js";
 import { BuyPanel } from "./trade/BuyPanel.js";
 import { SendPanel } from "./send/SendPanel.js";
@@ -175,6 +177,7 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
   });
   const localSends = useLocalSends();
   const localOfframps = useLocalOfframps();
+  const localRamps = useRampSummaries();
 
   // Subscribe to the user's authorized agents' streams. Verified agent activity
   // is fed into the same local log (tagged "agent"), so it flows through
@@ -451,6 +454,7 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
         toToken: item.data.toToken,
         fromAmount: item.data.fromAmount,
         settlement: item.data.settlementType,
+        stealthPayee: item.data.stealthPayee,
         recipientTag: item.data.recipientTag,
         refundAddress: item.data.deposit?.attested.refund_address ?? undefined,
       });
@@ -617,6 +621,7 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
 
               <SendActivityList sends={localSends} />
               <OfframpActivityList items={localOfframps} />
+              <RampActivityList ramps={localRamps} wallet={address} />
 
               <section className="launch-txlog" aria-label="Transaction log">
                 <ActivityFeed

@@ -4,6 +4,14 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+### Added
+
+- Independently approved post-onramp routing through `createXochiRampLeg` and `RampClient.offerRoute`. Fresh route quotes require completed, released Peer delivery; expired or failed quotes remain recoverable partial success, while unknown execution permits reconciliation only. Route retry and skip never repeat Peer.
+
+### Changed
+
+- `RampClient` `check_status` on an `in_doubt` leg may now reconcile to `action_required` (the same submitted operation waiting on the user, e.g. a signaled but unpaid Peer intent). A `processing` leg still never regresses, and no reconciliation resubmits.
+
 ## [0.1.16] - 2026-11-15
 
 ### Added

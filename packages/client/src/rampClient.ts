@@ -46,6 +46,8 @@ export interface RampClient {
     context: RampCommandContext,
   ): Promise<RampSnapshot>;
   get(operationId: string): Promise<RampSnapshot>;
+  /** Offer an optional post-route only after Peer delivery and hold release. Quotes nothing. */
+  offerRoute(operationId: string, context: RampCommandContext): Promise<RampSnapshot>;
   recover(
     operationId: string,
     leg: RampLegName,
@@ -108,13 +110,19 @@ function actions(snapshot: RampSnapshot): RampAction[] {
       return name === "peer"
         ? ["interact", "check_status"]
         : snapshot.direction === "onramp"
-          ? ["execute_route", "skip_route"]
+          ? ["approve_route", "execute_route", "skip_route"]
           : ["execute_route"];
     case "processing":
       return ["check_status"];
     case "failed":
       return leg.recoverable
-        ? [name === "peer" ? "recover_peer" : "recover_route", "check_status"]
+        ? [
+            name === "peer" ? "recover_peer" : "recover_route",
+            ...(name === "peer" || snapshot.direction === "offramp"
+              ? ["check_status" as const]
+              : []),
+            ...(name === "xochi" && snapshot.direction === "onramp" ? ["skip_route" as const] : []),
+          ]
         : [];
     default:
       return [];
@@ -236,6 +244,12 @@ export function createRampClient(options: {
           },
         };
       const s = record.snapshot;
+      if (
+        cmd.leg === "xochi" &&
+        s.direction === "onramp" &&
+        (s.peer.state !== "completed" || s.peer.payout_state === "held")
+      )
+        return { record, result: { run: false, snapshot: s } };
       if (
         checkRampCommand(s, cmd) !== "accepted" ||
         (cmd.action !== "check_status" && active(s) !== cmd.leg)
@@ -374,18 +388,13 @@ export function createRampClient(options: {
       const next = safe[cmd.leg];
       if (!next || ["not_started", "quoted", "approval_required"].includes(next.state))
         throw new Error("invalid_request");
+      // Processing never regresses. Reconciling an in-doubt leg may find the same
+      // submitted operation waiting on the user (e.g. a signaled, unpaid intent).
       if (
         cmd.action === "check_status" &&
         ["processing", "in_doubt"].includes(before[cmd.leg]!.state) &&
         !["processing", "completed", "failed", "refunded", "in_doubt"].includes(next.state) &&
-        // An offramp can resolve an uncertain ERC-20 approval before asking the wallet
-        // to create its deposit. A processing deposit still cannot regress to execution.
-        !(
-          reserved.direction === "offramp" &&
-          cmd.leg === "peer" &&
-          before.peer.state === "in_doubt" &&
-          next.state === "action_required"
-        )
+        !(before[cmd.leg]!.state === "in_doubt" && next.state === "action_required")
       )
         throw new Error("invalid_request");
       if (cmd.action === "execute_route" && next.state === "action_required")
@@ -394,7 +403,19 @@ export function createRampClient(options: {
       result = derive({ ...reserved, [cmd.leg]: next });
     } catch {
       result = crossedBoundary
-        ? doubt(reserved, cmd.leg)
+        ? reserved.direction === "onramp" &&
+          cmd.leg === "xochi" &&
+          ["approve_route", "recover_route"].includes(cmd.action)
+          ? derive({
+              ...reserved,
+              xochi: {
+                name: "xochi",
+                state: "failed",
+                recoverable: true,
+                failure_code: "route_failed",
+              },
+            })
+          : doubt(reserved, cmd.leg)
         : localFailure
           ? derive({
               ...reserved,
@@ -504,6 +525,29 @@ export function createRampClient(options: {
       quotes.set(preview.operation_id, { intent, offer, preview });
       return preview;
     },
+    async offerRoute(id, context) {
+      if (!xochi) throw new Error("invalid_request");
+      return store.transact(id, (record) => {
+        if (!record) throw new Error("invalid_request");
+        const s = record.snapshot;
+        if (
+          s.direction !== "onramp" ||
+          s.peer.state !== "completed" ||
+          s.peer.payout_state === "held" ||
+          s.xochi ||
+          s.revision !== context.expected_revision
+        )
+          return { record, result: s };
+        const snapshot = derive({
+          ...s,
+          revision: (BigInt(s.revision) + 1n).toString(),
+          leg_order: ["peer", "xochi"],
+          xochi: { name: "xochi", state: "not_started", recoverable: false },
+          updated_at: new Date().toISOString(),
+        });
+        return { record: { ...record, snapshot }, result: snapshot };
+      });
+    },
     async get(id) {
       return (await current(id)).snapshot;
     },
@@ -525,7 +569,16 @@ export function createRampClient(options: {
         const receipt = record.receipts[await hash(context.idempotency_key)];
         quoteId = receipt?.quote_id;
         if (!quoteId) {
-          if (!xochi) return record.snapshot;
+          const s = record.snapshot;
+          if (
+            !xochi ||
+            s.revision !== context.expected_revision ||
+            !s.allowed_actions.includes("execute_route") ||
+            active(s) !== "xochi" ||
+            (s.direction === "onramp" &&
+              (s.peer.state !== "completed" || s.peer.payout_state === "held"))
+          )
+            return s;
           try {
             quoteId = await external(() => xochi.quoteId(id));
           } catch {

@@ -214,3 +214,32 @@ It uses the existing mounted `hostBridge`, mints one opaque `rampRef`, emits
 that reference. Call it once per Peer operation, never for address or stealth sends.
 Pass normalized `ramp/1` leg states and error codes only. It adds no bridge or
 provider session mapping and receives no amounts, assets or provider handles.
+
+## Optional routing after Buy
+
+After Peer confirms delivery of Base USDC (and releases any payout hold), Buy
+and the resumed purchase view offer a separate Xochi route. The picker uses fresh
+live EVM routes, configured wallet networks, existing token metadata and embed
+restrictions. It quotes only on an explicit review action. The route has its own
+exact payout preview, expiry, wallet approval, progress and receipt, using the
+existing `useIntent` quote/sign/execute/poll interpreter and signer checks.
+
+Public payouts go to the receiving wallet. Stealth uses the wallet's existing
+keys or PR #201's strict meta-address parser for another recipient; no new crypto
+is introduced. Another recipient's keys are kept only in memory, and a resumed
+failed route asks for their meta-address again before it can quote.
+
+Peer remains completed on every route failure. A safe failure shows the confirmed
+Base USDC wallet and permits a fresh Xochi quote or skip. Unknown submission shows
+that funds may have moved and permits status checks only. The route is recorded
+in existing Xochi Activity before the wallet boundary, linked by a widget-minted
+ramp reference. Reload polls that original Xochi intent and never quotes or signs
+again. Missing local evidence remains in doubt; inspect Activity rather than
+starting another transfer. No Peer handles, recipient keys, signatures or raw
+provider responses are added to the activity record or ramp snapshots.
+
+For a local, network-free visual preview, run `npm exec -w @xochi/widget vite --
+--host 127.0.0.1 --port 5185` at the repository root and visit
+`/preview-onramp-route.html` (append `?failure` for a failed quote). This harness
+uses the production route view with in-memory provider and Xochi interfaces and
+is excluded from the published widget.

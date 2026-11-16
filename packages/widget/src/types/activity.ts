@@ -127,6 +127,13 @@ export interface SwapActivity {
    * index and do not depend on history rows.
    */
   settlementType?: SettlementType;
+  /**
+   * `"other"` on a stealth order that paid someone else's meta-address (Send >
+   * Stealth). The marker only: their keys are never stored, so the row offers
+   * no claim and cannot be retried, since a retry would pay the wallet's own
+   * keys instead. Absent means the wallet's own keys.
+   */
+  stealthPayee?: "other";
   /** Immutable zk.money recipient captured from the dispatched public tag order. */
   recipientTag?: string;
   /**
@@ -150,6 +157,8 @@ interface ActivityBase {
 
 export interface SwapActivityItem extends ActivityBase {
   type: "swap";
+  /** Widget-minted ramp reference linking an independent post-route; never a Peer handle. */
+  rampOperationId?: string;
   data: SwapActivity;
   intentStatus: IntentStatus;
   /** Who initiated: "you" (this device) or "agent" (a delegated agent stream). */

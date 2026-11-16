@@ -132,6 +132,7 @@ describe("Buy rails", () => {
 
     await act(async () =>
       pending[1]({
+        estimates: [],
         offers: [],
         estimates: [],
         availability: { state: "not_supported", reason_code: "capability_unavailable" },
@@ -139,6 +140,7 @@ describe("Buy rails", () => {
     );
     await act(async () =>
       pending[0]({
+        estimates: [],
         offers: [],
         estimates: [],
         availability: { state: "temporarily_unavailable", reason_code: "capability_unavailable" },
@@ -156,6 +158,7 @@ describe("Buy rails", () => {
     const settlement = peerConfiguration().settlement;
     const port: RampDiscoveryPort = {
       discover: async () => ({
+        estimates: [],
         offers: [],
         estimates: [],
         availability: {
@@ -178,6 +181,7 @@ describe("Buy rails", () => {
     const settlement = peerConfiguration().settlement;
     const port: RampDiscoveryPort = {
       discover: async () => ({
+        estimates: [],
         offers: [],
         estimates: [],
         availability: {
