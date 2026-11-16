@@ -1,6 +1,6 @@
 import { checkRampOffer, parseRamp, type RampErrorCode, type RampPreview } from "@xochi/client";
 import { digest, PEER_FRESHNESS_MS } from "./normalization.js";
-import { peerConfiguration, readPeerQuotes } from "./discovery.js";
+import { checkPeerAbort, PeerReadAborted, peerConfiguration, readPeerQuotes } from "./discovery.js";
 import type { PeerDiscoveryOptions } from "./types.js";
 export type PeerPreviewResult =
   | { ok: true; preview: RampPreview; estimate: boolean }
@@ -13,6 +13,7 @@ export async function previewPeerOffer(
   options: PeerDiscoveryOptions = {},
 ): Promise<PeerPreviewResult> {
   try {
+    checkPeerAbort(options.signal);
     const now = (options.now ?? Date.now)(),
       config = peerConfiguration(options);
     const check = checkRampOffer(offer, intent, config.settlement, now);
@@ -55,7 +56,9 @@ export async function previewPeerOffer(
         estimate: check.intent.direction === "offramp",
       };
     return { ok: true, preview, estimate: check.intent.direction === "offramp" };
-  } catch {
+  } catch (error) {
+    checkPeerAbort(options.signal);
+    if (error instanceof PeerReadAborted) throw error;
     return { ok: false, code: "capability_unavailable" };
   }
 }

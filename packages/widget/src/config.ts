@@ -4,6 +4,8 @@ import { SUPPORTED_CHAIN_IDS, type PinnedEscrows, type PinnedPullRecipients } fr
 /** Deployment settings only. Trading policy and security checks remain in the public packages. */
 export interface WidgetSettings {
   apiUrl: string;
+  /** Non-production Peer deployments require explicit host configuration. */
+  peerEnvironment?: "production" | "preproduction" | "staging";
   authApiUrl?: string;
   development?: boolean;
   appVersion?: string;
@@ -35,6 +37,7 @@ export interface WidgetSettings {
   escrows?: PinnedEscrows;
 }
 
+export let PEER_ENVIRONMENT: NonNullable<WidgetSettings["peerEnvironment"]> = "production";
 export let API_URL = "https://api.xochi.fi";
 export let AUTH_API_URL = API_URL;
 export let isDevelopment = false;
@@ -61,6 +64,12 @@ let configured = false;
 export function configureWidget(settings: WidgetSettings): void {
   if (configured)
     throw new Error("Widget settings are immutable for this document; reload to change them.");
+  if (
+    settings.peerEnvironment !== undefined &&
+    !["production", "preproduction", "staging"].includes(settings.peerEnvironment)
+  )
+    throw new Error("Invalid Peer environment");
+  PEER_ENVIRONMENT = settings.peerEnvironment ?? "production";
   API_URL = settings.apiUrl;
   AUTH_API_URL = settings.authApiUrl || API_URL;
   isDevelopment = settings.development ?? false;

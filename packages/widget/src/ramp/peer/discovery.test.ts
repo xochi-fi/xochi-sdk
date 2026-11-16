@@ -195,6 +195,7 @@ describe("live Peer normalization", () => {
     };
     expect(await fetchPeerCapabilities(intent(), opts(reads))).toEqual({
       offers: [],
+      estimates: [],
       availability: { state: "temporarily_unavailable", reason_code: "capabilities_unavailable" },
       code: "capabilities_unavailable",
     });
@@ -380,4 +381,160 @@ describe("maker evidence gate", () => {
         requirement_codes: ["maker_seller_credential"],
       });
   });
+});
+
+describe("cancellable discovery and safe estimates", () => {
+  it("rejects pre-aborted reads and previews without forwarding the reason", async () => {
+    const controller = new AbortController();
+    controller.abort("private cancellation detail");
+    const reads = new RecordedReads();
+    const options = { ...opts(reads), signal: controller.signal };
+    await expect(fetchPeerCapabilities(intent(), options)).rejects.toMatchObject({
+      name: "AbortError",
+      message: "peer_read_aborted",
+    });
+    await expect(
+      previewPeerOffer(await chosen(), intent(), "operation", options),
+    ).rejects.toMatchObject({ name: "AbortError", message: "peer_read_aborted" });
+    expect(reads.requests).toEqual([]);
+  });
+  it("cancels an in-flight read even when a custom port ignores its signal", async () => {
+    const controller = new AbortController();
+    let resolve!: (value: unknown) => void;
+    let started!: () => void;
+    const ready = new Promise<void>((done) => {
+      started = done;
+    });
+    let networkSignal: AbortSignal | undefined;
+    const pending = fetchPeerCapabilities(intent(), {
+      ...opts(),
+      signal: controller.signal,
+      reads: {
+        bestByPlatform: (_request, signal) => {
+          networkSignal = signal;
+          started();
+          return new Promise((done) => {
+            resolve = done;
+          });
+        },
+        quote: async () => single(),
+      },
+    });
+    await ready;
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({
+      name: "AbortError",
+      message: "peer_read_aborted",
+    });
+    expect(networkSignal?.aborted).toBe(true);
+    resolve(fixture());
+  });
+  it("passes cancellation through to the real fetch adapter", async () => {
+    const controller = new AbortController();
+    let started!: () => void;
+    const ready = new Promise<void>((done) => {
+      started = done;
+    });
+    let networkSignal: AbortSignal | null | undefined;
+    const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      networkSignal = init?.signal;
+      expect(JSON.parse(init!.body as string).exactTokenAmount).toBe("25000000");
+      started();
+      return new Promise(() => {});
+    });
+    try {
+      const pending = fetchPeerCapabilities(intent(), {
+        now: () => now,
+        signal: controller.signal,
+      });
+      await ready;
+      controller.abort();
+      await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+      expect(networkSignal?.aborted).toBe(true);
+    } finally {
+      fetcher.mockRestore();
+    }
+  });
+  it("exposes only fresh allowlisted economics linked to each available offer", async () => {
+    const result = await fetchPeerCapabilities(intent(), opts());
+    expect(result.estimates.length).toBeGreaterThan(0);
+    for (const estimate of result.estimates) {
+      const offer = result.offers.find((offer) => offer.offer_id === estimate.offerId)!;
+      expect(offer.availability.state).toBe("available");
+      expect(estimate.observedAt).toBe(offer.observed_at);
+      expect(Date.parse(estimate.validUntil)).toBeGreaterThan(now);
+      expect(estimate.receive.atomic).toBe("25000000");
+      expect(Object.keys(estimate).sort()).toEqual([
+        "fees",
+        "observedAt",
+        "offerId",
+        "pay",
+        "receive",
+        "validUntil",
+      ]);
+      expect(estimate.pay.atomic).toMatch(/^(0|[1-9][0-9]*)$/);
+      for (const fee of estimate.fees) expect(fee.money.atomic).toMatch(/^(0|[1-9][0-9]*)$/);
+    }
+    const unknown = await fetchPeerCapabilities(intent("offramp"), opts());
+    expect(unknown.estimates).toEqual([]);
+    const stale = await fetchPeerCapabilities(intent(), { ...opts(), now: () => now + 100_000 });
+    expect(stale.estimates).toEqual([]);
+  });
+});
+
+it("keeps identical live revisions stable across observation clocks", async () => {
+  const reads = new RecordedReads();
+  const response = fixture();
+  response.responseObject.quoteExpiresAt = new Date(now + 3_600_000).toISOString();
+  reads.response = response;
+  const first = await fetchPeerCapabilities(intent(), opts(reads));
+  const later = await fetchPeerCapabilities(intent(), { ...opts(reads), now: () => now + 1_000 });
+  expect(later.offers.map((o) => o.capability_revision)).toEqual(
+    first.offers.map((o) => o.capability_revision),
+  );
+  expect(later.estimates[0].validUntil).not.toBe(first.estimates[0].validUntil);
+  for (const field of ["fiatAmount", "conversionRate", "signalIntentAmount"] as const) {
+    const changed = structuredClone(response);
+    const row = changed.responseObject.platformQuotes.find((p) => p.platform === "wise")!;
+    row.bestQuote![field] = (BigInt(row.bestQuote![field]) + 1n).toString();
+    reads.response = changed;
+    const result = await fetchPeerCapabilities(intent(), opts(reads));
+    expect(result.offers.find((o) => o.rail.id === "wise")!.capability_revision).not.toBe(
+      first.offers.find((o) => o.rail.id === "wise")!.capability_revision,
+    );
+  }
+  reads.response = structuredClone(response);
+  (reads.response as typeof response).responseObject.quoteExpiresAt = new Date(
+    now + 3_600_001,
+  ).toISOString();
+  expect(
+    (await fetchPeerCapabilities(intent(), opts(reads))).offers[0].capability_revision,
+  ).not.toBe(first.offers[0].capability_revision);
+});
+
+it("uses cancellable V3 wire requests for discovery and selected-rail preview", async () => {
+  const calls: { url: string; body: Record<string, unknown>; signal?: AbortSignal | null }[] = [];
+  const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+    calls.push({ url: String(url), body: JSON.parse(init!.body as string), signal: init?.signal });
+    return new Response(JSON.stringify(calls.length === 1 ? fixture() : single()), { status: 200 });
+  });
+  try {
+    const result = await fetchPeerCapabilities(intent(), { now: () => now });
+    const wise = result.offers.find((offer) => offer.rail.id === "wise")!;
+    expect((await previewPeerOffer(wise, intent(), "operation", { now: () => now })).ok).toBe(true);
+    expect(calls.map((call) => call.url)).toEqual([
+      "https://api.zkp2p.xyz/v3/quote/best-by-platform-exact-token",
+      "https://api.zkp2p.xyz/v3/quote/exact-token?quotesToReturn=1",
+    ]);
+    for (const call of calls) {
+      expect(call.signal).toBeInstanceOf(AbortSignal);
+      expect(call.body.exactTokenAmount).toBe("25000000");
+      expect(call.body).not.toHaveProperty("amount");
+      expect(call.body).not.toHaveProperty("isExactFiat");
+      expect(call.body).not.toHaveProperty("quotesToReturn");
+    }
+    expect(calls[1].body.paymentPlatforms).toEqual(["wise"]);
+  } finally {
+    fetcher.mockRestore();
+  }
 });
