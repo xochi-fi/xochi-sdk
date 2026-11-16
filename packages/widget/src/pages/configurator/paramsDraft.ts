@@ -28,20 +28,39 @@ import {
   type EmbedParams,
 } from "@xochi/widget-lib";
 
-type ParamField = FrameField;
+import { SURFACE_FIELDS, surfaceParams } from "./surfaceParams.js";
+type ParamField = FrameField | (typeof SURFACE_FIELDS)[number];
+const PARAM_HINT = {
+  ...EMBED_PARAM_HINT,
+  initialTab: { takes: "a visible tab", example: "initialTab=trade" },
+  tabs: { takes: "visible tabs", example: "tabs=trade,send" },
+  initialMode: { takes: "a visible Trade mode", example: "initialMode=swap" },
+  modes: { takes: "Trade modes", example: "modes=onramp,swap" },
+  sendDestinations: {
+    takes: "Send destination kinds",
+    example: "sendDestinations=address,stealth",
+  },
+  fiatCurrency: { takes: "a three-letter currency code", example: "fiatCurrency=USD" },
+  rampProviders: { takes: "provider identifiers", example: "rampProviders=peer" },
+};
 
 /** The field each query key the frame resolves sets: EMBED_PARAM inverted. */
 export const FIELD_BY_KEY: Readonly<Record<string, ParamField | undefined>> = Object.fromEntries(
-  FRAME_FIELDS.map((field) => [EMBED_PARAM[field], field]),
+  [...FRAME_FIELDS, ...SURFACE_FIELDS].map((field) => [EMBED_PARAM[field], field]),
 );
 
 /** The parameter names, for messages. */
-export const PARAM_KEYS = FRAME_FIELDS.map((field) => EMBED_PARAM[field]).join(", ");
+export const PARAM_KEYS = [...FRAME_FIELDS, ...SURFACE_FIELDS]
+  .map((field) => EMBED_PARAM[field])
+  .join(", ");
 
 /** The parameters that open the frame on `config`, one per line. */
-export function paramsText(config: EmbedDefaults): string {
+export function paramsText(
+  config: EmbedDefaults,
+  params: EmbedParams = embedOverrides(config),
+): string {
   return Array.from(
-    new URLSearchParams(encodeEmbedParams(embedOverrides(config))),
+    new URLSearchParams(encodeEmbedParams(params)),
     ([key, value]) => `${key}=${value}`,
   ).join("\n");
 }
@@ -87,12 +106,12 @@ export function readParamsDraft(text: string, offer: EmbedOffer): ParamsDraft {
     } else if (accepted.has(key)) {
       problems.push(`${key} is set twice. Keep one.`);
     } else if (value === "") {
-      const { takes, example } = EMBED_PARAM_HINT[field];
+      const { takes, example } = PARAM_HINT[field];
       problems.push(`${key} needs a value: ${takes}, like ${example}.`);
     } else if (
       parseEmbedParams(new URLSearchParams([[key, value]]).toString())[field] === undefined
     ) {
-      const { takes, example } = EMBED_PARAM_HINT[field];
+      const { takes, example } = PARAM_HINT[field];
       problems.push(`${key}=${value} is not valid. It takes ${takes}, like ${example}.`);
     } else {
       accepted.set(key, value);
@@ -100,6 +119,11 @@ export function readParamsDraft(text: string, offer: EmbedOffer): ParamsDraft {
   }
 
   const params = parseEmbedParams(accepted.toString());
+  const normalized = surfaceParams(params);
+  for (const field of ["initialTab", "initialMode"] as const) {
+    if (params[field] !== normalized[field])
+      problems.push(`${field} must belong to its visible options.`);
+  }
   const { ignored } = explainEmbedDefaults(params, offer);
   for (const field of FRAME_FIELDS) {
     const why = ignored[field];

@@ -10,6 +10,7 @@ import { parseCapabilities } from "@xochi/signer";
 import { FALLBACK_CAPABILITIES } from "../../lib/capabilities.js";
 import { FRAME_FIELDS, embedOffer } from "../trade/embedParams.js";
 import { EMBED_PARAM } from "@xochi/widget-lib";
+import { SURFACE_FIELDS } from "./surfaceParams.js";
 import { FIELD_BY_KEY, readParamsDraft } from "./paramsDraft.js";
 import { findTokenBySymbol } from "../trade/config.js";
 
@@ -59,7 +60,7 @@ const LIVE = embedOffer(caps, true);
 const FALLBACK = embedOffer(FALLBACK_CAPABILITIES, false);
 
 /** The keys the frame resolves. */
-const FRAME_KEYS = FRAME_FIELDS.map((field) => EMBED_PARAM[field]);
+const FRAME_KEYS = [...FRAME_FIELDS, ...SURFACE_FIELDS].map((field) => EMBED_PARAM[field]);
 
 describe("readParamsDraft", () => {
   it("recognises every parameter the frame reads", () => {
@@ -69,6 +70,17 @@ describe("readParamsDraft", () => {
       expect(problems, key).toHaveLength(1);
       expect(problems[0], key).toMatch(new RegExp(`^${key} needs a value`));
     }
+  });
+
+  it("accepts public narrowing and rejects inconsistent initial selections", () => {
+    expect(
+      readParamsDraft(
+        "tabs=trade,send\ninitialTab=send\nmodes=onramp\ninitialMode=onramp\nsendDestinations=payment_app\nfiatCurrency=USD\nrampProviders=peer",
+        LIVE,
+      ).problems,
+    ).toEqual([]);
+    expect(readParamsDraft("tabs=send\ninitialTab=trade", LIVE).problems).toHaveLength(1);
+    expect(readParamsDraft("modes=onramp\ninitialMode=swap", LIVE).problems).toHaveLength(1);
   });
 
   it("gives examples that apply when typed as they are shown", () => {
