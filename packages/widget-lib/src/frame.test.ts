@@ -218,6 +218,33 @@ describe("connectToHost", () => {
     expect(connection.walletUi()).toBe("widget");
   });
 
+  it("reports the pinned host's protocol: pending, then legacy or current", () => {
+    const legacy = connect();
+    const seen: string[] = [];
+    legacy.connection.onHostProtocol((p) => seen.push(p));
+    expect(legacy.connection.hostProtocol()).toBe("pending");
+    // Malformed answers pin nothing.
+    legacy.frame.receive({ type: "xochi:provider", protocolVersion: 99, available: true });
+    expect(legacy.connection.hostProtocol()).toBe("pending");
+    attach(legacy.frame);
+    expect(legacy.connection.hostProtocol()).toBe("legacy");
+    expect(seen).toEqual(["legacy"]);
+
+    const current = connect();
+    current.frame.receive({
+      type: "xochi:provider",
+      protocolVersion: 1,
+      handshakeId: 1,
+      available: false,
+      autoConnect: false,
+      walletUi: "widget",
+    });
+    expect(current.connection.hostProtocol()).toBe("current");
+    // A later legacy-shaped message from the pinned host cannot downgrade it.
+    attach(current.frame);
+    expect(current.connection.hostProtocol()).toBe("current");
+  });
+
   it("acknowledges versioned ownership before notifying availability observers", () => {
     const { frame, connection } = connect();
     frame.take();

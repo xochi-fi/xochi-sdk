@@ -96,6 +96,16 @@ export interface HostConnection {
   walletUi(): WalletUi;
   /** Called when `walletUi()` changes after a valid provider message. Returns an unsubscribe. */
   onWalletUi(listener: (walletUi: WalletUi) => void): () => void;
+  /**
+   * Which protocol the pinned host speaks: `"pending"` until a well-formed
+   * `xochi:provider` pins it, `"legacy"` for a host that sends no
+   * `protocolVersion` (pre-v1 loaders, which cannot be assumed to ignore
+   * ramp events safely), `"current"` for `WIDGET_PROTOCOL_VERSION`. A frame
+   * gates surfaces that need a current host on this, failing closed.
+   */
+  hostProtocol(): HostProtocol;
+  /** Called when `hostProtocol()` changes. Returns an unsubscribe. */
+  onHostProtocol(listener: (protocol: HostProtocol) => void): () => void;
   /** Runtime theme override, or null until the host sends a valid theme message. */
   theme(): EmbedTheme | null;
   /** Called when the runtime theme changes. Returns an unsubscribe. */
@@ -117,6 +127,8 @@ export interface HostConnection {
   /** Stop listening and reject every pending request. Idempotent. */
   destroy(): void;
 }
+
+export type HostProtocol = "pending" | "legacy" | "current";
 
 /** Events queued before the handshake. Bounded: a host that never answers gets the first few. */
 const MAX_QUEUED_EVENTS = 32;
@@ -192,6 +204,8 @@ export function connectToHost(options: HostConnectionOptions = {}): HostConnecti
   let hostAutoConnect = false;
   let hostWalletUi: WalletUi = "widget";
   let hostTheme: EmbedTheme | null = null;
+  let protocol: HostProtocol = "pending";
+  const protocolListeners = new Set<(protocol: HostProtocol) => void>();
   let pendingConnectRequest = false;
   let nextId = 1;
   let pendingHeight: number | null = null;
@@ -252,6 +266,8 @@ export function connectToHost(options: HostConnectionOptions = {}): HostConnecti
       if (hostOrigin === undefined ? event.origin === "null" : event.origin !== hostOrigin) return;
       origin = event.origin;
       pinnedNow = true;
+      protocol = versioned ? "current" : "legacy";
+      for (const listener of protocolListeners) listener(protocol);
     } else if (event.origin !== origin) {
       return;
     }
@@ -463,6 +479,13 @@ export function connectToHost(options: HostConnectionOptions = {}): HostConnecti
         walletUiListeners.delete(listener);
       };
     },
+    hostProtocol: () => protocol,
+    onHostProtocol(listener) {
+      protocolListeners.add(listener);
+      return () => {
+        protocolListeners.delete(listener);
+      };
+    },
     theme: () => hostTheme,
     onTheme(listener) {
       themeListeners.add(listener);
@@ -500,6 +523,7 @@ export function connectToHost(options: HostConnectionOptions = {}): HostConnecti
       availability.clear();
       walletUiListeners.clear();
       themeListeners.clear();
+      protocolListeners.clear();
     },
   };
 }

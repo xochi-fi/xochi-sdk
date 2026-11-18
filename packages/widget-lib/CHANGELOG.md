@@ -4,6 +4,12 @@ All notable changes to `@xochi/widget-lib` are documented here. Format follows [
 
 ## [Unreleased]
 
+Runtime-additive on protocol v1. Custom TypeScript implementations of `HostConnection` must add `hostProtocol` and `onHostProtocol`.
+
+### Added
+
+- `HostConnection.hostProtocol()` reports which protocol the pinned host speaks: `"pending"` before a well-formed `xochi:provider` pins the origin, `"legacy"` for a host that sends no `protocolVersion`, `"current"` for `WIDGET_PROTOCOL_VERSION`. `onHostProtocol(listener)` observes the change and returns an unsubscribe; destroy removes the listeners. The frame app uses it to refuse ramp execution until a current host is pinned. No protocol version bump.
+
 ## [0.5.0] - 2026-11-10
 
 Runtime-additive on protocol v1. Custom TypeScript implementations must add `XochiWidget.updateTheme`, `HostConnection.theme` and `HostConnection.onTheme`; exhaustive `HostMessage` switches must handle `xochi:theme`.

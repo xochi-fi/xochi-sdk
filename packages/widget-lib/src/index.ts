@@ -24,6 +24,7 @@ export {
   mintRampRef,
   type HostConnection,
   type HostConnectionOptions,
+  type HostProtocol,
   type HostProvider,
 } from "./frame.js";
 export {
