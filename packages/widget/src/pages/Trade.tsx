@@ -40,6 +40,7 @@ import { RampActivityList } from "../components/RampActivityList.js";
 import { useRampSummaries } from "../hooks/useRampSummaries.js";
 import { SwapPanel, type SwapPrefill } from "./trade/SwapPanel.js";
 import { BuyPanel } from "./trade/BuyPanel.js";
+import { CashOutRecovery, PurchaseRecovery } from "./trade/RampRecovery.js";
 import { SendPanel } from "./send/SendPanel.js";
 import {
   WidgetTabs,
@@ -618,6 +619,17 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
               inline in the pay field ("--"), so the strip's old connect prompt
               would be a second wallet ask; render nothing instead. */}
               {isConnected && <AssetsStrip />}
+
+              {/* Narrowing removes ways to start a Peer operation, never the
+                  way back to one already submitted (trade/RampRecovery.tsx). */}
+              {tabsShown && !surfaces.modes.includes("onramp") && <PurchaseRecovery />}
+              {tabsShown && !surfaces.destinations.includes("payment_app") && (
+                <CashOutRecovery
+                  items={localOfframps}
+                  fiatCurrency={fiatCurrency}
+                  active={selectedTab === "activity"}
+                />
+              )}
 
               <SendActivityList sends={localSends} />
               <OfframpActivityList items={localOfframps} />
