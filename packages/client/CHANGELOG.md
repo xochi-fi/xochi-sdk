@@ -14,6 +14,11 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 - `RampClient` `check_status` on an `in_doubt` leg may now reconcile to `action_required` (the same submitted operation waiting on the user, e.g. a signaled but unpaid Peer intent). A `processing` leg still never regresses, and no reconciliation resubmits.
 
+
+### Fixed
+
+- `getQuote` no longer caches a decline (`can_solve: false`, e.g. `insufficient_liquidity`). It answered every retry within the 15s TTL with the cached refusal, so the widget's Retry did nothing.
+
 ## [0.1.16] - 2026-11-15
 
 ### Added

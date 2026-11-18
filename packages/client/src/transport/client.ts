@@ -547,7 +547,7 @@ function sameOriginRedirectTarget(fetched: Response, requestUrl: string): string
 // ============================================================
 
 export interface XochiClient {
-  /** Request a quote. Cached for the TTL (pull-bearing or tag quotes never) and deduplicated. */
+  /** Request a quote. Cached for the TTL (declines, pull-bearing or tag quotes never) and deduplicated. */
   getQuote(request: QuoteRequest, opts?: { forceRefresh?: boolean }): Promise<QuoteResponse>;
   invalidateQuote(request: QuoteRequest): void;
   clearQuoteCache(): void;
@@ -1024,8 +1024,10 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
       try {
         const quote = await promise;
         // Pull nonces and tag-resolved addresses are single-use: a fresh quote
-        // must mint a new authorization or resolve a new recipient address.
-        if (quote.success && !quote.pullAuthorization && !request.recipientTag) {
+        // must mint a new authorization or resolve a new recipient address. A
+        // decline (can_solve:false) is not a price: caching it makes Retry
+        // replay the same refusal for the whole TTL.
+        if (quote.success && quote.canSolve && !quote.pullAuthorization && !request.recipientTag) {
           quoteCache.set(requestHash, { quote, timestamp: Date.now() });
         }
         return quote;
