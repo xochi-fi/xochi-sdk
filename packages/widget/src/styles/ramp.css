@@ -340,7 +340,6 @@
 .ramp-tile-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: minmax(9.5rem, 1fr);
   gap: 8px;
 }
 
@@ -350,7 +349,7 @@
   }
 }
 
-@container (min-width: 478px) {
+@container (min-width: 375px) {
   .ramp-tile-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -361,9 +360,12 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
+  justify-content: center;
+  box-sizing: border-box;
+  block-size: 5rem;
   min-width: 0;
-  padding: 6px;
+  padding: 2px 6px;
+  container-type: inline-size;
   color: inherit;
   background: var(--panel-bg-subtle);
   border: 2px solid var(--panel-border);
@@ -383,34 +385,72 @@ button.ramp-tile {
 
 .ramp-tile__text {
   min-width: 0;
-  display: grid;
-  gap: 2px;
+  max-width: 100%;
   font-size: 0.8rem;
   overflow-wrap: anywhere;
-  line-height: 1.35;
+  line-height: 1.1;
 }
 
 .ramp-tile__name {
-  min-block-size: 2lh;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
-/* The row reserves the same artwork and clearance space on every tile, including text-only rails. */
+.ramp-tile__status {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-block-start: 2px;
+}
+
+.ramp-tile__status small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .ramp-tile__logo-row {
   display: flex;
   align-items: center;
-  block-size: 78px;
+  block-size: 24px;
   flex: none;
+  margin-block-end: 14px;
 }
 
-.ramp-tile__logo {
+/* Monzo's required M-width clearance below the mark exceeds the compact tile height. */
+.ramp-tile__logo-row--monzo {
+  display: none;
+}
+
+/* Scale the visible artwork to 24px while keeping the original transparent canvas. */
+.ramp-tile__logo-row--wise .ramp-tile__logo {
+  inline-size: calc(24px * 250 / 57);
+}
+
+/* Revolut needs the wordmark plus 1.1 canvas heights of clearance on each side. */
+.ramp-tile__logo-row--revolut {
+  align-self: stretch;
+  margin-inline: -6px;
+}
+
+.ramp-tile__logo-row--revolut .ramp-tile__logo {
+  inline-size: calc(24px * 3623 / 800);
+  padding-inline: calc(24px * 1.1);
   box-sizing: content-box;
+}
+
+@container (width < 150px) {
+  .ramp-tile__logo-row--revolut {
+    display: none;
+  }
 }
 
 .ramp-tile__logo img {
   display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
+  inline-size: 100%;
+  block-size: auto;
 }
 
 .ramp-tile__logo img.ramp-tile__logo-dark,

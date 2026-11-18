@@ -5,27 +5,20 @@ import { formatRampTime, RAIL_NAMES, type RailCard } from "./model.js";
 function RailLogo({ id }: { id: string }) {
   const logo = railLogo(id);
   if (!logo) return null;
-  // Monzo's artwork occupies 340 of the 808 canvas pixels vertically.
-  const wordmarkWidth =
-    id === "monzo" ? Math.ceil((20 * logo.width) / 340) : id === "revolut" ? 80 : 64;
-  const height = (wordmarkWidth * logo.height) / logo.width;
-  const padding = id === "revolut" ? height * logo.clearSpaceRatio : 0;
   return (
-    <span
-      className="ramp-tile__logo"
-      style={{ width: wordmarkWidth, height, paddingInline: padding }}
-      aria-hidden="true"
-    >
-      <img src={logo.light} width={logo.width} height={logo.height} alt="" />
-      {logo.dark && (
-        <img
-          className="ramp-tile__logo-dark"
-          src={logo.dark}
-          width={logo.width}
-          height={logo.height}
-          alt=""
-        />
-      )}
+    <span className={`ramp-tile__logo-row ramp-tile__logo-row--${id}`} aria-hidden="true">
+      <span className="ramp-tile__logo">
+        <img src={logo.light} width={logo.width} height={logo.height} alt="" />
+        {logo.dark && (
+          <img
+            className="ramp-tile__logo-dark"
+            src={logo.dark}
+            width={logo.width}
+            height={logo.height}
+            alt=""
+          />
+        )}
+      </span>
     </span>
   );
 }
@@ -43,13 +36,13 @@ export function RailTileContent({
 }) {
   return (
     <>
-      <span className="ramp-tile__logo-row" aria-hidden="true">
-        <RailLogo id={id} />
-      </span>
+      <RailLogo id={id} />
       <span className="ramp-tile__text">
         <strong className="ramp-tile__name">{name}</strong>
-        <small>{status}</small>
-        {selected && <small aria-hidden="true">✓ Selected</small>}
+        <span className="ramp-tile__status">
+          <small>{status}</small>
+          {selected && <span aria-hidden="true">✓</span>}
+        </span>
       </span>
     </>
   );
