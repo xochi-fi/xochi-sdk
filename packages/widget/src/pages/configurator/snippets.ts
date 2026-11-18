@@ -109,7 +109,8 @@ export function codeFor(format: CodeFormat, origin: string, params: EmbedParams)
 
 /** The public ramp facade takes direction, while updateParams carries EmbedParams. */
 export function rampSnippet(origin: string, params: EmbedParams): string {
-  const direction = params.initialTab === "send" ? "offramp" : "onramp";
+  const onlyMode = params.modes?.length === 1 ? params.modes[0] : undefined;
+  const direction = (params.initialMode ?? onlyMode) === "offramp" ? "offramp" : "onramp";
   return [
     '<div id="xochi-swap"></div>',
     '<script type="module">',

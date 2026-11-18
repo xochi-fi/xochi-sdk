@@ -336,9 +336,9 @@ describe("tab and ramp parameters", () => {
     const params: EmbedParams = {
       initialTab: "send",
       tabs: ["trade", "send", "activity", "claims"],
-      initialMode: "onramp",
-      modes: ["onramp", "swap"],
-      sendDestinations: ["address", "stealth", "payment_app"],
+      initialMode: "offramp",
+      modes: ["onramp", "swap", "offramp"],
+      sendDestinations: ["address", "stealth"],
       fiatCurrency: "USD",
       rampProviders: ["peer"],
       amount: "5",
@@ -352,19 +352,19 @@ describe("tab and ramp parameters", () => {
   it("drops unknown defaults and entries without widening explicit restrictions", () => {
     expect(
       parseEmbedParams(
-        "initialTab=sell&initialMode=offramp&fiatCurrency=usd&tabs=send,unknown,send&modes=offramp&sendDestinations=payment_app,unknown&rampProviders=unknown",
+        "initialTab=sell&initialMode=sell&fiatCurrency=usd&tabs=send,unknown,send&modes=sell&sendDestinations=payment_app,unknown&rampProviders=unknown",
       ),
     ).toEqual({
       tabs: ["send"],
       modes: [],
-      sendDestinations: ["payment_app"],
+      sendDestinations: [],
       rampProviders: [],
     });
     expect(parseEmbedParams(`tabs=${Array(34).fill("trade").join(",")}`)).toEqual({ tabs: [] });
   });
 
   it.each([
-    { initialMode: "offramp" },
+    { initialMode: "sell" },
     { initialTab: "sell" },
     { modes: ["swap", "swap"] },
     { sendDestinations: ["payment_app", "other"] },

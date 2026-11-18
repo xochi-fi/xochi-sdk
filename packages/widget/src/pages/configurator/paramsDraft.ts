@@ -30,12 +30,18 @@ import {
 
 import { SURFACE_FIELDS, surfaceParams } from "./surfaceParams.js";
 type ParamField = FrameField | (typeof SURFACE_FIELDS)[number];
+const EMPTY_NARROWING_FIELDS: readonly ParamField[] = [
+  "tabs",
+  "modes",
+  "sendDestinations",
+  "rampProviders",
+];
 const PARAM_HINT = {
   ...EMBED_PARAM_HINT,
   initialTab: { takes: "a visible tab", example: "initialTab=trade" },
   tabs: { takes: "visible tabs", example: "tabs=trade,send" },
-  initialMode: { takes: "a visible Trade mode", example: "initialMode=swap" },
-  modes: { takes: "Trade modes", example: "modes=onramp,swap" },
+  initialMode: { takes: "a visible Trade mode", example: "initialMode=offramp" },
+  modes: { takes: "Trade modes", example: "modes=onramp,swap,offramp" },
   sendDestinations: {
     takes: "Send destination kinds",
     example: "sendDestinations=address,stealth",
@@ -105,7 +111,7 @@ export function readParamsDraft(text: string, offer: EmbedOffer): ParamsDraft {
       problems.push(`Unknown parameter "${key}". The widget reads ${PARAM_KEYS}.`);
     } else if (accepted.has(key)) {
       problems.push(`${key} is set twice. Keep one.`);
-    } else if (value === "") {
+    } else if (value === "" && !EMPTY_NARROWING_FIELDS.includes(field)) {
       const { takes, example } = PARAM_HINT[field];
       problems.push(`${key} needs a value: ${takes}, like ${example}.`);
     } else if (

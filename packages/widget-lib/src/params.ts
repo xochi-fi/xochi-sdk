@@ -35,9 +35,9 @@ export const EMBED_PARAM = {
 
 export const WIDGET_TABS = ["trade", "send", "activity", "claims"] as const;
 export type WidgetTab = (typeof WIDGET_TABS)[number];
-export const TRADE_MODES = ["onramp", "swap"] as const;
+export const TRADE_MODES = ["onramp", "swap", "offramp"] as const;
 export type TradeMode = (typeof TRADE_MODES)[number];
-export const SEND_DESTINATIONS = ["address", "stealth", "payment_app"] as const;
+export const SEND_DESTINATIONS = ["address", "stealth"] as const;
 export type SendDestinationKind = (typeof SEND_DESTINATIONS)[number];
 
 /** The settlement modes a host may preselect. */
@@ -269,7 +269,7 @@ function fieldProblem(field: keyof EmbedParams, value: unknown): string | null {
     case "initialTab":
       return WIDGET_TABS.some((v) => v === value) ? null : "must be a known widget tab";
     case "initialMode":
-      return TRADE_MODES.some((v) => v === value) ? null : "must be onramp or swap";
+      return TRADE_MODES.some((v) => v === value) ? null : "must be a known Trade mode";
     case "fiatCurrency":
       return typeof value === "string" && /^[A-Z]{3}$(?![\s\S])/.test(value)
         ? null

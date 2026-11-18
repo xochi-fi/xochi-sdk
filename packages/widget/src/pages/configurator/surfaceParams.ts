@@ -23,9 +23,6 @@ export type SurfaceParams = Pick<EmbedParams, (typeof SURFACE_FIELDS)[number]>;
 
 /** Defaults and visibility only. No capability or execution state lives here. */
 export function surfaceParams(params: EmbedParams): SurfaceParams {
-  for (const key of ["tabs", "modes", "sendDestinations", "rampProviders"] as const) {
-    if (params[key]?.length === 0) throw new TypeError(`${key} must retain at least one option`);
-  }
   const selected = Object.fromEntries(
     SURFACE_FIELDS.filter((key) => params[key] !== undefined).map((key) => [key, params[key]]),
   );

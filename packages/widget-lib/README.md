@@ -131,8 +131,9 @@ MIT
 
 ## Tabs and ramp integration
 
-`WidgetTab` is `trade | send | activity | claims`. Trade has Buy (`onramp`) and
-Swap (`swap`); cash-out (`offramp`) lives in Send's `payment_app` destination.
+`WidgetTab` is `trade | send | activity | claims`. Trade has Buy (`onramp`),
+Swap (`swap`), and Cash out (`offramp`). Send supports Wallet address (`address`)
+and Stealth (`stealth`).
 
 ```ts
 import { createXochiRampWidget } from "@xochi/widget-lib";
@@ -146,30 +147,30 @@ const widget = createXochiRampWidget(container, {
   },
 });
 widget.updateParams({
-  initialTab: "send",
+  initialTab: "trade",
   tabs: ["trade", "send", "activity", "claims"],
-  initialMode: "swap",
-  modes: ["onramp", "swap"],
-  sendDestinations: ["payment_app"],
+  initialMode: "offramp",
+  modes: ["onramp", "swap", "offramp"],
+  sendDestinations: ["address", "stealth"],
   fiatCurrency: "USD",
   rampProviders: ["peer"],
 });
 ```
 
-The offramp facade opens Send narrowed to `payment_app`, preselecting cash-out to
-the user's own payment account. `updateParams` retains the iframe element and
+The offramp facade opens Trade / Cash out for payouts to the user's own
+payment account. `updateParams` retains the iframe element and
 navigates its document when the encoded parameters change, as it does for existing
 parameters; it restarts frame readiness and wallet handshaking. For wallet changes
 use `updateProvider`.
 
 The new defaults are `initialTab`, `initialMode`, and `fiatCurrency` (three uppercase
 currency letters, validated against live offers before execution). The narrowing
-lists are `tabs`, `modes`, `sendDestinations` (`address | stealth | payment_app`), and
+lists are `tabs`, `modes`, `sendDestinations` (`address | stealth`), and
 `rampProviders` (Phase 1: `peer`). These lists only hide surfaces; they never grant
 capability, eligibility or executable rail availability. Omission uses frame defaults;
 an explicit empty list hides every entry. URL parsing drops unknown defaults and
-unknown list entries and deduplicates lists; an all-unknown or oversized restriction
-remains empty, never unrestricted. Encoding rejects unknown values, duplicates and
+unknown list entries, including legacy `payment_app`, and deduplicates lists. An
+all-unknown or oversized restriction remains empty. Encoding rejects unknown values, duplicates and
 oversized lists. Existing trade `amount` has no meaning for ramp amounts.
 
 Ramp events extend `XochiWidgetEvent` on the existing `xochi:event` channel:
@@ -191,8 +192,10 @@ signatures and raw provider errors. Address and stealth sends never emit ramp ev
 URL fields; the handshake and wallet RPC contract are unchanged. The frozen original
 v1 host decoder in `legacyEvent.v1.test.ts` ignores all four ramp names and still
 accepts trade events. `bridge.test.ts` exercises the new events over the same v1
-origin-pinned bridge. Older frames ignore the new URL keys, so v1 readiness alone
-does not establish ramp UI support: deploy the compatible frame before ramp hosts.
+origin-pinned bridge. Older frames ignore unsupported URL keys and modes. A frame from the prior
+release candidate falls back to Swap when given `initialMode=offramp` without
+mode narrowing. Protocol v1 readiness only confirms bridge compatibility. Deploy
+the compatible frame before using the new Cash out entry point.
 Custom TypeScript exhaustive event switches must add the new union members.
 
 ### Migrate a hosted embed
@@ -201,8 +204,8 @@ Use `@xochi/widget-lib@0.6.0` with a hosted shell serving
 `@xochi/widget@0.1.0` or later compatible widget at `/embed`. Deploy that shell
 first. A standalone or legacy Swap embed can continue using `layout=swap`.
 For the full layout, use `initialTab: "trade"` with `initialMode: "swap"` to
-retain a Swap landing view. Move cash-out entry points to Send
-(`initialTab: "send"`, `sendDestinations: ["payment_app"]`), or use
+retain a Swap landing view. Set `initialTab: "trade"` and
+`initialMode: "offramp"` to land on Cash out, or use
 `createXochiRampWidget(container, { direction: "offramp" })`. The original
 Trade/Swap events remain on the same bridge.
 

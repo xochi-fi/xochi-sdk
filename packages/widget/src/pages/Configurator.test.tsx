@@ -99,6 +99,7 @@ function renderConfigurator() {
 
 /** Drill into a section from the settings list. */
 type SectionName =
+  | "Tabs, Trade and Send"
   | "Route"
   | "Allowed assets"
   | "Privacy"
@@ -609,7 +610,7 @@ describe("get code and shared configuration", () => {
     await waitFor(() => expect(previewParams().get("amount")).toBe("250"), WAIT);
   }
 
-  function code(tab: "HTML" | "React" | "URL"): string {
+  function code(tab: "HTML" | "React" | "Ramp" | "URL"): string {
     fireEvent.click(screen.getByRole("tab", { name: tab }));
     return screen.getByRole("tabpanel").querySelector("pre")?.textContent ?? "";
   }
@@ -638,6 +639,32 @@ describe("get code and shared configuration", () => {
     expect(url.origin).toBe(preview.origin);
     expect(parseEmbedParams(url.search)).toEqual(params);
     expect(url.href).toBe(preview.href);
+  });
+
+  it("previews and exports Cash out as a Trade mode", async () => {
+    renderConfigurator();
+    await liveMatrix();
+    openSection("Tabs, Trade and Send");
+
+    const modes = within(screen.getByRole("group", { name: "Trade modes" }));
+    expect(
+      modes.getAllByRole("checkbox").map((checkbox) => checkbox.parentElement?.textContent),
+    ).toEqual(["Buy", "Swap", "Cash out"]);
+    const destinations = within(screen.getByRole("group", { name: "Send destinations" }));
+    expect(
+      destinations.getAllByRole("checkbox").map((checkbox) => checkbox.parentElement?.textContent),
+    ).toEqual(["Wallet address", "Stealth"]);
+
+    fireEvent.change(screen.getByLabelText("Initial Trade mode"), {
+      target: { value: "offramp" },
+    });
+    await waitFor(() => expect(previewParams().get("initialMode")).toBe("offramp"), WAIT);
+
+    for (const tab of ["HTML", "React", "Ramp"] as const) {
+      expect(code(tab)).toContain('initialMode: "offramp"');
+    }
+    expect(code("Ramp")).toContain('direction: "offramp"');
+    expect(code("URL")).toBe(previewUrl().href);
   });
 
   it("copies the selected format and confirms it", async () => {

@@ -7,11 +7,11 @@ import { FRAME_DEFAULTS } from "../trade/embedParams.js";
 import { DEFAULT_BACKDROP } from "./previewModel.js";
 
 const params: EmbedParams = {
-  tabs: ["send", "activity"],
-  initialTab: "send",
-  modes: ["onramp"],
-  initialMode: "onramp",
-  sendDestinations: ["payment_app"],
+  tabs: ["trade", "send", "activity"],
+  initialTab: "trade",
+  modes: ["offramp"],
+  initialMode: "offramp",
+  sendDestinations: ["address", "stealth"],
   fiatCurrency: "USD",
   rampProviders: ["peer"],
 };
@@ -21,12 +21,19 @@ describe("configurator public surface parameters", () => {
     expect(surfaceParams({})).toEqual({});
   });
   it("repairs initial selections excluded by narrowing without widening", () => {
-    expect(surfaceParams({ ...params, initialTab: "trade", initialMode: "swap" })).toEqual(params);
+    expect(surfaceParams({ ...params, initialTab: "claims", initialMode: "swap" })).toEqual(params);
   });
-  it("rejects empty narrowing rather than enabling every option", () => {
+  it("preserves explicit empty narrowing", () => {
     for (const key of ["tabs", "modes", "sendDestinations", "rampProviders"] as const) {
-      expect(() => surfaceParams({ [key]: [] })).toThrow();
+      expect(surfaceParams({ [key]: [] })).toEqual({ [key]: [] });
     }
+  });
+  it("keeps a legacy-only Send restriction empty across shared links and snippets", () => {
+    const { params } = readConfiguratorSearch("?sendDestinations=payment_app");
+    const cleaned = surfaceParams(params);
+    expect(cleaned).toEqual({ sendDestinations: [] });
+    const url = codeFor("url", "https://widget.example", cleaned);
+    expect(parseEmbedParams(new URL(url).search)).toEqual(cleaned);
   });
   it("retains unrelated options when replacing or clearing defaults", () => {
     const previous = { ...params, theme: "light", amount: "10" } as const;
@@ -54,6 +61,14 @@ describe("configurator public surface parameters", () => {
   it("carries only documented defaults and narrowing, never execution authority", () => {
     expect(surfaceParams({ ...params, available: true, executable: true } as EmbedParams)).toEqual(
       params,
+    );
+  });
+  it("uses the offramp facade when Cash out is the only Trade mode", () => {
+    expect(codeFor("ramp", "https://widget.example", { modes: ["offramp"] })).toContain(
+      'direction: "offramp"',
+    );
+    expect(codeFor("ramp", "https://widget.example", { initialTab: "send" })).toContain(
+      'direction: "onramp"',
     );
   });
   it("round trips all controls through shared links and snippets", () => {

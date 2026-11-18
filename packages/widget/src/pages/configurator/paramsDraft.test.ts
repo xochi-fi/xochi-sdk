@@ -66,7 +66,12 @@ describe("readParamsDraft", () => {
   it("recognises every parameter the frame reads", () => {
     expect(Object.keys(FIELD_BY_KEY).sort()).toEqual([...FRAME_KEYS].sort());
     for (const key of FRAME_KEYS) {
-      const { problems } = readParamsDraft(`${key}=`, LIVE);
+      const { problems, params } = readParamsDraft(`${key}=`, LIVE);
+      if (["tabs", "modes", "sendDestinations", "rampProviders"].includes(key)) {
+        expect(problems, key).toEqual([]);
+        expect(params, key).toEqual({ [key]: [] });
+        continue;
+      }
       expect(problems, key).toHaveLength(1);
       expect(problems[0], key).toMatch(new RegExp(`^${key} needs a value`));
     }
@@ -75,7 +80,7 @@ describe("readParamsDraft", () => {
   it("accepts public narrowing and rejects inconsistent initial selections", () => {
     expect(
       readParamsDraft(
-        "tabs=trade,send\ninitialTab=send\nmodes=onramp\ninitialMode=onramp\nsendDestinations=payment_app\nfiatCurrency=USD\nrampProviders=peer",
+        "tabs=trade,send\ninitialTab=trade\nmodes=offramp\ninitialMode=offramp\nsendDestinations=address\nfiatCurrency=USD\nrampProviders=peer",
         LIVE,
       ).problems,
     ).toEqual([]);
@@ -88,6 +93,7 @@ describe("readParamsDraft", () => {
       for (const key of FRAME_KEYS) {
         // Take the example out of the message a user actually reads.
         const [message] = readParamsDraft(`${key}=`, offer).problems;
+        if (message === undefined) continue;
         const example = /, like (\S+)\.$/.exec(message)?.[1];
         expect(example, message).toMatch(new RegExp(`^${key}=`));
         expect(readParamsDraft(example ?? "", offer).problems, example).toEqual([]);
