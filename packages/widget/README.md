@@ -89,6 +89,15 @@ The published `@xochi/widget-lib@0.5.0` host's `updateTheme` changes the visual 
 
 The host supplies settings, never alternate trading algorithms. Exact route authorization, stale/fallback refusal, privacy preferences, signing checks and recovery live in public code. No Vite environment reads or import-time bridge handshake exist in this package. Mounting the widget owns the bridge; unmounting destroys it and rejects pending requests. Wallet signatures still require the existing explicit user actions.
 
+Peer launch settings are off unless the deployment sets them:
+
+- `peerReferralCode`: unset sends no referral code. Set it only after legal
+  sign-off on Peer referral income and a check against Peer's referral terms.
+- `offrampCanaryCapAtomic` and `onrampCanaryCapAtomic`: the most Base USDC
+  (canonical atomic units, e.g. `"5000000"` for 5 USDC) one cash-out may deposit
+  or one purchase may receive. Unset means no cap beyond Peer's own live limits.
+  An amount over a set cap shows the limit and reads no rails.
+
 Browser RPC URLs and WalletConnect identifiers are public bundle settings, not a place for secret provider keys. Preserve wallet telemetry opt-outs. Existing storage namespaces and history/session formats remain unchanged; signing keys are not persisted.
 
 “Sign in to scan” starts scanning only after explicit authentication has produced
@@ -158,6 +167,18 @@ to the Swap card); Trade or Send with nothing left goes too. `initialTab` and
 `initialMode` pick among what remains, else Trade and Swap. `layout=swap` ignores
 these parameters.
 
+Narrowing removes ways to start a Peer operation, never the way back to one
+already submitted: when Buy or `payment_app` is narrowed out, Activity resumes a
+submitted, unsettled purchase or an open cash-out from this browser in a
+recovery-only view (`src/pages/trade/RampRecovery.tsx`).
+
+Inside an iframe, no Peer rail is offered until a host on the current widget
+protocol has pinned the origin (`src/lib/rampHostGate.ts`, over
+`HostConnection.hostProtocol()`). Before the handshake Buy and `payment_app`
+say they are waiting for the host; a legacy loader, which may not drop ramp
+events safely, gets a permanent refusal that says why. Recovery never consults
+this gate. Outside an iframe there is nothing to check.
+
 ## Ramp rail availability
 
 Trade/Buy (`onramp`) and Send/`payment_app` (`offramp`) show live Peer rails
@@ -213,6 +234,12 @@ Frame flows can use `createRampEmitter(direction)` from `src/lib/rampLifecycle.t
 It uses the existing mounted `hostBridge`, mints one opaque `rampRef`, emits
 `ramp:started`, and returns `status`, `recoveryRequired` and `terminal` methods for
 that reference. Call it once per Peer operation, never for address or stealth sends.
+A host hears each fact once: a repeated status is dropped, a recovery code
+repeats only after its leg changes state, and nothing follows `ramp:terminal`.
+The reference is kept in the sanitized summary (`ramp_ref` for purchases,
+`rampRef` for cash-outs), and a reload continues it through
+`resumeRampEmitter(ref)`: never a second `ramp:started`, and nothing at all for
+a summary stored without one.
 Pass normalized `ramp/1` leg states and error codes only. It adds no bridge or
 provider session mapping and receives no amounts, assets or provider handles.
 
@@ -265,3 +292,23 @@ or mainnet spending is part of the deterministic checks.
 
 `preview-offramp-route.html` and `?failure` render the actual presentation components
 with in-memory route facts for 460px review and Peer-failure-after-route evidence.
+
+## Release privacy inspection
+
+`src/ramp/privacy.test.tsx` drives Buy (completion, Peer sign-in required, a
+raw provider error, in doubt across a reload), Send/`payment_app` (partial fill
+to delivery, a lost deposit hash across a reload, a mixed fill-and-return) and
+Send/Stealth to someone else's meta-address inside a scripted host frame. It
+records every `postMessage` to the host, all `localStorage` and
+`sessionStorage`, every console call and every Xochi API request other than
+the quote a flow needs, and asserts none carries a payee handle, provider
+deposit or intent id, proof or session material, a raw provider error, a
+signature or calldata, or the recipient's meta-address. It also asserts one
+`ramp:started` per operation across reloads.
+
+## Testing
+
+`npm test -w @xochi/widget` runs on Node 22 through 26 without flags. A
+downstream suite on an older vitest whose jsdom storage is shadowed by Node
+25+'s experimental global `localStorage` (the private deploy shell, for one)
+needs `NODE_OPTIONS=--no-experimental-webstorage`.
