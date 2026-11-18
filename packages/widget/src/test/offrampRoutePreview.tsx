@@ -63,7 +63,7 @@ function Preview() {
               Peer's terms changed before deposit. Your 24 USDC remains in your wallet on Base. The
               completed Xochi route will not repeat.
             </p>
-            <button className="send-cta">Check Peer rails for a fresh estimate</button>
+            <button className="submit-btn send-cta">Check Peer rails for a fresh estimate</button>
           </section>
         </>
       ) : (

@@ -63,7 +63,7 @@ export function OfframpRouteReview({
       )}
       {status === "action_required" && (
         <button
-          className="send-cta"
+          className="submit-btn send-cta"
           disabled={busy || !authorized || !preview || Date.parse(preview.expiresAt) <= Date.now()}
           onClick={() => onAction("execute")}
         >

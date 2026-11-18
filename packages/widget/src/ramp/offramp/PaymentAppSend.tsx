@@ -337,7 +337,7 @@ function EditStep({
             )}
             <button
               type="button"
-              className="send-cta"
+              className="submit-btn send-cta"
               disabled={
                 !chosen || overCap !== undefined || state.status !== "done" || flow.busy !== false
               }
@@ -444,7 +444,7 @@ function AccountSetup({
       />
       <button
         type="submit"
-        className="send-cta"
+        className="submit-btn send-cta"
         disabled={!owned || payeeError(value) !== undefined || flow.busy !== false}
       >
         Register this account with Peer
@@ -594,7 +594,7 @@ function ReviewStep({ flow, quote }: { flow: Flow; quote: OfframpQuote }) {
         </button>
         <button
           type="button"
-          className="send-cta"
+          className="submit-btn send-cta"
           disabled={!ready}
           onClick={() => {
             void flow.confirm(quote.registeredPayee ? undefined : payee).then(() => setPayee(""));
@@ -670,7 +670,7 @@ function OrderStep({ flow, order }: { flow: Flow; order: OfframpOrder }) {
           {!onBase ? (
             <button
               type="button"
-              className="send-cta"
+              className="submit-btn send-cta"
               disabled={flow.busy !== false}
               onClick={() => void flow.switchNetwork()}
             >
@@ -679,7 +679,7 @@ function OrderStep({ flow, order }: { flow: Flow; order: OfframpOrder }) {
           ) : (
             <button
               type="button"
-              className="send-cta"
+              className="submit-btn send-cta"
               disabled={flow.busy !== false}
               onClick={() => void flow.walletStep()}
             >
