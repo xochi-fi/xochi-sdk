@@ -110,6 +110,7 @@ function context(revision: string): RampCommandContext {
 }
 
 function statusOf(snapshot: RampSnapshot, phase: MakerPhase | undefined): OfframpStatus {
+  if (snapshot.terminal && snapshot.peer.partial_result) return "mixed";
   if (phase === "delivered") return "delivered";
   if (phase === "returned") return "returned";
   if (snapshot.peer.state === "in_doubt") return "in_doubt";
@@ -184,6 +185,11 @@ export function useOfframp(
         stage: order.stage,
         status: statusOf(order.snapshot, order.phase),
         ...(order.phase ? { phase: order.phase } : {}),
+        ...(order.snapshot.terminal && order.amounts
+          ? {
+              totals: { filled: order.amounts.filled, returned: order.amounts.withdrawn },
+            }
+          : {}),
         ...(order.pendingAction ? { pendingAction: order.pendingAction } : {}),
         data: { rail: order.rail, currency: order.currency, amount: order.amount },
       };

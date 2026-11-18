@@ -391,6 +391,40 @@ describe("Peer maker unsigned lifecycle", () => {
     Object.assign(s.io.facts, { remaining: "10000000", unmatched: "0", withdrawn: "15000000" });
     expect((await s.provider.orderStatus(s.preview.operation_id)).snapshot.terminal).toBe(false);
   });
+  it("preserves a terminal mixed fill and return without calling it refunded", async () => {
+    const s = await deposited();
+    Object.assign(s.io.facts, {
+      remaining: "10000000",
+      unmatched: "10000000",
+      filled: "15000000",
+    });
+    await s.provider.orderStatus(s.preview.operation_id);
+    s.snapshot = await s.provider.prepareWithdrawal(
+      s.preview.operation_id,
+      "10000000",
+      context(s.snapshot, "mixed-withdraw"),
+    );
+    await s.provider.takeUnsignedPlan(s.preview.operation_id);
+    await s.provider.recordSubmission(
+      s.preview.operation_id,
+      "withdraw_unmatched",
+      `0x${"2".repeat(64)}`,
+    );
+    Object.assign(s.io.facts, {
+      remaining: "0",
+      unmatched: "0",
+      withdrawn: "10000000",
+      closed: true,
+    });
+    const result = await s.provider.orderStatus(s.preview.operation_id);
+    expect(result.snapshot.peer.state).toBe("completed");
+    expect(result.snapshot.terminal).toBe(true);
+    expect(result.snapshot.allowed_actions).toEqual([]);
+    expect(result.snapshot.peer).toMatchObject({
+      partial_result: { filled_atomic: "15000000", returned_atomic: "10000000" },
+    });
+    expect(parseRamp(result.snapshot).ok).toBe(true);
+  });
   it("rebuilds returned state after full withdrawal", async () => {
     const s = await deposited();
     s.snapshot = await s.provider.prepareWithdrawal(

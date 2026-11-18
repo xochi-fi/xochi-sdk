@@ -18,6 +18,10 @@ export function formatUsdc(atomic: string): string {
   return `${formatTokenAmount(BigInt(atomic), USDC_DECIMALS, USDC_DECIMALS)} USDC`;
 }
 
+export function formatMixedCashOut(filled: string, returned: string): string {
+  return `${formatUsdc(filled)} cashed out; ${formatUsdc(returned)} returned`;
+}
+
 /** Plain decimal USDC for an input field (no grouping), e.g. "25" or "1.5". */
 export function usdcDecimal(atomic: string): string {
   const v = atomic.padStart(USDC_DECIMALS + 1, "0");
@@ -122,6 +126,15 @@ export function orderHeadline(
       detail:
         "The last wallet step's outcome is not confirmed yet. Only a status check can settle it; nothing will be sent again.",
       tone: "attention",
+    };
+  if (snapshot.terminal && leg.partial_result)
+    return {
+      title: "Partly cashed out and returned",
+      detail: formatMixedCashOut(
+        leg.partial_result.filled_atomic,
+        leg.partial_result.returned_atomic,
+      ),
+      tone: "done",
     };
   if (phase === "delivered")
     return {

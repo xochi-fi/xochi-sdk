@@ -24,7 +24,13 @@ const PREFIX = STORAGE_KEYS.localOfframpsPrefix;
  * wallet; only S5's protected mapping can resume or settle it.
  */
 export type OfframpStage = "before_deposit" | "deposit";
-export type OfframpStatus = "open" | "in_doubt" | "delivered" | "returned" | "not_started";
+export type OfframpStatus =
+  | "open"
+  | "in_doubt"
+  | "delivered"
+  | "returned"
+  | "mixed"
+  | "not_started";
 
 export interface OfframpActivityItem {
   /** Widget-minted operation reference (opaque, non-authorizing). */
@@ -34,6 +40,8 @@ export interface OfframpActivityItem {
   stage: OfframpStage;
   status: OfframpStatus;
   phase?: MakerPhase;
+  /** Sanitized terminal Base USDC totals; no provider correlation. */
+  totals?: { filled: string; returned: string };
   /** The wallet step handed out last, so a reload can ask for its hash. */
   pendingAction?: MakerWalletAction;
   data: {
@@ -45,7 +53,14 @@ export interface OfframpActivityItem {
 }
 
 const STAGES = new Set<string>(["before_deposit", "deposit"]);
-const STATUSES = new Set<string>(["open", "in_doubt", "delivered", "returned", "not_started"]);
+const STATUSES = new Set<string>([
+  "open",
+  "in_doubt",
+  "delivered",
+  "returned",
+  "mixed",
+  "not_started",
+]);
 const PHASES = new Set<string>([
   "awaiting_buyer",
   "matched",
@@ -91,6 +106,23 @@ export function parseOfframpRecord(value: unknown): OfframpActivityItem | null {
     !/^[1-9][0-9]{0,30}$/.test(data.amount)
   )
     return null;
+  const rawTotals = row.totals as Record<string, unknown> | undefined;
+  let totals: OfframpActivityItem["totals"];
+  if (rawTotals !== undefined) {
+    const filled = rawTotals?.filled;
+    const returned = rawTotals?.returned;
+    if (
+      typeof filled !== "string" ||
+      !/^(0|[1-9][0-9]{0,30})$/.test(filled) ||
+      typeof returned !== "string" ||
+      !/^(0|[1-9][0-9]{0,30})$/.test(returned) ||
+      BigInt(filled) + BigInt(returned) !== BigInt(data.amount)
+    )
+      return null;
+    totals = { filled, returned };
+  }
+  if (row.status === "mixed" && (!totals || totals.filled === "0" || totals.returned === "0"))
+    return null;
   return {
     id: row.id,
     type: "offramp",
@@ -99,6 +131,7 @@ export function parseOfframpRecord(value: unknown): OfframpActivityItem | null {
     status: row.status as OfframpStatus,
     ...(row.phase ? { phase: row.phase as MakerPhase } : {}),
     ...(row.pendingAction ? { pendingAction: row.pendingAction as MakerWalletAction } : {}),
+    ...(totals ? { totals } : {}),
     data: { rail: data.rail, currency: data.currency, amount: data.amount },
   };
 }

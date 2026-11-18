@@ -174,3 +174,13 @@ approved route; `execute()` receives that reference to prevent quote substitutio
 The engine never supplies a wallet signer or provider launch URL.
 
 Peer leg snapshots may include optional `payout_state: "held" | "released"`. A held payout remains `processing` and is nonterminal; it is not confirmed Base USDC. `released` requires verified payment to the recipient, not merely a closed StakeVault lock (which can also close after a dispute). Older snapshots omit this field. Consumers, including Raxol, must accept the additive field.
+
+A terminal Peer maker cash-out that both fills and returns funds uses
+`peer.state: "completed"` with optional `peer.partial_result`:
+`{ settlement: "base_usdc", filled_atomic, returned_atomic }`. Both totals are
+positive canonical atomic strings bounded to 31 digits; unknown fields are
+rejected. Filled is gross Base USDC debited by verified fills, including fees,
+not a fiat receipt amount. A mixed result is `partial_success`, never a wholly
+refunded leg; it permits no resubmission. Pure completion and pure return retain
+their existing shapes. Public readers should preserve this additive ramp/1 field
+to explain the split after reload.

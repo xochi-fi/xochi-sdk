@@ -410,6 +410,18 @@ export function createPeerOfframpProvider(options: {
         state,
         recoverable: !["completed", "refunded"].includes(state),
         ...(failure ? { failure_code: failure } : {}),
+        ...(state === "completed" &&
+        e.amounts &&
+        BigInt(e.amounts.filled) > 0n &&
+        BigInt(e.amounts.withdrawn) > 0n
+          ? {
+              partial_result: {
+                settlement: "base_usdc" as const,
+                filled_atomic: e.amounts.filled,
+                returned_atomic: e.amounts.withdrawn,
+              },
+            }
+          : {}),
       },
       allowed_actions: actions,
       updated_at: new Date(now()).toISOString(),
@@ -494,10 +506,10 @@ export function createPeerOfframpProvider(options: {
     };
     e.phase =
       remaining === 0n && facts.activeIntents === 0
-        ? withdrawn > 0n
-          ? "returned"
-          : filled > 0n
-            ? "delivered"
+        ? filled > 0n
+          ? "delivered"
+          : withdrawn > 0n
+            ? "returned"
             : undefined
         : filled > 0n
           ? "delivering"
