@@ -156,7 +156,7 @@ const visiblePanel = (): HTMLElement => {
 /** The pay field, found the way a screen reader names it. */
 const payAmount = (): HTMLInputElement =>
   within(document.querySelector(".trade-card") as HTMLElement).getByLabelText<HTMLInputElement>(
-    "Send",
+    "Pay",
   );
 
 const swapRecord = (over: Partial<SwapActivityItem> = {}): SwapActivityItem => ({

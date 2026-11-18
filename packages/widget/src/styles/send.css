@@ -256,7 +256,6 @@
   font-family: var(--font-mono);
   font-size: 0.7rem;
   letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--text-faint);
 }
 
@@ -270,9 +269,9 @@
 }
 
 .send-activity__row {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, max-content);
+  gap: 0.25rem 0.75rem;
   padding: 0.6rem 0.75rem;
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
@@ -283,6 +282,28 @@
   font-family: var(--font-mono);
   font-weight: 600;
   color: var(--pearl-cream);
+}
+
+.send-activity__meta,
+.send-activity__row > a {
+  grid-column: 1;
+}
+
+.send-activity__status {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: grid;
+  align-content: start;
+  justify-items: end;
+  gap: 0.25rem;
+  max-width: 9rem;
+  font-size: 0.75rem;
+  text-align: end;
+  color: var(--text-secondary);
+}
+
+.send-activity__status time {
+  color: var(--text-muted);
 }
 
 .send-activity__meta {

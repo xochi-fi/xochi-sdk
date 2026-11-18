@@ -83,11 +83,3 @@
 .send-review__title {
   text-wrap: balance;
 }
-
-.send-activity__status {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem 0.75rem;
-  justify-content: space-between;
-  color: var(--slate-gray);
-}

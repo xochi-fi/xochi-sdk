@@ -454,7 +454,7 @@ export function QuoteDetails({
 
       <p className={`quote-meta quote-route ${sameAsset && rateFlagged ? "warning" : ""}`}>
         {sameAsset && rateFlagged && "! "}
-        {routeLabel} {GLYPH.sep} {privacyLabel}
+        <span>{routeLabel}</span> <span>{privacyLabel}</span>
       </p>
 
       {/* Gas state and what the wallet will ask for, per payment method. */}
@@ -528,7 +528,7 @@ export function QuoteDetails({
             <span className="quote-row-label">Market</span>
             <span className="quote-row-value quote-row-value--muted">
               {marketLabel}
-              {spotAgeLabel ? ` ${GLYPH.sep} ${spotAgeLabel}` : ""}{" "}
+              {spotAgeLabel && <small> {spotAgeLabel}</small>}{" "}
               <span
                 className="quote-source"
                 role="img"
