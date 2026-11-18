@@ -185,7 +185,7 @@ describe("the flow capture carries the served legs_withheld verdict", () => {
       />,
       { connected: true },
     );
-    fireEvent.click(screen.getByRole("button", { name: "Toggle activity" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Activity/ }));
     fireEvent.click(document.querySelector(".activity-row") as HTMLElement);
     expect(screen.getByRole("button", { name: LINKS_SIGN_IN_LABEL })).not.toBeNull();
   });
@@ -270,7 +270,7 @@ describe("the flow capture of a Stealth send to someone else", () => {
     cleanup();
 
     await feed(record);
-    fireEvent.click(screen.getByRole("button", { name: "Toggle activity" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Activity/ }));
     fireEvent.click(document.querySelector(".activity-row") as HTMLElement);
     expect(screen.queryByRole("button", { name: "Go to claims" })).toBeNull();
   });
@@ -284,7 +284,7 @@ describe("the flow capture of a Stealth send to someone else", () => {
     cleanup();
 
     await feed(record);
-    fireEvent.click(screen.getByRole("button", { name: "Toggle activity" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Activity/ }));
     fireEvent.click(document.querySelector(".activity-row") as HTMLElement);
     expect(screen.getByRole("button", { name: "Go to claims" })).not.toBeNull();
   });

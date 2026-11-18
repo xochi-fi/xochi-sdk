@@ -365,18 +365,11 @@ describe("Send privately to someone else", () => {
         name: /^Send/,
       }),
     );
-    fireEvent.click(
-      within(screen.getByRole("tablist", { name: "Send to" })).getByRole("tab", {
-        name: "Stealth",
-      }),
-    );
-    const panel = within(
-      document.getElementById(
-        within(screen.getByRole("tablist", { name: "Send to" }))
-          .getByRole("tab", { name: "Stealth" })
-          .getAttribute("aria-controls") ?? "",
-      )!,
-    );
+    const tile = within(screen.getByRole("group", { name: "Send to" })).getByRole("radio", {
+      name: "Stealth address",
+    });
+    fireEvent.click(tile);
+    const panel = within(document.getElementById(tile.getAttribute("aria-controls")!)!);
     fireEvent.change(panel.getByLabelText("From network"), { target: { value: "8453" } });
     await panel.findByLabelText("Arrives on", {}, WAIT);
     fireEvent.click(panel.getByLabelText("Someone else"));
@@ -387,7 +380,7 @@ describe("Send privately to someone else", () => {
     fireEvent.click(panel.getByRole("button", { name: "Review Stealth send" }));
     const review = screen.getByRole("region", { name: "Review Stealth send" });
     expect(review.textContent).toMatch(/Xochi sees the recipient's meta-address/);
-    fireEvent.click(within(review).getByRole("button", { name: "Continue to Stealth swap" }));
+    fireEvent.click(within(review).getByRole("button", { name: "Opens Swap to quote" }));
     const card = document.querySelector(".trade-card") as HTMLElement;
     await within(card).findByRole("region", { name: "Stealth recipient" }, WAIT);
 

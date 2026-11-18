@@ -84,7 +84,14 @@ export function RampRails({
   });
 
   const cards: RailCard[] =
-    state.status === "done" && settlement && account && amount !== undefined && !mobile
+    state.status === "done" &&
+    settlement &&
+    account &&
+    amount !== undefined &&
+    !mobile &&
+    state.intent.amount.money.atomic === amount &&
+    state.intent.fiat.currency === currency &&
+    state.intent.recipient === account
       ? state.result.offers.map((offer) => railCard(offer, state.intent, settlement, now))
       : [];
   const selectable = cards.filter((c) => c.selectable);
@@ -142,24 +149,26 @@ export function RampRails({
               </span>
             )}
           </label>
-          <label className="send-field">
-            <span className="send-field__label">{copy.currencyLabel}</span>
-            <select
-              className="send-field__control"
-              value={currency}
-              disabled={locked !== undefined}
-              onChange={(e) => {
-                setCurrency(e.target.value);
-                setSelected(undefined);
-              }}
-            >
-              {currencies.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </label>
+          {currencies.length > 1 && (
+            <label className="send-field">
+              <span className="send-field__label">{copy.currencyLabel}</span>
+              <select
+                className="send-field__control"
+                value={currency}
+                disabled={locked !== undefined}
+                onChange={(e) => {
+                  setCurrency(e.target.value);
+                  setSelected(undefined);
+                }}
+              >
+                {currencies.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
       )}
       <section className="ramp-facts" aria-labelledby={`${id}-facts`}>

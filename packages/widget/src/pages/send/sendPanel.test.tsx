@@ -115,7 +115,7 @@ describe("send to an address", () => {
     const calls = stubWallet();
     await openSend({ tokenBalance: 10_000_000n });
     const panel = within(kindPanel("Address"));
-    expect(panel.getByLabelText<HTMLSelectElement>("Network").value).toBe("1");
+    expect(panel.getByLabelText<HTMLSelectElement>("Network").value).toBe("8453");
 
     // A mixed-case address whose EIP-55 checksum is wrong.
     fillAddressForm("1", "0xaBcdef0123456789abcdef0123456789abcdef01");
@@ -147,6 +147,9 @@ describe("send to an address", () => {
     const calls = stubWallet({ eth_sendTransaction: TX_HASH });
     harnessReceipts.set(TX_HASH, "success");
     await openSend({ tokenBalance: 10_000_000n });
+    fireEvent.change(within(kindPanel("Address")).getByLabelText("Network"), {
+      target: { value: "1" },
+    });
     fillAddressForm("1.234567", RECIPIENT);
     fireEvent.click(within(kindPanel("Address")).getByRole("button", { name: "Review send" }));
 
@@ -187,6 +190,9 @@ describe("send to an address", () => {
     const calls = stubWallet({ eth_sendTransaction: TX_HASH });
     harnessReceipts.set(TX_HASH, "success");
     await openSend({ tokenBalance: 10_000_000n, hostWallet: true });
+    fireEvent.change(within(kindPanel("Address")).getByLabelText("Network"), {
+      target: { value: "1" },
+    });
     fillAddressForm("1", RECIPIENT);
     fireEvent.click(within(kindPanel("Address")).getByRole("button", { name: "Review send" }));
     expect(prompts(calls)).toEqual([]);
@@ -198,6 +204,9 @@ describe("send to an address", () => {
   it("blocks retry when the wallet response is unknown", async () => {
     const calls = stubWallet();
     await openSend({ tokenBalance: 10_000_000n });
+    fireEvent.change(within(kindPanel("Address")).getByLabelText("Network"), {
+      target: { value: "1" },
+    });
     fillAddressForm("2", RECIPIENT);
     fireEvent.click(within(kindPanel("Address")).getByRole("button", { name: "Review send" }));
     fireEvent.click(screen.getByRole("button", { name: "Approve in wallet" }));

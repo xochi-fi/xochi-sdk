@@ -40,7 +40,7 @@ export function RailTileContent({
     <>
       <RailLogo id={id} />
       <span className="ramp-tile__text">
-        <strong>{name}</strong>
+        <strong className="ramp-tile__name">{name}</strong>
         <small>{status}</small>
         {selected && <small aria-hidden="true">✓ Selected</small>}
       </span>
@@ -101,6 +101,8 @@ export function RailChoice({
       <input
         className="sr-only"
         type="radio"
+        aria-label={name}
+        aria-description={status ?? card.status}
         name={group}
         value={card.id}
         checked={selected}
@@ -117,6 +119,15 @@ export function RailChoice({
   );
 }
 
+const SHORT_REASONS: Record<RailCard["state"], string> = {
+  available: "",
+  setup_required: "Complete setup in Peer",
+  temporarily_unavailable: "No offer for this request",
+  not_supported: "Try another app or amount",
+  availability_unknown: "Peer could not confirm availability",
+  expired: "Check again for a new offer",
+};
+
 export function UnavailableRails({ cards, own }: { cards: RailCard[]; own?: boolean }) {
   if (!cards.length) return null;
   return (
@@ -126,6 +137,7 @@ export function UnavailableRails({ cards, own }: { cards: RailCard[]; own?: bool
           <summary>
             <strong>{own ? `Your ${card.name}` : card.name}</strong>
             <span>{card.status}</span>
+            <span>{SHORT_REASONS[card.state]}</span>
             {card.retryAfter && <span>Retry after {formatRampTime(card.retryAfter)}</span>}
           </summary>
           <p>{card.reason}</p>

@@ -111,7 +111,7 @@ function WalletPaymentAppSend({
     [route, !!checkpoint],
   );
   const flow = useOfframp(port, address, active, funding);
-  const [reviewDraft, setReviewDraft] = useState({ payee: "", owned: false, accepted: false });
+  const [reviewDraft, setReviewDraft] = useState<ReviewDraft>();
   const [editAmount, setEditAmount] = useState("");
   const [editCurrency, setEditCurrency] = useState(fiatCurrency);
 
@@ -167,7 +167,11 @@ function WalletPaymentAppSend({
         <ReviewStep
           flow={flow}
           quote={flow.view.quote}
-          draft={reviewDraft}
+          draft={
+            reviewDraft?.rail === flow.view.quote.offer.rail.id
+              ? reviewDraft
+              : { rail: flow.view.quote.offer.rail.id, payee: "", owned: false, accepted: false }
+          }
           setDraft={setReviewDraft}
         />
       )}
@@ -244,7 +248,14 @@ function EditStep({
   });
 
   const cards: { card: RailCard; offer: RampOffer }[] =
-    state.status === "done" && settlement && account && amount !== undefined && !overCap
+    state.status === "done" &&
+    settlement &&
+    account &&
+    amount !== undefined &&
+    !overCap &&
+    state.intent.amount.money.atomic === amount &&
+    state.intent.fiat.currency === currency &&
+    state.intent.recipient === account
       ? state.offers.map((offer) => ({
           offer,
           card: railCard(offer, state.intent, settlement, now),
@@ -560,6 +571,7 @@ function AccountSetup({
 }
 
 interface ReviewDraft {
+  rail: string;
   payee: string;
   owned: boolean;
   accepted: boolean;
@@ -574,7 +586,7 @@ function ReviewStep({
   flow: Flow;
   quote: OfframpQuote;
   draft: ReviewDraft;
-  setDraft: (draft: ReviewDraft) => void;
+  setDraft: (draft: ReviewDraft | undefined) => void;
 }) {
   const consentId = useId();
   const port = useOfframpPort();
@@ -583,7 +595,11 @@ function ReviewStep({
   const { payee, owned, accepted } = draft;
   const setPayee = (value: string) => setDraft({ ...draft, payee: value });
   const setOwned = (value: boolean) => setDraft({ ...draft, owned: value });
-  const [confirmedMask, setConfirmedMask] = useState<string | undefined>(quote.registeredPayee);
+  const [confirmedMask, setConfirmedMask] = useState<string | undefined>(
+    () =>
+      quote.registeredPayee ??
+      (draft.owned && !payeeError(draft.payee) ? maskPayee(draft.payee) : undefined),
+  );
   const left = estimateSecondsLeft(preview, now);
   const stale = left === 0;
   const escrow = port.escrow();
@@ -627,7 +643,14 @@ function ReviewStep({
         {fees.length > 0 && (
           <div>
             <dt className="send-field__label">Fees in the estimate</dt>
-            <dd>{fees.map((f) => formatUsdc(f.money.atomic)).join(", ")}</dd>
+            <dd>
+              {fees
+                .map(
+                  (f) =>
+                    `${formatUsdc(f.money.atomic)} (${f.code === "peer_fee" ? "Peer fee" : f.code === "maker_fee" ? "Payment rate fee" : "Fee"})`,
+                )
+                .join(", ")}
+            </dd>
           </div>
         )}
         <div>
@@ -734,7 +757,9 @@ function ReviewStep({
           className="submit-btn send-cta"
           disabled={!ready}
           onClick={() => {
-            void flow.confirm(quote.registeredPayee ? undefined : payee).then(() => setPayee(""));
+            void flow
+              .confirm(quote.registeredPayee ? undefined : payee)
+              .then(() => setDraft(undefined));
           }}
         >
           {flow.busy === "confirming" ? "Confirming..." : "Confirm cash-out"}

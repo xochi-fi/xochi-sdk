@@ -509,7 +509,7 @@ describe("zk.money destination", () => {
       await act(() => vi.advanceTimersByTimeAsync(QUOTE_DEBOUNCE_MS * 2));
       expect(field.getAttribute("aria-invalid")).toBe("true");
       expect(document.querySelector(".recipient-field__error")?.textContent).toBe(
-        "Use 1–63 letters, numbers or hyphens.",
+        "Use 1 to 63 letters, numbers or hyphens.",
       );
       expect(bodies).toHaveLength(0);
       expect(document.querySelector(".error-display")).toBeNull();

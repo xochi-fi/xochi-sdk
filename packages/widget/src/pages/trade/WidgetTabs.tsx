@@ -22,13 +22,8 @@ import { useRef, type KeyboardEvent } from "react";
 export const WIDGET_TAB_IDS = ["trade", "send", "activity", "claims"] as const;
 export type WidgetTabId = (typeof WIDGET_TAB_IDS)[number];
 
-/** Trade's modes, in display order, named by their API terms (Buy is `onramp`). */
-export const TRADE_MODES = ["onramp", "swap", "offramp"] as const;
-export type TradeMode = (typeof TRADE_MODES)[number];
-
-/** Send's destination kinds, in display order. */
-export const SEND_DESTINATION_KINDS = ["address", "stealth"] as const;
-export type SendDestinationKind = (typeof SEND_DESTINATION_KINDS)[number];
+export { TRADE_MODES, SEND_DESTINATIONS as SEND_DESTINATION_KINDS } from "@xochi/widget-lib";
+export type { TradeMode, SendDestinationKind } from "@xochi/widget-lib";
 
 export interface WidgetTab<Id extends string = WidgetTabId> {
   id: Id;

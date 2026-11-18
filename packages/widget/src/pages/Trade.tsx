@@ -55,7 +55,7 @@ import {
 } from "./trade/WidgetTabs.js";
 import { SHIELDED_ACCOUNTS_LIVE, STEALTH_CLAIM_LIVE } from "./trade/config.js";
 import { CLAIMS_HASH, claimsPath, type EmbedLook } from "./trade/embedParams.js";
-import { widgetSurfaces, type WidgetSurfaceConfig } from "./trade/embedNarrowing.js";
+import { widgetSurfaces } from "./trade/embedNarrowing.js";
 import {
   CLAIM_IN_XOCHI_APP,
   ClaimInXochiAppContext,
@@ -76,7 +76,7 @@ import type { SwapActivityItem } from "../types/activity.js";
 import { hostBridge } from "../lib/hostBridge.js";
 import type { HostConnection, WalletUi } from "@xochi/widget-lib";
 
-import { APP_VERSION, readWidgetEmbedConfig } from "../config.js";
+import { APP_VERSION, readWidgetEmbedConfig, type WidgetEmbedConfig } from "../config.js";
 
 // Minimum spin time for the activity refresh button, so a fast or no-op refresh
 // still gives visible feedback instead of flickering imperceptibly.
@@ -96,7 +96,7 @@ interface TradeProps {
    * The host's tab/mode/destination narrowing and fiat default. Defaults to
    * the frame URL's (`readWidgetEmbedConfig`), read once on mount.
    */
-  embed?: WidgetSurfaceConfig;
+  embed?: WidgetEmbedConfig;
 }
 
 function useWalletUi(connection: WalletUiConnection | null): WalletUi {

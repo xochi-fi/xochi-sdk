@@ -35,16 +35,7 @@ export interface WidgetSurfaces {
   initialDestination: SendDestinationKind | undefined;
 }
 
-export type WidgetSurfaceConfig = Omit<
-  WidgetEmbedConfig,
-  "initialMode" | "modes" | "sendDestinations"
-> & {
-  initialMode?: TradeMode;
-  modes?: readonly TradeMode[];
-  sendDestinations?: readonly string[];
-};
-
-export function widgetSurfaces(embed: WidgetSurfaceConfig = {}): WidgetSurfaces {
+export function widgetSurfaces(embed: WidgetEmbedConfig = {}): WidgetSurfaces {
   const peer = embed.rampProviders === undefined || embed.rampProviders.includes("peer");
   const allowedTabs: readonly string[] = embed.tabs ?? WIDGET_TAB_IDS;
   const modes = allowedTabs.includes("trade")

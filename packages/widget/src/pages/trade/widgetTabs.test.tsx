@@ -221,7 +221,7 @@ describe("tablist", () => {
 
     fireEvent.click(tab("Send"));
     expect(selectedTab()).toBe("Send");
-    expect(within(visiblePanel()).getByRole("tablist", { name: "Send to" })).toBeTruthy();
+    expect(within(visiblePanel()).getByRole("group", { name: "Send to" })).toBeTruthy();
 
     fireEvent.click(tab("Trade"));
     expect(selectedTab()).toBe("Trade");
@@ -286,7 +286,7 @@ describe("tablist", () => {
       within(screen.getByRole("tablist", { name: "Trade mode" }))
         .getAllByRole("tab")
         .map((t) => t.tabIndex),
-    ).toEqual([-1, 0]);
+    ).toEqual([-1, 0, -1]);
   });
 
   it("shows Buy's critical facts before any rail and reads Peer only for an amount", async () => {
@@ -303,7 +303,7 @@ describe("tablist", () => {
     const buy = document.getElementById(modeTab("Buy").getAttribute("aria-controls") ?? "")!;
     expect(buy.hasAttribute("hidden")).toBe(false);
     expect(within(buy).getByRole("region", { name: "Before you choose" }).textContent).toMatch(
-      /Base is public/,
+      /wallet address are public/,
     );
     expect(within(buy).queryAllByRole("radio")).toHaveLength(0);
     expect(port.calls).toEqual([]);
@@ -311,12 +311,12 @@ describe("tablist", () => {
     expect(document.querySelector(".trade-card")?.closest("[hidden]")).not.toBeNull();
 
     fireEvent.change(within(buy).getByLabelText("USDC to receive"), { target: { value: "25" } });
-    await within(buy).findByRole("group", { name: "Available now" }, WAIT);
+    await within(buy).findByRole("radio", { name: "Wise" }, WAIT);
     expect(port.calls).toEqual(["25000000"]);
     expect(within(buy).getByLabelText(/Wise/)).toBeTruthy();
-    expect(within(buy).getByRole("region", { name: "Not selectable now" }).textContent).toMatch(
-      /Venmo.*Temporarily unavailable/,
-    );
+    expect(
+      within(buy).getByRole("region", { name: "Unavailable payment apps" }).textContent,
+    ).toMatch(/Venmo.*Temporarily unavailable/);
   });
 
   it("follows the host's initial tab and mode, and hides what it narrows out", async () => {

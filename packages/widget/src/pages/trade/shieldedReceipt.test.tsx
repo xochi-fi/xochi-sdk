@@ -91,7 +91,7 @@ afterEach(() => {
  */
 const expandRow = async (badge: string): Promise<void> => {
   fireEvent.click(screen.getByRole("tab", { name: /^Activity/ }));
-  const toggle = screen.getByRole("button", { name: "Toggle activity" });
+  const toggle = screen.getByRole("button", { name: /^Activity/ });
   const found = await waitFor(() => {
     // Not the loading skeleton, which shares the class.
     const rowButton = document.querySelector<HTMLElement>(".activity-row-wrapper > .activity-row");

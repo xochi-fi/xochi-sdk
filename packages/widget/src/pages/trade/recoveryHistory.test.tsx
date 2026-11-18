@@ -420,7 +420,7 @@ describe("terminal rows name the next action", () => {
 
   /** Open the strip, then expand the single row inside it. */
   const expandRow = (): void => {
-    fireEvent.click(screen.getByRole("button", { name: "Toggle activity" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Activity/ }));
     const row = document.querySelector(".activity-row");
     fireEvent.click(row as HTMLElement);
   };

@@ -127,7 +127,7 @@ describe("a host that drops Peer", () => {
       { connected: true },
     );
     fireEvent.change(screen.getByLabelText("USDC to cash out"), { target: { value: "25" } });
-    await screen.findByRole("group", { name: "Available now" }, WAIT);
+    await screen.findByRole("radio", { name: /Wise/ }, WAIT);
     fireEvent.click(screen.getByLabelText(/Wise/));
     fireEvent.click(screen.getByRole("button", { name: "Get estimate" }));
     await screen.findByRole("region", { name: "Review cash-out" }, WAIT);

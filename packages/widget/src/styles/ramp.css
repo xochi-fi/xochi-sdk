@@ -394,7 +394,7 @@ button.ramp-tile {
 }
 
 .ramp-tile__logo img.ramp-tile__logo-dark,
-:not([data-theme="light"]) .ramp-tile__logo:has(.ramp-tile__logo-dark) img:first-child {
+:root:not([data-theme="light"]) .ramp-tile__logo:has(.ramp-tile__logo-dark) img:first-child {
   display: none;
 }
 

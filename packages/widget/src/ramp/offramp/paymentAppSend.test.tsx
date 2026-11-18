@@ -153,7 +153,7 @@ describe("estimate and review", () => {
     expect(text).toMatch(/Public Base transaction/);
     expect(text).toMatch(/amount and your wallet address are public/);
     expect(text).toContain(port.escrow()!);
-    expect(text).toMatch(/This must be your own account/);
+    expect(text).toMatch(/belongs to me/);
 
     enterPayee();
     expect(review.textContent).not.toContain(PAYEE);
@@ -231,7 +231,7 @@ describe("wallet approvals and order progress", () => {
     expect(screen.getByRole("button", { name: "Start a new cash-out" })).toBeTruthy();
     expect(port.maker.deposits).toBe(1);
     const activity = screen.getByRole("region", { name: "Cash-outs" }).textContent ?? "";
-    expect(activity).toMatch(/to your Wise account in USD · Paid out/);
+    expect(activity).toMatch(/to your Wise \(USD\).*Paid out/);
   });
 
   it("records a declined prompt and lets the user approve again", async () => {

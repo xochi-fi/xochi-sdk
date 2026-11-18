@@ -38,14 +38,11 @@ const typeAmount = (value: string): void => {
   fireEvent.change(amountInput(), { target: { value } });
 };
 const radios = (): HTMLInputElement[] => screen.queryAllByRole<HTMLInputElement>("radio");
-const radioNames = (): string[] =>
-  radios().map((r) => r.closest("label")?.querySelector(".ramp-rail__name")?.textContent ?? "");
+const radioNames = (): string[] => radios().map((r) => r.getAttribute("aria-label") ?? "");
 const blockedList = (): HTMLElement =>
   screen.getByRole("region", { name: "Unavailable payment apps" }) as HTMLElement;
 const blockedCard = (name: string): HTMLElement => {
-  const card = within(blockedList())
-    .getAllByRole("listitem")
-    .find((li) => li.querySelector(".ramp-rail__name")?.textContent === name);
+  const card = within(blockedList()).getByText(name).closest("details");
   if (!card) throw new Error(`no blocked card for ${name}`);
   return card;
 };
@@ -56,10 +53,10 @@ describe("Buy rails", () => {
     const port = recordedPort({ account: ACCOUNT, clock });
     renderRails(port, <RampRails direction="onramp" account={ACCOUNT} active />);
     const facts = screen.getByRole("region", { name: "Before you choose" });
-    expect(facts.textContent).toMatch(/Base is public/);
-    expect(facts.textContent).toMatch(/other side of the fiat payment sees your payment details/);
-    expect(facts.textContent).toMatch(/Peer's access checks and its secure enclave \(TEE\)/);
-    expect(facts.textContent).toMatch(/cannot be refunded/);
+    expect(facts.textContent).toMatch(/wallet address are public/);
+    expect(facts.textContent).toMatch(/sees your payment details and name/);
+    expect(facts.textContent).toMatch(/secure payment verifier/);
+    expect(facts.textContent).toMatch(/no protocol refund/);
     expect(radios()).toHaveLength(0);
     expect(port.calls).toEqual([]);
   });
@@ -79,15 +76,17 @@ describe("Buy rails", () => {
     expect(blockedCard("Venmo").textContent).toMatch(/Temporarily unavailable/);
     expect(blockedCard("Venmo").textContent).toMatch(/no usable liquidity/);
     expect(blockedCard("Monzo").textContent).toMatch(/Not supported/);
-    expect(blockedCard("Monzo").textContent).toMatch(/Next: Choose another rail/);
+    expect(blockedCard("Monzo").textContent).toMatch(/Choose another rail/);
     const revolut = blockedCard("Revolut").textContent ?? "";
     expect(revolut).toMatch(/Setup required/);
     expect(revolut).toMatch(/hold the payout for up to 14 days/);
-    expect(revolut).toMatch(/Next: Add stake in Peer/);
+    expect(revolut).toMatch(/Add stake in Peer/);
     // Unavailable cards are text, never a control.
     expect(blockedList().querySelectorAll("input, button, select, a")).toHaveLength(0);
 
-    fireEvent.click(within(screen.getByRole("group")).getByLabelText(/Wise/));
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "Payment apps" })).getByLabelText(/Wise/),
+    );
     expect(screen.getByRole("note").textContent).toMatch(/Wise selected.*nothing will be charged/);
   });
 
@@ -99,7 +98,9 @@ describe("Buy rails", () => {
     typeAmount("25");
     await act(() => vi.advanceTimersByTimeAsync(0));
     expect(radioNames()).toContain("Wise");
-    fireEvent.click(within(screen.getByRole("group")).getByLabelText(/Wise/));
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "Payment apps" })).getByLabelText(/Wise/),
+    );
 
     clock.t += 21_000;
     await act(() => vi.advanceTimersByTimeAsync(21_000));
@@ -251,9 +252,9 @@ describe("Send to a payment app rails", () => {
     const port = recordedPort({ account: ACCOUNT, clock, makerRails: ["wise"] });
     renderRails(port, <RampRails direction="offramp" account={ACCOUNT} active />);
     const facts = screen.getByRole("region", { name: "Before you choose" }).textContent;
-    expect(facts).toMatch(/belongs to you/);
-    expect(facts).toMatch(/estimates/);
-    expect(facts).toMatch(/Base is public/);
+    expect(facts).toMatch(/your own account/);
+    expect(facts).toMatch(/Rates can change/);
+    expect(facts).toMatch(/wallet address are public/);
 
     typeAmount("25");
     await screen.findAllByRole("radio");
