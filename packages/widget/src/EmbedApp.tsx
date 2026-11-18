@@ -6,6 +6,7 @@ import { StealthProvider } from "./hooks/useStealth.js";
 import { useTheme } from "./hooks/useTheme.js";
 import { Trade } from "./pages/Trade.js";
 import { useConfig } from "wagmi";
+import { HOST_ORIGIN } from "./config.js";
 import { startHostBridge, type HostBridgeLease } from "./lib/hostBridge.js";
 import { autoConnectHostWallet } from "./wagmi.js";
 import { useEmbedLook } from "./hooks/useEmbedLook.js";
@@ -66,7 +67,7 @@ export default function EmbedApp() {
   const [lease, setLease] = useState<HostBridgeLease | null>(null);
   const look = useEmbedLook(lease?.bridge ?? null);
   useEffect(() => {
-    const nextLease = startHostBridge();
+    const nextLease = startHostBridge({ hostOrigin: HOST_ORIGIN });
     setLease(nextLease);
     return () => nextLease.stop();
   }, []);

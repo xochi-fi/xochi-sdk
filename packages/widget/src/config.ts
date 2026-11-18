@@ -27,6 +27,8 @@ export interface WidgetSettings {
   development?: boolean;
   appVersion?: string;
   siteUrl?: string;
+  /** Require this exact parent origin for iframe bridge messages when configured. */
+  hostOrigin?: string;
   walletConnectProjectId?: string;
   rpcUrls?: Partial<
     Record<
@@ -62,6 +64,7 @@ export let API_URL = "https://api.xochi.fi";
 export let AUTH_API_URL = API_URL;
 export let isDevelopment = false;
 export let APP_VERSION = "dev";
+export let HOST_ORIGIN: string | undefined;
 export let SITE_URL = "https://xochi.fi";
 export let WALLETCONNECT_PROJECT_ID = "a992784b090fa32d560ea6d4136d431f";
 export let RPC_URLS: NonNullable<WidgetSettings["rpcUrls"]> = {};
@@ -112,6 +115,7 @@ export function configureWidget(settings: WidgetSettings): void {
   AUTH_API_URL = settings.authApiUrl || API_URL;
   isDevelopment = settings.development ?? false;
   APP_VERSION = settings.appVersion ?? "dev";
+  HOST_ORIGIN = settings.hostOrigin;
   SITE_URL = settings.siteUrl || "https://xochi.fi";
   WALLETCONNECT_PROJECT_ID = settings.walletConnectProjectId ?? WALLETCONNECT_PROJECT_ID;
   RPC_URLS = Object.freeze({ ...settings.rpcUrls });
