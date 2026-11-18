@@ -1,4 +1,4 @@
-import { atomic, type RampIntent } from "@xochi/client";
+import { atomic, parseRamp, type RampIntent } from "@xochi/client";
 import { getContracts, type PreparedTransaction } from "@zkp2p/sdk";
 import {
   createPublicClient,
@@ -14,7 +14,7 @@ import {
   type PublicClient,
 } from "viem";
 import { z } from "zod";
-import { digest } from "./normalization.js";
+import { normalizePeerMakerEvidence } from "./maker.js";
 import { boundedPeerRead, checkPeerAbort, peerConfiguration } from "./discovery.js";
 import type {
   MakerDepositFacts,
@@ -113,8 +113,8 @@ const DEPOSIT_QUERY = `query MakerDeposit($id: String!) {
  DepositFundActivity(where: {depositId: {_eq: $id}}, limit: 1001) { activityType amount blockNumber }
 }`;
 const TEMPLATE_QUERY = `query MakerTemplate($method: String!, $currency: String!) {
- DepositPaymentMethod(where: {paymentMethodHash: {_ilike: $method}, active: {_eq: true}}, limit: 32) { depositId depositIdOnContract paymentMethodHash }
- MethodCurrency(where: {paymentMethodHash: {_ilike: $method}, currencyCode: {_ilike: $currency}}, limit: 32) { depositId depositIdOnContract }
+ DepositPaymentMethod(where: {paymentMethodHash: {_ilike: $method}, active: {_eq: true}}, order_by: {depositIdOnContract: asc}, limit: 32) { depositId depositIdOnContract paymentMethodHash }
+ MethodCurrency(where: {paymentMethodHash: {_ilike: $method}, currencyCode: {_ilike: $currency}}, order_by: {depositIdOnContract: asc}, limit: 32) { depositId depositIdOnContract }
 }`;
 /** No automatic retries/sleeps: Retry-After prevents subsequent requests until its deadline. */
 export function createMakerIndexer(options: {
@@ -284,34 +284,27 @@ export function createDefaultMakerReads(options: {
             currency: config.currencyHash.toLowerCase(),
           }),
         );
-      const candidate = data.DepositPaymentMethod.find(
+      const method = config.rails[rail].paymentMethodHash;
+      // Use the earliest matching protocol ID for bounds and a spot rate observation.
+      const candidates = data.DepositPaymentMethod.filter(
         (p) =>
           p.depositId.toLowerCase() ===
             `8453_${config.escrow.toLowerCase()}_${p.depositIdOnContract}` &&
-          data.MethodCurrency.some((c) => c.depositId === p.depositId),
+          same(p.paymentMethodHash, method) &&
+          data.MethodCurrency.some(
+            (c) => c.depositId === p.depositId && c.depositIdOnContract === p.depositIdOnContract,
+          ),
       );
-      if (!candidate) broken();
-      const id = BigInt(candidate.depositIdOnContract),
-        method = config.rails[rail].paymentMethodHash;
-      const [raw, active, listed, rate, oracleRaw, floorRaw] = await Promise.all([
+      const ids = candidates.map((candidate) => BigInt(candidate.depositIdOnContract));
+      if (!ids.length) broken();
+      const id = ids.reduce((earliest, current) => (current < earliest ? current : earliest));
+      const [raw, active, listed, rate] = await Promise.all([
         escrowRead("getDeposit", [id], height),
         escrowRead("getDepositPaymentMethodActive", [id, method], height),
         escrowRead("getDepositCurrencyListed", [id, method, config.currencyHash], height),
-        // ARM's effective-rate read reverts/returns unusable data on a stale oracle feed.
         escrowRead("getEffectiveRate", [id, method, config.currencyHash], height),
-        escrowRead("getDepositOracleRateConfig", [id, method, config.currencyHash], height),
-        escrowRead("getDepositCurrencyMinRate", [id, method, config.currencyHash], height),
       ]);
       const source = tupleDeposit.parse(raw);
-      const oracle = z
-        .object({
-          adapter: addr,
-          adapterConfig: z.string().regex(/^0x(?:[0-9a-fA-F]{2})*$/),
-          spreadBps: z.number().int().min(-32768).max(32767),
-          maxStaleness: z.number().int().min(0).max(4294967295),
-        })
-        .parse(oracleRaw);
-      if (typeof floorRaw !== "bigint" || floorRaw < 0n) broken();
       if (
         !same(source.token, config.settlement.asset_id) ||
         active !== true ||
@@ -329,16 +322,6 @@ export function createDefaultMakerReads(options: {
         minimum: atomic(source.intentAmountRange.min),
         maximum: atomic(maximum),
         conversionRate: atomic(rate),
-        ...(!same(oracle.adapter, zero)
-          ? {
-              oracle: {
-                ...oracle,
-                adapter: oracle.adapter as Address,
-                adapterConfig: oracle.adapterConfig as Hex,
-                floor: atomic(floorRaw),
-              },
-            }
-          : {}),
         validUntil: new Date(now() + 20_000).toISOString(),
       };
     } catch {
@@ -401,20 +384,22 @@ export function createDefaultMakerReads(options: {
     if (found.length !== 1) broken();
     return found[0];
   }
+  function sellerReadiness(rail: string): MakerReadiness {
+    return {
+      oracleFresh: true,
+      requiresIdentityAttestation: ["wise", "paypal", "alipay"].includes(rail),
+      identityAttested: false,
+      // Registration alone does not prove Seller Autopilot eligibility.
+      sellerSetup:
+        options.registered(rail) && !["venmo", "cashapp", "paypal", "xmoney"].includes(rail)
+          ? "ready"
+          : "required",
+    };
+  }
   const reads: Pick<PeerMakerIO, "readiness" | "allowance" | "deposit" | "reconcile"> = {
-    async readiness(intent, rail): Promise<MakerReadiness> {
+    async readiness(intent, rail) {
       await terms(intent, rail);
-      return {
-        oracleFresh: true,
-        requiresIdentityAttestation: ["wise", "paypal", "alipay"].includes(rail),
-        identityAttested: false,
-        // Registration alone does not prove Seller Autopilot eligibility. Until a
-        // public authoritative readiness source resolves these rails, keep setup closed.
-        sellerSetup:
-          options.registered(rail) && !["venmo", "cashapp", "paypal", "xmoney"].includes(rail)
-            ? "ready"
-            : "required",
-      };
+      return sellerReadiness(rail);
     },
     async allowance(owner, amount) {
       try {
@@ -577,35 +562,50 @@ export function createDefaultMakerReads(options: {
       }
     },
   };
+  async function makerEvidence(intent: RampIntent, rail: string) {
+    const value = await terms(intent, rail);
+    const ready = sellerReadiness(rail);
+    return {
+      observed_at: new Date(now()).toISOString(),
+      valid_until: value.validUntil,
+      rail,
+      currency: "USD",
+      chain_id: "eip155:8453",
+      asset_id: config.settlement.asset_id,
+      decimals: 6,
+      ...(intent.region ? { region: intent.region } : {}),
+      rate: { numerator: value.conversionRate, denominator: "1000000000000000000" },
+      bounds: { minimum: value.minimum, maximum: value.maximum },
+      fees: [],
+      credential:
+        ready.sellerSetup === "ready" && !ready.requiresIdentityAttestation
+          ? "verified"
+          : "missing",
+      wallet: options.wallet,
+    };
+  }
   const result = {
     reads,
-    executionTerms: terms,
-    async makerEvidence(intent: RampIntent, rail: string) {
-      const value = await terms(intent, rail);
-      const ready = await reads.readiness(intent, rail);
-      return {
-        observed_at: new Date(now()).toISOString(),
-        valid_until: value.validUntil,
+    makerEvidence,
+    async executionTerms(intent: RampIntent, rail: string) {
+      const request = parseRamp(intent);
+      if (!request.ok || request.value.kind !== "intent") broken();
+      const evidence = await makerEvidence(request.value, rail);
+      const { offer } = normalizePeerMakerEvidence(
+        evidence,
+        request.value,
+        config,
         rail,
-        currency: "USD",
-        chain_id: "eip155:8453",
-        asset_id: config.settlement.asset_id,
-        decimals: 6,
-        ...(intent.region ? { region: intent.region } : {}),
-        rate: { numerator: value.conversionRate, denominator: "1000000000000000000" },
-        bounds: { minimum: value.minimum, maximum: value.maximum },
-        fees: [],
-        pricing_revision: digest([
-          value.oracle ?? "manual",
-          value.conversionRate,
-          value.minimum,
-          value.maximum,
-        ]),
-        credential:
-          ready.sellerSetup === "ready" && !ready.requiresIdentityAttestation
-            ? "verified"
-            : "missing",
-        wallet: options.wallet,
+        now(),
+        options.wallet,
+      );
+      if (offer.availability.state !== "available") broken();
+      return {
+        minimum: evidence.bounds.minimum,
+        maximum: evidence.bounds.maximum,
+        conversionRate: evidence.rate.numerator,
+        validUntil: offer.availability.valid_until,
+        capabilityRevision: offer.capability_revision,
       };
     },
     async rebuild(mapping: ProtectedMakerMapping, pendingWithdrawalHash?: string) {
@@ -664,11 +664,8 @@ export function createDefaultMakerReads(options: {
       deposit: (id: string, owner: string, signal?: AbortSignal) =>
         scoped(signal, (s) => s.reads.deposit(id, owner)),
     },
-    executionTerms: (
-      intent: RampIntent,
-      rail: string,
-      signal?: AbortSignal,
-    ): Promise<MakerExecutionTerms> => scoped(signal, (s) => s.executionTerms(intent, rail)),
+    executionTerms: (intent: RampIntent, rail: string, signal?: AbortSignal) =>
+      scoped(signal, (s) => s.executionTerms(intent, rail)),
     makerEvidence: (
       intent: RampIntent,
       rail: string,

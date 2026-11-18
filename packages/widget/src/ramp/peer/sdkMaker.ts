@@ -29,14 +29,6 @@ export interface MakerExecutionTerms {
   maximum: string;
   conversionRate: string;
   validUntil: string;
-  /** Verified live inline ARM config; omitted only for a manual-rate template. */
-  oracle?: {
-    adapter: `0x${string}`;
-    adapterConfig: `0x${string}`;
-    spreadBps: number;
-    maxStaleness: number;
-    floor: string;
-  };
 }
 /**
  * Construct the SDK-backed write preparation port. The application's trusted read layer supplies
@@ -51,7 +43,7 @@ export function createSDKMakerIO(options: {
     intent: RampIntent,
     rail: string,
     signal?: AbortSignal,
-  ): Promise<MakerExecutionTerms>;
+  ): Promise<MakerExecutionTerms & { capabilityRevision: string }>;
 }): PeerMakerIO {
   const config = peerConfiguration(options.discovery);
   const now = options.discovery?.now ?? Date.now;
@@ -133,12 +125,14 @@ export function createSDKMakerIO(options: {
         const amount = BigInt(atomic(input.amount));
         const min = BigInt(atomic(terms.minimum)),
           max = BigInt(atomic(terms.maximum));
+        const rate = BigInt(atomic(terms.conversionRate));
         if (
+          terms.capabilityRevision !== input.capabilityRevision ||
           min === 0n ||
           min > max ||
           amount < min ||
           amount > max ||
-          BigInt(atomic(terms.conversionRate)) === 0n ||
+          rate === 0n ||
           Date.parse(terms.validUntil) <= now() ||
           !Number.isFinite(Date.parse(terms.validUntil))
         )
@@ -150,22 +144,10 @@ export function createSDKMakerIO(options: {
           intentAmountRange: { min, max: max < amount ? max : amount },
           processorNames: [input.rail],
           payeeDetailsHashes: [input.payeeHash],
+          // The SDK manual-rate path encodes this as the floor with a zero adapter.
           conversionRates: [
             [{ currency: input.intent.fiat.currency, conversionRate: terms.conversionRate }],
           ],
-          ...(terms.oracle
-            ? {
-                currenciesOverride: [
-                  [
-                    {
-                      code: config.currencyHash as `0x${string}`,
-                      minConversionRate: BigInt(atomic(terms.oracle.floor)),
-                      oracleRateConfig: terms.oracle,
-                    },
-                  ],
-                ],
-              }
-            : {}),
           retainOnEmpty: false,
         });
         checkPeerAbort(signal);

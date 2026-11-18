@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { atomic, type RampIntent } from "@xochi/client";
-import { decodeFunctionData, erc20Abi } from "viem";
-import type { PreparedTransaction } from "@zkp2p/sdk";
+import { createWalletClient, custom, decodeFunctionData, erc20Abi } from "viem";
+import { Zkp2pClient, type PreparedTransaction } from "@zkp2p/sdk";
+import vectors from "./fixtures/peer-maker-calldata.json";
 import { peerConfiguration } from "./discovery.js";
 import { createSDKMakerIO, type MakerExecutionTerms, type UnsignedMakerSDK } from "./sdkMaker.js";
 import { MakerSetupRequired, MakerWithdrawalBlocked } from "./offramp.js";
@@ -52,13 +53,13 @@ class MemorySDK implements UnsignedMakerSDK {
     },
   };
 }
-function setup() {
-  const sdk = new MemorySDK();
-  const terms: MakerExecutionTerms = {
+function setup<T extends UnsignedMakerSDK>(sdk: T) {
+  const terms: MakerExecutionTerms & { capabilityRevision: string } = {
     minimum: "1000000",
     maximum: "5000000",
     conversionRate: "1000000000000000000",
     validUntil: new Date(now + 20_000).toISOString(),
+    capabilityRevision: "reviewed",
   };
   const io = createSDKMakerIO({
     sdk,
@@ -87,7 +88,7 @@ function setup() {
 }
 describe("SDK maker preparation port", () => {
   it("encodes exact ERC-20 approval without invoking a signer", async () => {
-    const { io } = setup();
+    const { io } = setup(new MemorySDK());
     const prepared = await io.prepareApproval("2000000");
     const decoded = decodeFunctionData({ abi: erc20Abi, data: prepared.data });
     expect(prepared.to.toLowerCase()).toBe(config.settlement.asset_id.toLowerCase());
@@ -95,9 +96,15 @@ describe("SDK maker preparation port", () => {
     expect(decoded.args).toEqual([config.escrow, 2000000n]);
   });
   it("registers privately and uses only SDK unsigned prepare methods", async () => {
-    const { io, sdk } = setup();
+    const { io, sdk } = setup(new MemorySDK());
     const payeeHash = await io.registerOwnPayee("revolut", "[synthetic-own-account]");
-    await io.prepareDeposit({ intent, rail: "revolut", amount: "2000000", payeeHash });
+    await io.prepareDeposit({
+      intent,
+      rail: "revolut",
+      amount: "2000000",
+      payeeHash,
+      capabilityRevision: "reviewed",
+    });
     expect(sdk.registered).toBe(1);
     expect(sdk.deposits[0]).toMatchObject({
       amount: 2000000n,
@@ -114,7 +121,7 @@ describe("SDK maker preparation port", () => {
   it.each(["wise", "paypal", "alipay"])(
     "enforces documented identity setup for %s",
     async (rail) => {
-      const { io } = setup();
+      const { io } = setup(new MemorySDK());
       expect((await io.readiness(intent, rail)).requiresIdentityAttestation).toBe(true);
     },
   );
@@ -123,14 +130,14 @@ describe("SDK maker preparation port", () => {
     "SELLER_CREDENTIAL_REQUIRED",
     "IDENTITY_ATTESTATION_REQUIRED",
   ])("sanitizes explicit setup refusal %s", async (code) => {
-    const { io, sdk } = setup();
+    const { io, sdk } = setup(new MemorySDK());
     sdk.refusal = code;
     await expect(io.registerOwnPayee("revolut", "[synthetic-own-account]")).rejects.toBeInstanceOf(
       MakerSetupRequired,
     );
   });
   it("sanitizes withdrawal refusal and rejects stale execution prices", async () => {
-    const { io, sdk, terms } = setup();
+    const { io, sdk, terms } = setup(new MemorySDK());
     sdk.refusal = "ACTIVE_INTENT_BLOCKS_WITHDRAWAL";
     await expect(io.registerOwnPayee("revolut", "[synthetic-own-account]")).rejects.toBeInstanceOf(
       MakerWithdrawalBlocked,
@@ -142,33 +149,52 @@ describe("SDK maker preparation port", () => {
         rail: "revolut",
         amount: "2000000",
         payeeHash: "[synthetic-hash]",
+        capabilityRevision: "reviewed",
       }),
     ).rejects.toThrow("provider_declined");
     expect(sdk.deposits).toHaveLength(0);
   });
-  it("preserves a verified live ARM config and floor in unsigned creation", async () => {
-    const { io, sdk, terms } = setup();
-    terms.oracle = {
-      adapter: "0x0000000000000000000000000000000000000001",
-      adapterConfig: "0x1234",
-      spreadBps: 25,
-      maxStaleness: 3600,
-      floor: "990000000000000000",
-    };
-    await io.prepareDeposit({
-      intent,
-      rail: "revolut",
-      amount: "2000000",
-      payeeHash: `0x${"3".repeat(64)}`,
+  it("rejects pricing changes after review before preparing calldata", async () => {
+    const { io, sdk, terms } = setup(new MemorySDK());
+    terms.conversionRate = "900000000000000000";
+    terms.capabilityRevision = "changed";
+    await expect(
+      io.prepareDeposit({
+        intent,
+        rail: "revolut",
+        amount: "2000000",
+        payeeHash: `0x${"3".repeat(64)}`,
+        capabilityRevision: "reviewed",
+      }),
+    ).rejects.toThrow("provider_declined");
+    expect(sdk.deposits).toHaveLength(0);
+  });
+  it.each(vectors.cases)("matches the Raxol unsigned deposit for $amount", async (vector) => {
+    const sdk = new Zkp2pClient({
+      chainId: 8453,
+      rpcUrl: "https://unused.invalid",
+      walletClient: createWalletClient({
+        transport: custom({
+          request: async () => {
+            throw new Error("Unexpected wallet request");
+          },
+        }),
+      }),
     });
-    expect(sdk.deposits[0].currenciesOverride).toEqual([
-      [
-        {
-          code: config.currencyHash,
-          minConversionRate: 990000000000000000n,
-          oracleRateConfig: terms.oracle,
-        },
-      ],
-    ]);
+    const { io, terms } = setup(sdk);
+    Object.assign(terms, vector.terms);
+    const prepared = await io.prepareDeposit({
+      intent,
+      rail: vector.rail,
+      amount: vector.amount,
+      payeeHash: vector.payee_hash,
+      capabilityRevision: terms.capabilityRevision,
+    });
+    expect({
+      chain_id: prepared.chainId,
+      to: prepared.to.toLowerCase(),
+      data: prepared.data,
+      value: prepared.value.toString(),
+    }).toEqual(vector.transaction);
   });
 });

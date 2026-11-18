@@ -27,7 +27,6 @@ const wallet = "0x000000000000000000000000000000000000dEaD";
 const zero = "0x0000000000000000000000000000000000000000";
 const intentHash = `0x${"4".repeat(64)}` as Hex;
 const txHash = `0x${"5".repeat(64)}` as Hex;
-const composite = `8453_${config.escrow.toLowerCase()}_123`;
 const intent: RampIntent = {
   contract_version: "ramp/1",
   kind: "intent",
@@ -80,6 +79,8 @@ class MemoryPublicChain {
   paused = false;
   stale = false;
   adapter = zero;
+  rate = 1000000000000000000n;
+  observedDepositIds: bigint[] = [];
   owner = wallet;
   remaining = 25000000n;
   outstanding = 0n;
@@ -102,7 +103,11 @@ class MemoryPublicChain {
     withSignal: () => this.client,
     getChainId: async () => this.chainId,
     getBlockNumber: async () => this.height,
-    readContract: (async (args: { functionName: string; address: string }) => {
+    readContract: (async (args: {
+      functionName: string;
+      address: string;
+      args?: readonly unknown[];
+    }) => {
       this.reads.push(args.functionName);
       switch (args.functionName) {
         case "paused":
@@ -136,7 +141,8 @@ class MemoryPublicChain {
           return true;
         case "getEffectiveRate":
           if (this.stale) throw new Error("[synthetic-stale-feed]");
-          return 1000000000000000000n;
+          this.observedDepositIds.push(BigInt(String(args.args?.[0])));
+          return this.rate;
         case "getDepositOracleRateConfig":
           return { adapter: this.adapter, adapterConfig: "0x", spreadBps: 0, maxStaleness: 3600 };
         case "getDepositCurrencyMinRate":
@@ -169,22 +175,24 @@ class MemoryPublicIndexer {
     releasedAmount: string | null;
     orchestratorAddress: string;
   }[] = [];
+  templateIds = ["123"];
   activities: { activityType: string; amount: string; blockNumber: string }[] = [];
   fetch: typeof fetch = async (_url, init) => {
     this.calls++;
     if (this.status === 429)
       return new Response("", { status: 429, headers: { "Retry-After": "2" } });
     const body = JSON.parse(String(init?.body));
+    const candidates = this.templateIds.map((id) => ({
+      depositId: `8453_${config.escrow.toLowerCase()}_${id}`,
+      depositIdOnContract: id,
+    }));
     const data = body.query.includes("MakerTemplate")
       ? {
-          DepositPaymentMethod: [
-            {
-              depositId: composite,
-              depositIdOnContract: "123",
-              paymentMethodHash: config.rails.revolut.paymentMethodHash,
-            },
-          ],
-          MethodCurrency: [{ depositId: composite, depositIdOnContract: "123" }],
+          DepositPaymentMethod: candidates.map((candidate) => ({
+            ...candidate,
+            paymentMethodHash: body.variables.method,
+          })),
+          MethodCurrency: candidates,
         }
       : {
           Deposit_by_pk: {
@@ -282,7 +290,6 @@ describe("default public maker reads", () => {
 
   it("reads live balance, rail/range, protocol pause and effective oracle price", async () => {
     const { chain, defaults } = setup();
-    chain.adapter = "0x0000000000000000000000000000000000000001";
     const terms = await defaults.executionTerms(intent, "revolut");
     expect(terms).toMatchObject({
       minimum: "1000000",
@@ -290,10 +297,29 @@ describe("default public maker reads", () => {
       conversionRate: "1000000000000000000",
     });
     expect((await defaults.makerEvidence(intent, "revolut")).credential).toBe("verified");
-    expect(terms.oracle?.adapter).toBe(chain.adapter);
     expect(chain.reads).toContain("getDepositCurrencyListed");
     expect(chain.reads).toContain("getEffectiveRate");
     expect(await defaults.reads.allowance(wallet, "25000000")).toBe(true);
+  });
+  it("keeps third-party oracle settings out of maker execution terms", async () => {
+    const { chain, defaults } = setup();
+    chain.adapter = "0x0000000000000000000000000000000000000001";
+    const terms = await defaults.executionTerms(intent, "revolut");
+    expect(terms.conversionRate).toBe("1000000000000000000");
+    expect(terms).not.toHaveProperty("oracle");
+    expect(chain.reads).not.toContain("getDepositOracleRateConfig");
+    expect(chain.reads).not.toContain("getDepositCurrencyMinRate");
+  });
+  it("uses the earliest numeric protocol deposit ID and binds rate changes to a new revision", async () => {
+    const { chain, defaults, indexer } = setup();
+    indexer.templateIds = ["123", "9", "100"];
+    const observed = await defaults.executionTerms(intent, "revolut");
+    indexer.templateIds.reverse();
+    expect(await defaults.executionTerms(intent, "revolut")).toEqual(observed);
+    chain.rate -= 1n;
+    const changed = await defaults.executionTerms(intent, "revolut");
+    expect(changed.capabilityRevision).not.toBe(observed.capabilityRevision);
+    expect(chain.observedDepositIds).toEqual([9n, 9n, 9n]);
   });
   it("fails closed for stale oracle, protocol pause, wrong chain and constrained region", async () => {
     const s = setup();
