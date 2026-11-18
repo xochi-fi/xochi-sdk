@@ -9,9 +9,9 @@ const LABELS: Record<string, string> = {
   claims: "Claims",
   onramp: "Buy",
   swap: "Swap",
+  offramp: "Cash out",
   address: "Wallet address",
-  stealth: "Stealth recipient",
-  payment_app: "Payment app (your own account)",
+  stealth: "Stealth",
 };
 
 export function SurfaceSection({
@@ -74,9 +74,10 @@ export function SurfaceSection({
         Initial tab
         <select
           className="config-input"
-          value={config.initialTab ?? (config.tabs ?? TABS)[0]}
+          value={config.initialTab ?? (config.tabs ?? TABS)[0] ?? ""}
           onChange={(event) => update({ initialTab: event.target.value as (typeof TABS)[number] })}
         >
+          {config.tabs?.length === 0 && <option value="">No visible tabs</option>}
           {(config.tabs ?? TABS).map((value) => (
             <option key={value} value={value}>
               {LABELS[value]}
@@ -88,11 +89,12 @@ export function SurfaceSection({
         Initial Trade mode
         <select
           className="config-input"
-          value={config.initialMode ?? (config.modes ?? ["swap"])[0]}
+          value={config.initialMode ?? (config.modes ?? ["swap"])[0] ?? ""}
           onChange={(event) =>
             update({ initialMode: event.target.value as (typeof MODES)[number] })
           }
         >
+          {config.modes?.length === 0 && <option value="">No visible Trade modes</option>}
           {(config.modes ?? MODES).map((value) => (
             <option key={value} value={value}>
               {LABELS[value]}
@@ -125,11 +127,12 @@ export function SurfaceSection({
         Ramp providers
         <select
           className="config-input"
-          value={config.rampProviders ? "peer" : "all"}
+          value={config.rampProviders === undefined ? "all" : (config.rampProviders[0] ?? "")}
           onChange={(event) =>
             update({ rampProviders: event.target.value === "peer" ? ["peer"] : undefined })
           }
         >
+          {config.rampProviders?.length === 0 && <option value="">No providers</option>}
           <option value="all">No host narrowing</option>
           <option value="peer">Peer only</option>
         </select>

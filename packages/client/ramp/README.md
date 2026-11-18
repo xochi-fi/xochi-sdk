@@ -189,7 +189,7 @@ to explain the split after reload.
 
 These diagrams show the user-visible execution and recovery paths. Use the
 snapshot's `allowed_actions` to decide which action is available at a given
-revision.
+revision. The widget starts these flows in Trade / Buy and Trade / Cash out.
 
 ### Peer onramp
 

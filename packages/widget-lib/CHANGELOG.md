@@ -8,6 +8,10 @@ All notable changes to `@xochi/widget-lib` are documented here. Format follows [
 
 Runtime-additive on protocol v1. Custom TypeScript implementations of `HostConnection` must add `hostProtocol` and `onHostProtocol`.
 
+### Changed
+
+- Pre-release embed contract change: add `offramp` to Trade modes and remove `payment_app` from Send destinations. The offramp facade opens Trade / Cash out. The URL parser drops legacy `payment_app` entries while preserving explicit narrowing. Bridge protocol v1 is unchanged.
+
 ### Added
 
 - `HostConnection.hostProtocol()` reports which protocol the pinned host speaks: `"pending"` before a well-formed `xochi:provider` pins the origin, `"legacy"` for a host that sends no `protocolVersion`, `"current"` for `WIDGET_PROTOCOL_VERSION`. `onHostProtocol(listener)` observes the change and returns an unsubscribe; destroy removes the listeners. The frame app uses it to refuse ramp execution until a current host is pinned. No protocol version bump.

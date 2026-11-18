@@ -622,7 +622,7 @@ export interface XochiRampWidgetOptions extends Omit<XochiWidgetOptions, "params
   readonly listeners?: XochiWidgetListeners;
 }
 
-/** Open Buy, or Send narrowed to the user's own payment-app cash-out. */
+/** Open Trade in Buy or Cash out mode. */
 export function createXochiRampWidget(
   container: HTMLElement,
   options?: XochiRampWidgetOptions,
@@ -632,9 +632,6 @@ export function createXochiRampWidget(
     throw new TypeError("unknown ramp direction");
   return createXochiWidget(container, {
     ...rest,
-    params:
-      direction === "offramp"
-        ? { initialTab: "send", sendDestinations: ["payment_app"] }
-        : { initialTab: "trade", initialMode: "onramp" },
+    params: { initialTab: "trade", initialMode: direction },
   });
 }

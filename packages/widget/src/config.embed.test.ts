@@ -4,14 +4,14 @@ import { readWidgetEmbedConfig } from "./config.js";
 it("exposes parsed IA and ramp restrictions without using the trade amount", () => {
   expect(
     readWidgetEmbedConfig(
-      "initialTab=send&tabs=trade,send&initialMode=onramp&modes=onramp&sendDestinations=payment_app&fiatCurrency=EUR&rampProviders=peer&amount=50",
+      "initialTab=trade&tabs=trade,send&initialMode=offramp&modes=onramp,offramp&sendDestinations=address,payment_app&fiatCurrency=EUR&rampProviders=peer&amount=50",
     ),
   ).toEqual({
-    initialTab: "send",
+    initialTab: "trade",
     tabs: ["trade", "send"],
-    initialMode: "onramp",
-    modes: ["onramp"],
-    sendDestinations: ["payment_app"],
+    initialMode: "offramp",
+    modes: ["onramp", "offramp"],
+    sendDestinations: ["address"],
     fiatCurrency: "EUR",
     rampProviders: ["peer"],
   });
@@ -20,7 +20,7 @@ it("exposes parsed IA and ramp restrictions without using the trade amount", () 
 it("drops defaults excluded by host restrictions and preserves empty restrictions", () => {
   expect(
     readWidgetEmbedConfig(
-      "initialTab=send&tabs=trade&initialMode=onramp&modes=swap&sendDestinations=unknown&rampProviders=unknown",
+      "initialTab=send&tabs=trade&initialMode=onramp&modes=swap&sendDestinations=payment_app&rampProviders=unknown",
     ),
   ).toEqual({
     tabs: ["trade"],

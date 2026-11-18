@@ -186,6 +186,7 @@ export type WidgetEmbedConfig = Pick<
   | "rampProviders"
 >;
 
+/** Read the shared embed contract, preserving empty lists after legacy entries are dropped. */
 export function readWidgetEmbedConfig(
   search = typeof window === "undefined" ? "" : window.location.search,
 ): WidgetEmbedConfig {

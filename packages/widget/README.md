@@ -181,34 +181,37 @@ Xochi source and the extracted shared subset are MIT. Monaspace fonts remain SIL
 `rampProviders`. Defaults excluded by a restriction are omitted. Explicit empty
 lists remain empty. UI consumers must intersect these restrictions with their
 supported surfaces and fresh live capabilities; a default or restriction never
-grants executable availability. This config intentionally excludes trade `amount`.
+grants executable availability. This config intentionally excludes trade `amount`. Legacy `payment_app`
+entries are dropped from `sendDestinations`, including when that leaves an empty
+restriction.
 
 The full layout (`layout=full`) reads it once on mount and narrows what it
 renders (`src/pages/trade/embedNarrowing.ts`): a tab, mode or destination the
-host leaves out is not rendered; `rampProviders` without `peer` removes Buy and
-the `payment_app` destination; Stealth send goes with Swap (it hands its order
-to the Swap card); Trade or Send with nothing left goes too. `initialTab` and
+host leaves out is hidden. Trade offers Buy, Swap and Cash out. Send offers Wallet
+address and Stealth. Narrowing `rampProviders` to exclude `peer` hides Buy and
+Cash out. Stealth send depends on Swap for settlement. Trade and Send are hidden
+when their respective lists have no supported options. `initialTab` and
 `initialMode` pick among what remains, else Trade and Swap. `layout=swap` ignores
 these parameters.
 
 Narrowing removes ways to start a Peer operation, never the way back to one
-already submitted: when Buy or `payment_app` is narrowed out, Activity resumes a
+already submitted: when Buy or Cash out is narrowed out, Activity resumes a
 submitted, unsettled purchase or an open cash-out from this browser in a
 recovery-only view (`src/pages/trade/RampRecovery.tsx`).
 
 Inside an iframe, no Peer rail is offered until a host on the current widget
 protocol has pinned the origin (`src/lib/rampHostGate.ts`, over
-`HostConnection.hostProtocol()`). Before the handshake Buy and `payment_app`
+`HostConnection.hostProtocol()`). Before the handshake Buy and Cash out
 say they are waiting for the host; a legacy loader, which may not drop ramp
 events safely, gets a permanent refusal that says why. Recovery never consults
 this gate. Outside an iframe there is nothing to check.
 
 ## Ramp rail availability
 
-Trade/Buy (`onramp`) and Send/`payment_app` (`offramp`) show live Peer rails
+Trade/Buy (`onramp`) and Trade/Cash out (`offramp`) show live Peer rails
 through `fetchPeerCapabilities` (`src/ramp/availability/`). The critical facts
 (public Base settlement, what the fiat counterparty sees, the Peer/TEE
-dependency, own-account payout and approximate estimates for Send) are shown
+dependency, own-account payout and approximate estimates for Cash out) are shown
 before any rail. Only an offer that `checkRampOffer` accepts at the current
 clock is a radio; every other state (`setup_required`, `temporarily_unavailable`
 with `retry_after`, `not_supported`, `availability_unknown`, expired) stays
@@ -216,11 +219,11 @@ readable as text with a next step. A timer re-reads the clock at the earliest
 `valid_until`, so an expired offer stops being selectable without a reload.
 Amount and currency changes refetch; a superseded response is discarded. Only
 the visible surface reads Peer, and only with a connected wallet and an amount.
-On Buy, selecting a rail executes nothing yet; Send/`payment_app` continues below.
+Selecting a rail alone executes nothing.
 
-## Send/payment_app cash-out
+## Trade / Cash out
 
-Send/`payment_app` (`src/ramp/offramp/`) completes a Peer maker cash-out of Base
+Trade/Cash out (`src/ramp/offramp/`) completes a Peer maker cash-out of Base
 USDC to the user's own payment-app account. It reads rails through S5's offramp
 provider (`createLivePeerOfframpProvider`), whose capabilities overlay seller
 readiness on live Peer offers, and drives the lifecycle through S4's
@@ -350,7 +353,7 @@ See the [ramp/1 contract and state diagrams](../client/ramp/README.md) and
 ## Release privacy inspection
 
 `src/ramp/privacy.test.tsx` drives Buy (completion, Peer sign-in required, a
-raw provider error, in doubt across a reload), Send/`payment_app` (partial fill
+raw provider error, in doubt across a reload), Trade/Cash out (partial fill
 to delivery, a lost deposit hash across a reload, a mixed fill-and-return) and
 Send/Stealth to someone else's meta-address inside a scripted host frame. It
 records every `postMessage` to the host, all `localStorage` and

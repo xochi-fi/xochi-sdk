@@ -1160,11 +1160,10 @@ describe("ramp facade and events", () => {
       const widget = createXochiRampWidget(container, { direction });
       mounted.push(widget);
       const iframe = container.querySelector("iframe")!;
-      expect(parseEmbedParams(new URL(iframe.src).search)).toEqual(
-        direction === "onramp"
-          ? { initialTab: "trade", initialMode: "onramp" }
-          : { initialTab: "send", sendDestinations: ["payment_app"] },
-      );
+      expect(parseEmbedParams(new URL(iframe.src).search)).toEqual({
+        initialTab: "trade",
+        initialMode: direction,
+      });
       widget.updateParams({
         initialTab: "trade",
         tabs: ["trade"],
