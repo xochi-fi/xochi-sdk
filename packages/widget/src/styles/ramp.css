@@ -160,6 +160,8 @@
   gap: 0.6rem;
   min-width: 0;
   overflow-wrap: anywhere;
+  font-size: 0.85rem;
+  line-height: 1.5;
 }
 
 .onramp-steps {
