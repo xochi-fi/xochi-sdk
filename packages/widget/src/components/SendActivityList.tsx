@@ -32,8 +32,13 @@ export function SendActivityList({ sends }: { sends: readonly SendActivityItem[]
                 {formatTokenAmount(BigInt(data.amount), data.decimals, data.decimals)} {data.symbol}
               </span>
               <span className="send-activity__meta">
-                to {truncateAddress(data.recipient)} on {chainName(data.chainId)} ·{" "}
-                {STATUS[send.status]} · {formatTimeAgo(send.timestamp)}
+                To {truncateAddress(data.recipient)} on {chainName(data.chainId)}
+              </span>
+              <span className="send-activity__status">
+                {STATUS[send.status]}{" "}
+                <time dateTime={new Date(send.timestamp).toISOString()}>
+                  {formatTimeAgo(send.timestamp)}
+                </time>
               </span>
               {explorer && (
                 <a href={explorer} target="_blank" rel="noopener noreferrer">

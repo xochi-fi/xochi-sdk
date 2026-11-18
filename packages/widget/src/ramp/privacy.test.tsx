@@ -293,14 +293,14 @@ describe("Send to a payment app through a current host", () => {
     const port = memoryOfframpPort({ account: TEST_ACCOUNT });
     await renderTrade(
       <OfframpPortContext value={port}>
-        <Trade look={FULL_LOOK} embed={{ initialTab: "send", sendDestinations: ["payment_app"] }} />
+        <Trade look={FULL_LOOK} embed={{ initialTab: "trade", initialMode: "offramp" }} />
       </OfframpPortContext>,
       { connected: true },
     );
     fireEvent.change(await screen.findByLabelText("USDC to cash out", {}, WAIT), {
       target: { value: "25" },
     });
-    await screen.findByRole("group", { name: "Available now" }, WAIT);
+    await screen.findByRole("radio", { name: /Wise/i }, WAIT);
     fireEvent.click(screen.getByLabelText(/Wise/));
     fireEvent.click(screen.getByRole("button", { name: "Get estimate" }));
     await screen.findByRole("region", { name: "Review cash-out" }, WAIT);
@@ -308,7 +308,7 @@ describe("Send to a payment app through a current host", () => {
     fireEvent.change(form.getByLabelText(/Your own .* account/), { target: { value: payee } });
     fireEvent.click(form.getByLabelText(/belongs to me/));
     fireEvent.click(form.getByRole("button", { name: "Use this account" }));
-    fireEvent.click(screen.getByLabelText(/I understand the payout is an estimate/));
+    fireEvent.click(screen.getByLabelText(/I accept the cash-out terms/));
     fireEvent.click(screen.getByRole("button", { name: "Confirm cash-out" }));
     for (const count of [1, 2]) {
       await approveInWallet(port, count);
@@ -424,7 +424,7 @@ describe("production fails closed on the host", () => {
     fireEvent.change(await screen.findByLabelText("USDC to receive", {}, WAIT), {
       target: { value: "25" },
     });
-    await screen.findByRole("group", { name: "Available now" }, WAIT);
+    await screen.findByRole("radio", { name: /Wise/i }, WAIT);
     expect(port.calls).toEqual(["25000000"]);
   });
 
@@ -440,13 +440,8 @@ describe("production fails closed on the host", () => {
     frame.pinCurrent();
     expect(screen.queryByLabelText("USDC to receive")).toBeNull();
     fireEvent.click(
-      within(screen.getByRole("tablist", { name: "Widget sections" })).getByRole("tab", {
-        name: /^Send/,
-      }),
-    );
-    fireEvent.click(
-      within(screen.getByRole("tablist", { name: "Send to" })).getByRole("tab", {
-        name: "Payment app",
+      within(screen.getByRole("tablist", { name: "Trade mode" })).getByRole("tab", {
+        name: "Cash out",
       }),
     );
     expect(screen.queryByLabelText("USDC to cash out")).toBeNull();
@@ -510,14 +505,14 @@ describe("interruptions keep one lifecycle and leak nothing", () => {
   async function cashOut(port: ReturnType<typeof memoryOfframpPort>, payee: string) {
     await renderTrade(
       <OfframpPortContext value={port}>
-        <Trade look={FULL_LOOK} embed={{ initialTab: "send", sendDestinations: ["payment_app"] }} />
+        <Trade look={FULL_LOOK} embed={{ initialTab: "trade", initialMode: "offramp" }} />
       </OfframpPortContext>,
       { connected: true },
     );
     fireEvent.change(await screen.findByLabelText("USDC to cash out", {}, WAIT), {
       target: { value: "25" },
     });
-    await screen.findByRole("group", { name: "Available now" }, WAIT);
+    await screen.findByRole("radio", { name: /Wise/i }, WAIT);
     fireEvent.click(screen.getByLabelText(/Wise/));
     fireEvent.click(screen.getByRole("button", { name: "Get estimate" }));
     await screen.findByRole("region", { name: "Review cash-out" }, WAIT);
@@ -525,7 +520,7 @@ describe("interruptions keep one lifecycle and leak nothing", () => {
     fireEvent.change(form.getByLabelText(/Your own .* account/), { target: { value: payee } });
     fireEvent.click(form.getByLabelText(/belongs to me/));
     fireEvent.click(form.getByRole("button", { name: "Use this account" }));
-    fireEvent.click(screen.getByLabelText(/I understand the payout is an estimate/));
+    fireEvent.click(screen.getByLabelText(/I accept the cash-out terms/));
     fireEvent.click(screen.getByRole("button", { name: "Confirm cash-out" }));
   }
 
@@ -547,7 +542,7 @@ describe("interruptions keep one lifecycle and leak nothing", () => {
     port.walletAnswer = "approve";
     await renderTrade(
       <OfframpPortContext value={port}>
-        <Trade look={FULL_LOOK} embed={{ initialTab: "send", sendDestinations: ["payment_app"] }} />
+        <Trade look={FULL_LOOK} embed={{ initialTab: "trade", initialMode: "offramp" }} />
       </OfframpPortContext>,
       { connected: true },
     );

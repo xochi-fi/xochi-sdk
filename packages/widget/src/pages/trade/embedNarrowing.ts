@@ -6,8 +6,8 @@
  * (live Peer data alone decides that, in ramp/availability). A surface goes
  * when the host leaves it out, and also when what it depends on is gone:
  *
- *   - `rampProviders` without `peer` removes Buy and the payment_app
- *     destination (Peer is the only ramp provider);
+ *   - `rampProviders` without `peer` removes Buy and Cash out
+ *     modes (Peer is the only ramp provider);
  *   - Stealth send hands its order to the Swap card, so it goes with Swap;
  *   - Trade with no mode left, or Send with no destination left, goes too.
  *
@@ -35,19 +35,25 @@ export interface WidgetSurfaces {
   initialDestination: SendDestinationKind | undefined;
 }
 
-export function widgetSurfaces(embed: WidgetEmbedConfig = {}): WidgetSurfaces {
+export type WidgetSurfaceConfig = Omit<
+  WidgetEmbedConfig,
+  "initialMode" | "modes" | "sendDestinations"
+> & {
+  initialMode?: TradeMode;
+  modes?: readonly TradeMode[];
+  sendDestinations?: readonly string[];
+};
+
+export function widgetSurfaces(embed: WidgetSurfaceConfig = {}): WidgetSurfaces {
   const peer = embed.rampProviders === undefined || embed.rampProviders.includes("peer");
   const allowedTabs: readonly string[] = embed.tabs ?? WIDGET_TAB_IDS;
   const modes = allowedTabs.includes("trade")
-    ? TRADE_MODES.filter(
-        (m) => (embed.modes ?? TRADE_MODES).includes(m) && (m !== "onramp" || peer),
-      )
+    ? TRADE_MODES.filter((m) => (embed.modes ?? TRADE_MODES).includes(m) && (m === "swap" || peer))
     : [];
   const destinations = allowedTabs.includes("send")
     ? SEND_DESTINATION_KINDS.filter(
         (k) =>
           (embed.sendDestinations ?? SEND_DESTINATION_KINDS).includes(k) &&
-          (k !== "payment_app" || peer) &&
           (k !== "stealth" || modes.includes("swap")),
       )
     : [];

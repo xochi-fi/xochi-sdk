@@ -80,7 +80,9 @@ const topTab = (name: string): HTMLElement =>
     name: new RegExp(`^${name}`),
   });
 const kindTab = (name: string): HTMLElement =>
-  within(screen.getByRole("tablist", { name: "Send to" })).getByRole("tab", { name });
+  within(screen.getByRole("group", { name: "Send to" })).getByRole("radio", {
+    name: name === "Address" ? "Wallet address" : "Stealth address",
+  });
 const kindPanel = (name: string): HTMLElement =>
   document.getElementById(kindTab(name).getAttribute("aria-controls") ?? "") as HTMLElement;
 
@@ -215,6 +217,7 @@ describe("send privately", () => {
     const panel = within(kindPanel("Stealth"));
     expect(prompts(calls)).toEqual([]);
 
+    fireEvent.click(panel.getByLabelText("My stealth keys"));
     // From Base, so the served Stealth route to Ethereum applies.
     fireEvent.change(panel.getByLabelText("From network"), { target: { value: "8453" } });
     const arrives = await panel.findByLabelText<HTMLSelectElement>("Arrives on", {}, WAIT);
@@ -222,12 +225,12 @@ describe("send privately", () => {
     expect(prompts(calls)).toEqual([]);
 
     fireEvent.click(panel.getByRole("button", { name: "Set up Stealth keys" }));
-    await panel.findByRole("button", { name: "Continue to Stealth swap" }, WAIT);
+    await panel.findByRole("button", { name: "Opens Swap to quote" }, WAIT);
     // One signature: the key ceremony (the mock wallet forwards it as `eth_sign`).
     expect(prompts(calls)).toHaveLength(1);
 
     fireEvent.change(panel.getByLabelText("Amount"), { target: { value: "5" } });
-    fireEvent.click(panel.getByRole("button", { name: "Continue to Stealth swap" }));
+    fireEvent.click(panel.getByRole("button", { name: "Opens Swap to quote" }));
 
     expect(topTab("Trade").getAttribute("aria-selected")).toBe("true");
     const card = document.querySelector(".trade-card") as HTMLElement;
@@ -249,6 +252,7 @@ describe("send privately", () => {
     await openSend();
     fireEvent.click(kindTab("Stealth"));
     const panel = within(kindPanel("Stealth"));
+    fireEvent.change(panel.getByLabelText("From network"), { target: { value: "1" } });
     // Ethereum is only ever a Stealth destination in the served routes.
     expect(panel.getByLabelText<HTMLSelectElement>("From network").value).toBe("1");
     await waitFor(() => expect(panel.getByRole("status").textContent).toMatch(/USDC/), WAIT);
@@ -322,7 +326,7 @@ describe("send privately to someone else", () => {
     expect(review.textContent).toMatch(/Xochi sees the recipient's meta-address/);
     expect(prompts(calls)).toEqual([]);
 
-    fireEvent.click(within(review).getByRole("button", { name: "Continue to Stealth swap" }));
+    fireEvent.click(within(review).getByRole("button", { name: "Opens Swap to quote" }));
     expect(topTab("Trade").getAttribute("aria-selected")).toBe("true");
     const card = document.querySelector(".trade-card") as HTMLElement;
     await waitFor(
@@ -355,7 +359,7 @@ describe("send privately to someone else", () => {
       target: { value: META },
     });
     fireEvent.click(panel.getByRole("button", { name: "Review Stealth send" }));
-    fireEvent.click(screen.getByRole("button", { name: "Continue to Stealth swap" }));
+    fireEvent.click(screen.getByRole("button", { name: "Opens Swap to quote" }));
     const card = document.querySelector(".trade-card") as HTMLElement;
     await within(card).findByRole("region", { name: "Stealth recipient" }, WAIT);
 
@@ -378,23 +382,23 @@ describe("send to a payment app", () => {
       </OfframpPortContext>,
       { connected: true },
     );
-    fireEvent.click(topTab("Send"));
-    fireEvent.click(kindTab("Payment app"));
-    const panel = kindPanel("Payment app");
+    const mode = screen.getByRole("tab", { name: "Cash out" });
+    fireEvent.click(mode);
+    const panel = document.getElementById(mode.getAttribute("aria-controls")!)!;
     expect(panel.hasAttribute("hidden")).toBe(false);
     const facts = within(panel).getByRole("region", { name: "Before you choose" }).textContent;
-    expect(facts).toMatch(/belongs to you/);
-    expect(facts).toMatch(/estimates/);
+    expect(facts).toMatch(/your own account/);
+    expect(facts).toMatch(/Rates can change/);
     expect(within(panel).queryAllByRole("radio")).toHaveLength(0);
 
     fireEvent.change(within(panel).getByLabelText("USDC to cash out"), {
       target: { value: "25" },
     });
-    await within(panel).findByRole("group", { name: "Available now" }, WAIT);
+    await within(panel).findByRole("radio", { name: /Wise/ }, WAIT);
     expect(within(panel).getAllByRole("radio")).toHaveLength(1);
-    expect(within(panel).getByRole("region", { name: "Not selectable now" }).textContent).toMatch(
-      /Availability unknown/,
-    );
+    expect(
+      within(panel).getByRole("region", { name: "Unavailable payment apps" }).textContent,
+    ).toMatch(/Availability unknown/);
     fireEvent.click(within(panel).getByLabelText(/Wise/));
     expect(prompts(calls)).toEqual([]);
     expect(port.signed).toEqual([]);
@@ -402,18 +406,17 @@ describe("send to a payment app", () => {
 });
 
 describe("destination kinds", () => {
-  it("move by the arrow keys and keep what was typed", async () => {
+  it("switches tiles based on what was pasted and keeps the draft", async () => {
     stubWallet();
     await openSend();
     fillAddressForm("3", RECIPIENT);
-    kindTab("Address").focus();
-    fireEvent.keyDown(kindTab("Address"), { key: "ArrowRight" });
-    expect(kindTab("Stealth").getAttribute("aria-selected")).toBe("true");
-    expect(document.activeElement).toBe(kindTab("Stealth"));
-    fireEvent.keyDown(kindTab("Stealth"), { key: "End" });
-    expect(kindTab("Payment app").getAttribute("aria-selected")).toBe("true");
-    fireEvent.keyDown(kindTab("Payment app"), { key: "ArrowRight" });
-    expect(kindTab("Address").getAttribute("aria-selected")).toBe("true");
-    expect(within(kindPanel("Address")).getByLabelText<HTMLInputElement>("Amount").value).toBe("3");
+    const address = within(kindPanel("Address")).getByLabelText("Recipient address");
+    fireEvent.paste(address, { clipboardData: { getData: () => "st:eth:0x1234" } });
+    expect(kindTab("Stealth")).toHaveProperty("checked", true);
+    const meta = within(kindPanel("Stealth")).getByLabelText("Recipient stealth meta-address");
+    expect(meta).toHaveProperty("value", "st:eth:0x1234");
+    fireEvent.paste(meta, { clipboardData: { getData: () => RECIPIENT } });
+    expect(kindTab("Address")).toHaveProperty("checked", true);
+    expect(within(kindPanel("Address")).getByLabelText("Amount")).toHaveProperty("value", "3");
   });
 });

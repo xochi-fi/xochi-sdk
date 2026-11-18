@@ -663,12 +663,8 @@ export function ActivityFeed({
         className="activity-strip__summary"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        aria-label="Toggle activity"
       >
-        <span className="activity-strip__title">
-          <span className="panel-icon">*</span>
-          Activity
-        </span>
+        <span className="activity-strip__title">Activity</span>
         <span className="activity-strip__preview">
           {!isConnected ? (
             <span className="activity-strip__muted">{UI.CONNECT_TO_VIEW} activity</span>

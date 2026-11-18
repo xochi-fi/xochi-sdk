@@ -27,6 +27,10 @@ import { useAddressSend } from "./useAddressSend.js";
 interface AddressSendProps {
   /** Hosted wallet UI delegates the connect prompt to the embedding page. */
   onConnectRequest?: () => void;
+  recipient: string;
+  onRecipient: (value: string) => void;
+  onPaste: () => void;
+  onPasteValue: (value: string) => void;
 }
 
 /** Every digit the token has: review shows the amount exactly, never rounded. */
@@ -38,21 +42,24 @@ export function AddressSend(props: AddressSendProps) {
   return <WalletAddressSend key={address?.toLowerCase()} {...props} />;
 }
 
-function WalletAddressSend({ onConnectRequest }: AddressSendProps) {
+function WalletAddressSend({
+  onConnectRequest,
+  recipient,
+  onRecipient,
+  onPaste,
+  onPasteValue,
+}: AddressSendProps) {
   const id = useId();
   const [recoveryHash, setRecoveryHash] = useState<string | null>(null);
   const config = useConfig();
-  const { isConnected, address, chainId: walletChainId } = useAccount();
+  const { isConnected, address } = useAccount();
   const { openConnectModal } = useConnectModal();
   const connectWallet = onConnectRequest ?? openConnectModal;
   const { readBalanceOf } = usePublicBalances();
   const send = useAddressSend();
 
   const chainIds = useMemo(() => sendChainIds(config.chains.map((c) => c.id)), [config.chains]);
-  const initialChain =
-    walletChainId !== undefined && chainIds.includes(walletChainId)
-      ? walletChainId
-      : (chainIds[0] ?? 0);
+  const initialChain = chainIds.includes(8453) ? 8453 : (chainIds[0] ?? 0);
   const [draft, setDraft] = useState<AddressSendDraft>(() => ({
     chainId: initialChain,
     tokenAddress: defaultSendToken(initialChain)?.address ?? "",
@@ -65,7 +72,7 @@ function WalletAddressSend({ onConnectRequest }: AddressSendProps) {
   const tokens = sendTokens(draft.chainId);
   const token = tokens.find((t) => t.address.toLowerCase() === draft.tokenAddress.toLowerCase());
   const balance = token ? readBalanceOf(draft.chainId, token.address) : null;
-  const check = checkAddressSend(draft, { chainIds, balance });
+  const check = checkAddressSend({ ...draft, recipient }, { chainIds, balance });
   const errors: AddressSendErrors = attempted && !check.ok ? check.errors : {};
 
   const update = (patch: Partial<AddressSendDraft>): void => setDraft((d) => ({ ...d, ...patch }));
@@ -171,11 +178,18 @@ function WalletAddressSend({ onConnectRequest }: AddressSendProps) {
             autoCapitalize="off"
             spellCheck={false}
             placeholder="0x..."
-            value={draft.recipient}
+            value={recipient}
             aria-invalid={errors.recipient ? true : undefined}
             aria-describedby={`${fieldIds.recipient}-hint`}
-            onChange={(e) => update({ recipient: e.target.value })}
+            onChange={(e) => onRecipient(e.target.value)}
+            onPaste={(e) => {
+              e.preventDefault();
+              onPasteValue(e.clipboardData.getData("text"));
+            }}
           />
+          <button type="button" className="send-secondary" onClick={onPaste}>
+            Paste
+          </button>
           <span id={`${fieldIds.recipient}-hint`} className="send-field__hint">
             {errors.recipient ?? `A wallet address on ${chainName(draft.chainId)}.`}
           </span>
@@ -195,7 +209,7 @@ function WalletAddressSend({ onConnectRequest }: AddressSendProps) {
 
   if (phase.step === "blocked")
     return (
-      <p role="alert">
+      <p className="send-note" role="alert">
         Send checkpoint unavailable. Restore browser storage before sending. An earlier transfer may
         be unresolved.
       </p>
@@ -237,15 +251,16 @@ function WalletAddressSend({ onConnectRequest }: AddressSendProps) {
         <h3>Transfer status unknown</h3>
         {summary}
         <p role="alert">{phase.notice}</p>
-        <label>
-          Transaction hash
+        <label className="send-field">
+          <span className="send-field__label">Transaction hash</span>
           <input
+            className="send-field__control send-field__control--mono"
             value={hash}
             readOnly={!!phase.attempt.hash}
             onChange={(e) => setRecoveryHash(e.target.value)}
           />
         </label>
-        <button type="button" onClick={() => void send.reconcile(hash)}>
+        <button type="button" className="send-secondary" onClick={() => void send.reconcile(hash)}>
           Check existing transfer
         </button>
       </section>

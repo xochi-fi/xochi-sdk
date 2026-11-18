@@ -15,6 +15,7 @@
  */
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useAccount, useConfig } from "wagmi";
 import { watchAccount } from "wagmi/actions";
 import { useOrderHistory } from "../hooks/useOrderHistory.js";
@@ -39,6 +40,8 @@ import { OfframpActivityList, useLocalOfframps } from "../ramp/offramp/OfframpAc
 import { RampActivityList } from "../components/RampActivityList.js";
 import { useRampSummaries } from "../hooks/useRampSummaries.js";
 import { SwapPanel, type SwapPrefill } from "./trade/SwapPanel.js";
+import { PaymentAppSend } from "../ramp/offramp/PaymentAppSend.js";
+import { RAMP_HOST_GATE_COPY, useRampHostGate } from "../lib/rampHostGate.js";
 import { BuyPanel } from "./trade/BuyPanel.js";
 import { CashOutRecovery, PurchaseRecovery } from "./trade/RampRecovery.js";
 import { SendPanel } from "./send/SendPanel.js";
@@ -52,7 +55,7 @@ import {
 } from "./trade/WidgetTabs.js";
 import { SHIELDED_ACCOUNTS_LIVE, STEALTH_CLAIM_LIVE } from "./trade/config.js";
 import { CLAIMS_HASH, claimsPath, type EmbedLook } from "./trade/embedParams.js";
-import { widgetSurfaces } from "./trade/embedNarrowing.js";
+import { widgetSurfaces, type WidgetSurfaceConfig } from "./trade/embedNarrowing.js";
 import {
   CLAIM_IN_XOCHI_APP,
   ClaimInXochiAppContext,
@@ -73,7 +76,7 @@ import type { SwapActivityItem } from "../types/activity.js";
 import { hostBridge } from "../lib/hostBridge.js";
 import type { HostConnection, WalletUi } from "@xochi/widget-lib";
 
-import { APP_VERSION, readWidgetEmbedConfig, type WidgetEmbedConfig } from "../config.js";
+import { APP_VERSION, readWidgetEmbedConfig } from "../config.js";
 
 // Minimum spin time for the activity refresh button, so a fast or no-op refresh
 // still gives visible feedback instead of flickering imperceptibly.
@@ -93,7 +96,7 @@ interface TradeProps {
    * The host's tab/mode/destination narrowing and fiat default. Defaults to
    * the frame URL's (`readWidgetEmbedConfig`), read once on mount.
    */
-  embed?: WidgetEmbedConfig;
+  embed?: WidgetSurfaceConfig;
 }
 
 function useWalletUi(connection: WalletUiConnection | null): WalletUi {
@@ -260,6 +263,10 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
   //
   // A host can narrow tabs, modes and destinations (embedNarrowing.ts); only
   // the full layout has them, so a tabless frame stays the Swap card.
+  const { openConnectModal } = useConnectModal();
+  const rampGate = useRampHostGate();
+  const swapHeading = useRef<HTMLHeadingElement>(null);
+  const focusSwap = useRef(false);
   const tabsBaseId = useId();
   const modesBaseId = useId();
   const [{ surfaces, fiatCurrency }] = useState(() => {
@@ -276,6 +283,12 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
   if (selectedTab === "claims" && !claimsAvailable && fallbackTab !== undefined)
     setSelectedTab(fallbackTab);
   const [tradeMode, setTradeMode] = useState<TradeMode>(surfaces.initialMode ?? "swap");
+  useEffect(() => {
+    if (focusSwap.current && selectedTab === "trade" && tradeMode === "swap") {
+      focusSwap.current = false;
+      swapHeading.current?.focus();
+    }
+  }, [selectedTab, tradeMode]);
   const [sendDestination, setSendDestination] = useState<SendDestinationKind>(
     surfaces.initialDestination ?? "address",
   );
@@ -307,7 +320,7 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
     });
   const modeTabs: WidgetTab<TradeMode>[] = surfaces.modes.map((mode) => ({
     id: mode,
-    label: mode === "onramp" ? "Buy" : "Swap",
+    label: mode === "onramp" ? "Buy" : mode === "offramp" ? "Cash out" : "Swap",
   }));
   const modePanelProps = (mode: TradeMode) => {
     if (!tabsShown) return { className: "widget-panel" } as const;
@@ -471,6 +484,7 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
     (order: Omit<SwapPrefill, "nonce">): void => {
       retryNonce.current += 1;
       setRetryPrefill({ nonce: retryNonce.current, ...order });
+      focusSwap.current = true;
       setTradeMode("swap");
       selectTab("trade");
     },
@@ -543,12 +557,34 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
                   <BuyPanel
                     active={selectedTab === "trade" && tradeMode === "onramp"}
                     fiatCurrency={fiatCurrency}
+                    onConnectRequest={hostOwnsWalletUi ? requestHostConnect : openConnectModal}
                   />
+                </div>
+              )}
+
+              {tabsShown && surfaces.modes.includes("offramp") && (
+                <div {...modePanelProps("offramp")}>
+                  <div className="send-card">
+                    {rampGate === "ready" ? (
+                      <PaymentAppSend
+                        active={selectedTab === "trade" && tradeMode === "offramp"}
+                        fiatCurrency={fiatCurrency}
+                        onConnectRequest={hostOwnsWalletUi ? requestHostConnect : openConnectModal}
+                      />
+                    ) : (
+                      <p className="ramp-resume__blocked" role="status">
+                        {RAMP_HOST_GATE_COPY[rampGate]}
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
 
               {swapShown && (
                 <div {...modePanelProps("swap")}>
+                  <h2 className="sr-only" tabIndex={-1} ref={swapHeading}>
+                    Swap
+                  </h2>
                   <SwapPanel
                     prefill={retryPrefill}
                     onStealthSettled={handleStealthSettled}
@@ -590,7 +626,7 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
                           "Claim your private payment"
                         )}
                         <span className="claims-nudge__arrow" aria-hidden="true">
-                          {"->"}
+                          {"→"}
                         </span>
                       </button>
                     ))}
@@ -605,8 +641,6 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
                 destination={sendDestination}
                 onDestinationChange={setSendDestination}
                 destinations={surfaces.destinations}
-                active={selectedTab === "send"}
-                fiatCurrency={fiatCurrency}
                 onStealthContinue={handleStealthSend}
                 onConnectRequest={hostOwnsWalletUi ? requestHostConnect : undefined}
               />
@@ -623,7 +657,7 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
               {/* Narrowing removes ways to start a Peer operation, never the
                   way back to one already submitted (trade/RampRecovery.tsx). */}
               {tabsShown && !surfaces.modes.includes("onramp") && <PurchaseRecovery />}
-              {tabsShown && !surfaces.destinations.includes("payment_app") && (
+              {tabsShown && !surfaces.modes.includes("offramp") && (
                 <CashOutRecovery
                   items={localOfframps}
                   fiatCurrency={fiatCurrency}
@@ -636,23 +670,38 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
               <RampActivityList ramps={localRamps} wallet={address} />
 
               <section className="launch-txlog" aria-label="Transaction log">
-                <ActivityFeed
-                  activities={activities}
-                  isLoading={ordersLoading || isRefreshing}
-                  error={ordersError}
-                  hasMore={hasMoreOrders}
-                  isConnected={isConnected}
-                  connectedWallet={address}
-                  sessionWallet={sessionWallet}
-                  needsSignIn={historyNeedsSignIn}
-                  isSigningIn={sessionState === "signing"}
-                  onSignIn={handleActivitySignIn}
-                  onRefresh={refreshActivity}
-                  onLoadMore={loadMoreOrders}
-                  onReportSwap={handleReportSwap}
-                  onRetrySwap={swapShown ? handleRetrySwap : undefined}
-                  onClaimNudge={STEALTH_CLAIM_LIVE ? handleClaimNudge : undefined}
-                />
+                {!isConnected ? (
+                  <div className="send-card">
+                    <p className="send-note">
+                      Your swaps, sends, purchases and cash outs appear here.
+                    </p>
+                    <button
+                      className="submit-btn send-cta"
+                      type="button"
+                      onClick={hostOwnsWalletUi ? requestHostConnect : openConnectModal}
+                    >
+                      Connect wallet
+                    </button>
+                  </div>
+                ) : (
+                  <ActivityFeed
+                    activities={activities}
+                    isLoading={ordersLoading || isRefreshing}
+                    error={ordersError}
+                    hasMore={hasMoreOrders}
+                    isConnected={isConnected}
+                    connectedWallet={address}
+                    sessionWallet={sessionWallet}
+                    needsSignIn={historyNeedsSignIn}
+                    isSigningIn={sessionState === "signing"}
+                    onSignIn={handleActivitySignIn}
+                    onRefresh={refreshActivity}
+                    onLoadMore={loadMoreOrders}
+                    onReportSwap={handleReportSwap}
+                    onRetrySwap={swapShown ? handleRetrySwap : undefined}
+                    onClaimNudge={STEALTH_CLAIM_LIVE ? handleClaimNudge : undefined}
+                  />
+                )}
               </section>
             </div>
           )}

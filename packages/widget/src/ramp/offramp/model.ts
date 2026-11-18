@@ -167,7 +167,7 @@ export function orderHeadline(
     return {
       title: "Awaiting a buyer",
       detail:
-        "Your USDC is in Peer's escrow on Base. Fills arrive when buyers pay you and can come in parts; there is no set time.",
+        "Your USDC is in Peer’s holding contract on Base. Payments can arrive later and in parts.",
       tone: "progress",
     };
   if (leg.state === "failed")
@@ -178,8 +178,8 @@ export function orderHeadline(
     };
   return {
     title: "Wallet approval needed",
-    detail: "Each wallet step is its own approval; nothing moves until you approve it.",
-    tone: "attention",
+    detail: "Review the next step in your wallet.",
+    tone: "progress",
   };
 }
 

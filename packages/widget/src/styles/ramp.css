@@ -23,7 +23,6 @@
   font-size: 0.65rem;
   font-weight: 500;
   letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--text-faint);
 }
 
@@ -322,4 +321,108 @@
   border: 1px solid var(--line-subtle);
   border-radius: 8px;
   font: inherit;
+}
+
+.ramp-tile-group {
+  min-inline-size: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  container-type: inline-size;
+}
+
+.ramp-tile-group legend {
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.ramp-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@container (min-width: 365px) {
+  .ramp-tile-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.ramp-tile {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 56px;
+  padding: 5px 6px;
+  color: inherit;
+  background: var(--panel-bg-subtle);
+  border: 2px solid var(--panel-border);
+  border-radius: 12px;
+  font: inherit;
+  text-align: left;
+}
+
+label.ramp-tile,
+button.ramp-tile {
+  cursor: pointer;
+}
+
+.ramp-tile:has(:checked) {
+  border-color: var(--muted-gold);
+}
+
+.ramp-tile__text {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.ramp-tile__logo {
+  flex: none;
+  box-sizing: content-box;
+  width: 24px;
+  height: 24px;
+}
+
+.ramp-tile__logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.ramp-tile__logo img.ramp-tile__logo-dark,
+:not([data-theme="light"]) .ramp-tile__logo:has(.ramp-tile__logo-dark) img:first-child {
+  display: none;
+}
+
+:root:not([data-theme="light"]) .ramp-tile__logo img.ramp-tile__logo-dark,
+[data-theme="light"] .ramp-tile__logo img:first-child {
+  display: block;
+}
+
+.ramp-tile-setup {
+  grid-column: 1 / -1;
+}
+
+.ramp-unavailable details {
+  border-bottom: 1px solid var(--panel-border);
+  padding-block: 6px;
+}
+
+.ramp-unavailable summary {
+  cursor: pointer;
+}
+
+.ramp-unavailable summary > * {
+  margin-inline-end: 8px;
+}
+
+.ramp-bottom-action {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  background: var(--panel-bg);
 }

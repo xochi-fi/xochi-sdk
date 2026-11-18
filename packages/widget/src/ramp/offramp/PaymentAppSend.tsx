@@ -19,7 +19,15 @@
 
 import { useContext, useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import { useAccount, useConfig } from "wagmi";
-import type { RampOffer } from "@xochi/client";
+import { usePublicBalances } from "../../hooks/usePublicBalances.js";
+import {
+  RailChoice,
+  RailTileContent,
+  RailTiles,
+  UnavailableRails,
+} from "../availability/RailTiles.js";
+import { OverallCard } from "../availability/RampRails.js";
+import { getExplorerTxUrl, type RampOffer } from "@xochi/client";
 import {
   formatRampTime,
   overallCard,
@@ -55,6 +63,7 @@ interface PaymentAppSendProps {
   active: boolean;
   /** Host default (`fiatCurrency`); the only other choice is USD. */
   fiatCurrency?: string;
+  onConnectRequest?: () => void;
 }
 
 function useOfframpPort() {
@@ -63,7 +72,11 @@ function useOfframpPort() {
   return useMemo(() => injected ?? createLiveOfframpPort(config), [injected, config]);
 }
 
-export function PaymentAppSend({ active, fiatCurrency = "USD" }: PaymentAppSendProps) {
+export function PaymentAppSend({
+  active,
+  fiatCurrency = "USD",
+  onConnectRequest,
+}: PaymentAppSendProps) {
   const port = useOfframpPort();
   const { address } = useAccount();
   return (
@@ -73,6 +86,7 @@ export function PaymentAppSend({ active, fiatCurrency = "USD" }: PaymentAppSendP
       port={port}
       active={active}
       fiatCurrency={fiatCurrency}
+      onConnectRequest={onConnectRequest}
     />
   );
 }
@@ -81,6 +95,7 @@ function WalletPaymentAppSend({
   active,
   fiatCurrency = "USD",
   address,
+  onConnectRequest,
   port,
 }: PaymentAppSendProps & {
   address?: string;
@@ -96,11 +111,14 @@ function WalletPaymentAppSend({
     [route, !!checkpoint],
   );
   const flow = useOfframp(port, address, active, funding);
+  const [reviewDraft, setReviewDraft] = useState({ payee: "", owned: false, accepted: false });
+  const [editAmount, setEditAmount] = useState("");
+  const [editCurrency, setEditCurrency] = useState(fiatCurrency);
 
   return (
     <section className="ramp-rails" aria-labelledby={`${id}-title`}>
       <h3 id={`${id}-title`} className="send-review__title">
-        Cash out to your own payment app
+        Cash out
       </h3>
       {checkpoint && !route && flow.view.kind !== "edit" && (
         <OfframpRoute
@@ -132,6 +150,11 @@ function WalletPaymentAppSend({
           account={address}
           active={active}
           fiatCurrency={fiatCurrency}
+          amountText={editAmount}
+          setAmountText={setEditAmount}
+          currency={editCurrency}
+          setCurrency={setEditCurrency}
+          onConnectRequest={onConnectRequest}
           routeAmount={routeAmount}
           onReceipt={setRoute}
           onReady={(next, amount) => {
@@ -140,7 +163,14 @@ function WalletPaymentAppSend({
           }}
         />
       )}
-      {flow.view.kind === "review" && <ReviewStep flow={flow} quote={flow.view.quote} />}
+      {flow.view.kind === "review" && (
+        <ReviewStep
+          flow={flow}
+          quote={flow.view.quote}
+          draft={reviewDraft}
+          setDraft={setReviewDraft}
+        />
+      )}
       {flow.view.kind === "order" && <OrderStep flow={flow} order={flow.view.order} />}
       {flow.notice && (
         <p className="send-field__error" role="alert">
@@ -157,6 +187,11 @@ function EditStep({
   active,
   fiatCurrency,
   routeAmount,
+  onConnectRequest,
+  amountText,
+  setAmountText,
+  currency,
+  setCurrency,
   onReady,
   onReceipt,
 }: {
@@ -165,6 +200,11 @@ function EditStep({
   active: boolean;
   fiatCurrency: string;
   routeAmount?: string;
+  onConnectRequest?: () => void;
+  amountText: string;
+  setAmountText: (value: string) => void;
+  currency: string;
+  setCurrency: (value: string) => void;
   onReady(route: OfframpPrerequisite, amount: string): void;
   onReceipt(route: OfframpPrerequisite): void;
 }) {
@@ -177,15 +217,18 @@ function EditStep({
   const [source, setSource] = useState<"base_usdc" | "other">(() =>
     account && inspectOfframpPrerequisite(account) ? "other" : "base_usdc",
   );
-  const [amountText, setAmountText] = useState(routeAmount ? usdcDecimal(routeAmount) : "");
-  const [currency, setCurrency] = useState(fiatCurrency);
+  const { readBalanceOf } = usePublicBalances();
+  const balance = settlement ? readBalanceOf(BASE_CHAIN_ID, settlement.asset_id) : null;
+  const cap = port.canaryCap();
+  const max =
+    balance !== null && cap !== undefined && balance > BigInt(cap) ? BigInt(cap) : balance;
   const [selected, setSelected] = useState<string | undefined>();
   useEffect(() => {
     if (routeAmount) {
       setSource("base_usdc");
       setAmountText(usdcDecimal(routeAmount));
     }
-  }, [routeAmount]);
+  }, [routeAmount, setAmountText]);
   const amount = parseRampAmount(amountText);
   const amountInvalid = amountText.trim() !== "" && amount === undefined;
   // Enforced before any rail read or review: an over-cap amount is never estimated.
@@ -201,7 +244,7 @@ function EditStep({
   });
 
   const cards: { card: RailCard; offer: RampOffer }[] =
-    state.status === "done" && settlement
+    state.status === "done" && settlement && account && amount !== undefined && !overCap
       ? state.offers.map((offer) => ({
           offer,
           card: railCard(offer, state.intent, settlement, now),
@@ -218,11 +261,11 @@ function EditStep({
   let status: string;
   if (!settlement)
     status = "Peer's Base USDC configuration did not validate, so no rail can be used.";
-  else if (!account) status = "Connect a wallet to check live Peer rails for it.";
+  else if (!account) status = "Connect a wallet and enter an amount to check availability.";
   else if (flow.runtimeFailed) status = "The cash-out runtime could not start for this wallet.";
-  else if (amount === undefined) status = "Enter an amount to check live Peer rails.";
+  else if (amount === undefined) status = "Enter an amount to check availability.";
   else if (overCap) status = overCap;
-  else if (state.status !== "done") status = "Checking live Peer rails...";
+  else if (state.status !== "done") status = "Checking payment apps...";
   else
     status =
       selectable.length === 0
@@ -231,17 +274,6 @@ function EditStep({
 
   return (
     <>
-      <section className="ramp-facts" aria-labelledby={`${id}-facts`}>
-        <h4 id={`${id}-facts`} className="ramp-facts__title">
-          Before you choose
-        </h4>
-        <ul className="ramp-facts__list">
-          {rampFacts("offramp").map((fact) => (
-            <li key={fact}>{fact}</li>
-          ))}
-        </ul>
-      </section>
-
       <label className="send-field">
         <span className="send-field__label">Cash out from</span>
         <select
@@ -267,7 +299,7 @@ function EditStep({
         />
       ) : (
         <>
-          <div className="send-form__row">
+          <div className="send-form__row ramp-amount-row">
             <label className="send-field">
               <span className="send-field__label">USDC to cash out</span>
               <input
@@ -289,24 +321,48 @@ function EditStep({
                 </span>
               )}
             </label>
-            <label className="send-field">
-              <span className="send-field__label">Receive in</span>
-              <select
-                className="send-field__control"
-                value={currency}
-                onChange={(e) => {
-                  setCurrency(e.target.value);
-                  setSelected(undefined);
-                }}
-              >
-                {currencies.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <button
+              type="button"
+              className="send-secondary"
+              disabled={!max}
+              onClick={() => {
+                if (!max) return;
+                setAmountText(usdcDecimal(max.toString()));
+                setSelected(undefined);
+              }}
+            >
+              Max
+            </button>
+            {currencies.length > 1 && (
+              <label className="send-field">
+                <span className="send-field__label">Receive in</span>
+                <select
+                  className="send-field__control"
+                  value={currency}
+                  onChange={(e) => {
+                    setCurrency(e.target.value);
+                    setSelected(undefined);
+                  }}
+                >
+                  {currencies.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
+          <section className="ramp-facts" aria-labelledby={`${id}-facts`}>
+            <h4 id={`${id}-facts`} className="ramp-facts__title">
+              Before you choose
+            </h4>
+            <ul className="ramp-facts__list">
+              {rampFacts("offramp").map((fact) => (
+                <li key={fact}>{fact}</li>
+              ))}
+            </ul>
+          </section>
 
           <p className="send-note" role="status" aria-live="polite">
             {status}
@@ -317,80 +373,81 @@ function EditStep({
             <OverallCard {...overallCard(state.availability, "offramp")} />
           )}
 
-          {selectable.length > 0 && (
-            <fieldset className="ramp-rails__group">
-              <legend className="ramp-facts__title">Available now</legend>
-              {selectable.map(({ card, offer }) => {
-                const est = estimateFor(offer);
-                return (
-                  <label key={card.id} className="ramp-rail ramp-rail--selectable">
-                    <input
-                      type="radio"
-                      name={`${id}-rail`}
-                      value={card.id}
-                      checked={chosen?.card.id === card.id}
-                      onChange={() => setSelected(card.id)}
-                      aria-labelledby={`${id}-${card.id}-name`}
-                      aria-describedby={`${id}-${card.id}-detail`}
-                    />
-                    <RailBody
-                      card={card}
-                      idPrefix={`${id}-${card.id}`}
-                      estimate={
-                        est
-                          ? `Estimated payout ${formatEstimate(est.receive.atomic, est.receive.asset.kind === "fiat" ? est.receive.asset.currency : currency, est.receive.asset.decimals)}.`
-                          : undefined
-                      }
-                    />
-                  </label>
-                );
-              })}
-            </fieldset>
-          )}
+          <RailTiles title="Cash out to your own account" own untested={state.status !== "done"}>
+            {selectable.map(({ card, offer }) => {
+              const est = estimateFor(offer);
+              return (
+                <RailChoice
+                  key={card.id}
+                  card={card}
+                  name={`Your ${card.name}`}
+                  group={`${id}-rail`}
+                  selected={chosen?.card.id === card.id}
+                  status={
+                    est && est.receive.asset.kind === "fiat"
+                      ? formatEstimate(
+                          est.receive.atomic,
+                          est.receive.asset.currency,
+                          est.receive.asset.decimals,
+                        )
+                      : undefined
+                  }
+                  onSelect={() => setSelected(card.id)}
+                />
+              );
+            })}
+            {blocked
+              .filter(
+                ({ offer }) =>
+                  offer.availability.state === "setup_required" &&
+                  offer.availability.requirement_codes.includes("maker_account_setup"),
+              )
+              .map(({ card, offer }) => (
+                <AccountSetup
+                  key={card.id}
+                  flow={flow}
+                  rail={offer.rail.id}
+                  name={card.name}
+                  onDone={refresh}
+                />
+              ))}
+          </RailTiles>
+          <UnavailableRails
+            own
+            cards={blocked
+              .filter(
+                ({ offer }) =>
+                  offer.availability.state !== "setup_required" ||
+                  !offer.availability.requirement_codes.includes("maker_account_setup"),
+              )
+              .map(({ card }) => card)}
+          />
 
-          {blocked.length > 0 && (
-            <section aria-labelledby={`${id}-blocked`}>
-              <h4 id={`${id}-blocked`} className="ramp-facts__title">
-                Not selectable now
-              </h4>
-              <ul className="ramp-rails__list">
-                {blocked.map(({ card, offer }) => (
-                  <li key={card.id} className="ramp-rail">
-                    <RailBody card={card} idPrefix={`${id}-${card.id}`} />
-                    {offer.availability.state === "setup_required" &&
-                      offer.availability.requirement_codes.includes("maker_account_setup") && (
-                        <AccountSetup
-                          flow={flow}
-                          rail={offer.rail.id}
-                          name={card.name}
-                          onDone={refresh}
-                        />
-                      )}
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          <div className="send-review__actions">
+          <div className="send-review__actions ramp-bottom-action">
             {state.status === "done" && (
               <button type="button" className="send-secondary" onClick={refresh}>
                 Check again
               </button>
             )}
-            <button
-              type="button"
-              className="submit-btn send-cta"
-              disabled={
-                !chosen || overCap !== undefined || state.status !== "done" || flow.busy !== false
-              }
-              onClick={() => {
-                if (chosen && state.status === "done")
-                  void flow.estimate(chosen.offer, state.intent);
-              }}
-            >
-              {flow.busy === "estimating" ? "Getting estimate..." : "Get estimate"}
-            </button>
+            {!account && onConnectRequest ? (
+              <button type="button" className="submit-btn send-cta" onClick={onConnectRequest}>
+                Connect wallet
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="submit-btn send-cta"
+                disabled={
+                  !chosen || overCap !== undefined || state.status !== "done" || flow.busy !== false
+                }
+                onClick={() => {
+                  if (chosen && state.status === "done")
+                    void flow.estimate(chosen.offer, state.intent);
+                }}
+              >
+                {flow.busy === "estimating" ? "Getting estimate..." : "Get estimate"}
+              </button>
+            )}
           </div>
         </>
       )}
@@ -429,7 +486,13 @@ function PayeeFields({
           onChange={(e) => onValue(e.target.value)}
         />
         <span id={`${id}-hint`} className="send-field__hint">
-          This must be your own account. Paying out to someone else's account is not supported.
+          {(
+            {
+              Venmo: "Enter your @username.",
+              Wise: "Enter your account email.",
+              Revolut: "Enter your Revolut tag.",
+            } as Record<string, string>
+          )[rail] ?? "Enter the identifier for your account."}
         </span>
         {error && <span className="send-field__error">{error}</span>}
       </label>
@@ -458,13 +521,13 @@ function AccountSetup({
   const error = value === "" ? undefined : payeeError(value);
   if (!open)
     return (
-      <button type="button" className="send-secondary" onClick={() => setOpen(true)}>
-        {`Set up your ${name} account`}
+      <button type="button" className="ramp-tile" onClick={() => setOpen(true)}>
+        <RailTileContent id={rail} name={`Your ${name}`} status="Set up first" />
       </button>
     );
   return (
     <form
-      className="send-form"
+      className="send-form ramp-tile-setup"
       aria-label={`Set up your ${name} account`}
       onSubmit={(e: FormEvent) => {
         e.preventDefault();
@@ -496,14 +559,31 @@ function AccountSetup({
   );
 }
 
-function ReviewStep({ flow, quote }: { flow: Flow; quote: OfframpQuote }) {
+interface ReviewDraft {
+  payee: string;
+  owned: boolean;
+  accepted: boolean;
+}
+
+function ReviewStep({
+  flow,
+  quote,
+  draft,
+  setDraft,
+}: {
+  flow: Flow;
+  quote: OfframpQuote;
+  draft: ReviewDraft;
+  setDraft: (draft: ReviewDraft) => void;
+}) {
+  const consentId = useId();
   const port = useOfframpPort();
   const { preview } = quote;
   const [now, setNow] = useState(() => port.now());
-  const [payee, setPayee] = useState("");
-  const [owned, setOwned] = useState(false);
+  const { payee, owned, accepted } = draft;
+  const setPayee = (value: string) => setDraft({ ...draft, payee: value });
+  const setOwned = (value: boolean) => setDraft({ ...draft, owned: value });
   const [confirmedMask, setConfirmedMask] = useState<string | undefined>(quote.registeredPayee);
-  const [accepted, setAccepted] = useState(false);
   const left = estimateSecondsLeft(preview, now);
   const stale = left === 0;
   const escrow = port.escrow();
@@ -547,7 +627,7 @@ function ReviewStep({ flow, quote }: { flow: Flow; quote: OfframpQuote }) {
         {fees.length > 0 && (
           <div>
             <dt className="send-field__label">Fees in the estimate</dt>
-            <dd>{fees.map((f) => `${formatUsdc(f.money.atomic)} (${f.code})`).join(", ")}</dd>
+            <dd>{fees.map((f) => formatUsdc(f.money.atomic)).join(", ")}</dd>
           </div>
         )}
         <div>
@@ -555,7 +635,7 @@ function ReviewStep({ flow, quote }: { flow: Flow; quote: OfframpQuote }) {
           <dd role="status">
             {stale
               ? "Expired. It can no longer be used; get a new estimate."
-              : `Usable until ${formatRampTime(preview.expires_at)}. Fills can be partial and have no set time.`}
+              : `Usable until ${formatRampTime(preview.expires_at)}. Payments can arrive later and in parts.`}
           </dd>
         </div>
         <div>
@@ -565,18 +645,25 @@ function ReviewStep({ flow, quote }: { flow: Flow; quote: OfframpQuote }) {
         <div>
           <dt className="send-field__label">Public Base transaction</dt>
           <dd>
-            {`A deposit of ${formatUsdc(preview.pay.atomic)} from your wallet into Peer's escrow`}
-            {escrow && (
-              <>
-                {" "}
-                <code className="send-review__mono">{escrow}</code>
-              </>
-            )}
-            {
-              " on Base. The amount and your wallet address are public. Your wallet may first ask to let the escrow use exactly this USDC."
-            }
+            {formatUsdc(preview.pay.atomic)} deposited into Peer's holding contract on Base. The
+            amount and your wallet address are public.
           </dd>
         </div>
+        {escrow && (
+          <div>
+            <dt>Holding contract address</dt>
+            <dd>
+              <code className="send-review__mono">{escrow}</code>
+              <button
+                type="button"
+                className="send-secondary"
+                onClick={() => void navigator.clipboard.writeText(escrow).catch(() => {})}
+              >
+                Copy
+              </button>
+            </dd>
+          </div>
+        )}
       </dl>
 
       {confirmedMask === undefined ? (
@@ -619,12 +706,19 @@ function ReviewStep({ flow, quote }: { flow: Flow; quote: OfframpQuote }) {
       )}
 
       <label className="send-check">
-        <input type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
-        <span>
-          I understand the payout is an estimate, not a locked rate; fills can be partial and arrive
-          at no set time; the buyer sees my payment details; and the deposit is public on Base.
-        </span>
+        <input
+          type="checkbox"
+          checked={accepted}
+          aria-describedby={consentId}
+          onChange={(e) => setDraft({ ...draft, accepted: e.target.checked })}
+        />
+        <span>I accept the cash-out terms.</span>
       </label>
+      <p id={consentId} className="send-note">
+        The rate can change and payments can arrive later or in parts. The buyer sees your payment
+        details and the deposit is public on Base.
+      </p>
+      <p className="send-note">Each wallet step needs your approval before funds move.</p>
 
       <div className="send-review__actions">
         <button
@@ -654,7 +748,15 @@ function OrderStep({ flow, order }: { flow: Flow; order: OfframpOrder }) {
   const port = useOfframpPort();
   const { chainId } = useAccount();
   const [hash, setHash] = useState("");
-  const [withdrawText, setWithdrawText] = useState("");
+  const [withdrawText, setWithdrawText] = useState<string>();
+  const transaction = order.snapshot.peer.transaction_hash;
+  const baseReceipt = transaction ? getExplorerTxUrl(BASE_CHAIN_ID, transaction) : undefined;
+  const payout = order.estimatedPayout;
+  const receivedPayment =
+    order.phase === "delivering" ||
+    order.phase === "delivered" ||
+    (order.amounts !== undefined && BigInt(order.amounts.filled) > 0n) ||
+    order.snapshot.peer.partial_result !== undefined;
   const headline = orderHeadline(order.snapshot, order.phase, order.reason);
   const steps = progressSteps(order.phase);
   const leg = order.snapshot.peer;
@@ -664,13 +766,21 @@ function OrderStep({ flow, order }: { flow: Flow; order: OfframpOrder }) {
   const walletDue = leg.state === "action_required";
   const needsHash = leg.state === "in_doubt" && order.pendingAction !== undefined;
   const withdrawable = canWithdraw(order.snapshot, order.phase);
-  const withdrawAmount = parseRampAmount(withdrawText);
+  const withdrawValue =
+    withdrawText ?? (order.amounts ? usdcDecimal(order.amounts.withdrawable) : "");
+  const withdrawAmount = parseRampAmount(withdrawValue);
   const finished =
     order.snapshot.terminal || (order.stage === "before_deposit" && leg.state === "failed");
 
   return (
     <section className="send-review" aria-label="Cash-out order">
-      <p className="ramp-rail__name">{`${order.railName} · ${order.currency} · ${formatUsdc(order.amount)}`}</p>
+      <h3 className="ramp-rail__name">{`${formatUsdc(order.amount)} to your ${order.railName} account`}</h3>
+      {payout?.asset.kind === "fiat" && (
+        <p className="send-note">
+          Original estimate:{" "}
+          {formatEstimate(payout.atomic, payout.asset.currency, payout.asset.decimals)}
+        </p>
+      )}
       {order.payeeMask && (
         <p className="send-note">{`Payout account ${order.payeeMask} (your own).`}</p>
       )}
@@ -679,9 +789,27 @@ function OrderStep({ flow, order }: { flow: Flow; order: OfframpOrder }) {
         <span>{headline.detail}</span>
       </div>
 
+      {receivedPayment && (
+        <section className="send-review" aria-label="Payment receipt">
+          <h4>Payment receipt</h4>
+          <p>Payment verified. Check your {order.railName} for the payment.</p>
+          {order.payeeMask && <p className="send-review__mono">{order.payeeMask}</p>}
+          {baseReceipt && (
+            <a href={baseReceipt} target="_blank" rel="noopener noreferrer">
+              View Base transaction
+            </a>
+          )}
+        </section>
+      )}
       {order.amounts && (
         <dl className="send-review__facts" aria-label="Confirmed order totals">
-          {Object.entries(order.amounts).map(([label, amount]) => (
+          {[
+            ["Deposited", order.amounts.deposited],
+            ["Paid out (USDC debited)", order.amounts.filled],
+            ["Reserved by buyers", order.amounts.reserved],
+            ["Available to withdraw", order.amounts.withdrawable],
+            ["Returned to wallet", order.amounts.withdrawn],
+          ].map(([label, amount]) => (
             <div key={label}>
               <dt>{label}</dt>
               <dd>{formatUsdc(amount)}</dd>
@@ -775,8 +903,7 @@ function OrderStep({ flow, order }: { flow: Flow; order: OfframpOrder }) {
               className="send-field__control"
               inputMode="decimal"
               autoComplete="off"
-              placeholder={order.phase === "awaiting_buyer" ? "All of it" : "0.00"}
-              value={withdrawText}
+              value={withdrawValue}
               onChange={(e) => setWithdrawText(e.target.value)}
             />
             <span className="send-field__hint">
@@ -790,16 +917,6 @@ function OrderStep({ flow, order }: { flow: Flow; order: OfframpOrder }) {
           >
             {flow.busy === "withdrawing" ? "Preparing..." : "Prepare withdrawal"}
           </button>
-          {order.phase === "awaiting_buyer" && withdrawText === "" && (
-            <button
-              type="button"
-              className="send-secondary"
-              disabled={flow.busy !== false}
-              onClick={() => setWithdrawText(usdcDecimal(order.amount))}
-            >
-              Withdraw all of it
-            </button>
-          )}
         </form>
       )}
 
@@ -822,54 +939,5 @@ function OrderStep({ flow, order }: { flow: Flow; order: OfframpOrder }) {
       </div>
       <p className="send-note">It also appears in Activity.</p>
     </section>
-  );
-}
-
-function RailBody({
-  card,
-  idPrefix,
-  estimate,
-}: {
-  card: RailCard;
-  idPrefix: string;
-  estimate?: string;
-}) {
-  return (
-    <span className="ramp-rail__body">
-      <span className="ramp-rail__head">
-        <span id={`${idPrefix}-name`} className="ramp-rail__name">
-          {card.name}
-        </span>
-        <span className={`ramp-rail__status ramp-rail__status--${card.state}`}>{card.status}</span>
-      </span>
-      <span id={`${idPrefix}-detail`} className="ramp-rail__text">
-        {card.reason}
-        {estimate && ` ${estimate}`}
-      </span>
-      {card.retryAfter && (
-        <span className="ramp-rail__text">{`Retry after ${formatRampTime(card.retryAfter)}.`}</span>
-      )}
-      {card.next && <span className="ramp-rail__text">{`Next: ${card.next}`}</span>}
-      {card.selectable && card.needs.length > 0 && (
-        <span className="ramp-rail__text">{`Needs: ${card.needs.join("; ")}.`}</span>
-      )}
-    </span>
-  );
-}
-
-function OverallCard(card: Omit<RailCard, "id" | "name" | "needs">) {
-  return (
-    <div className="ramp-rail" role="note">
-      <span className="ramp-rail__body">
-        <span className="ramp-rail__head">
-          <span className="ramp-rail__name">Peer</span>
-          <span className={`ramp-rail__status ramp-rail__status--${card.state}`}>
-            {card.status}
-          </span>
-        </span>
-        <span className="ramp-rail__text">{card.reason}</span>
-        {card.next && <span className="ramp-rail__text">{`Next: ${card.next}`}</span>}
-      </span>
-    </div>
   );
 }

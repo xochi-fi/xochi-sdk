@@ -119,7 +119,7 @@ const tab = (name: "Trade" | "Send" | "Activity" | "Claims"): HTMLElement =>
     name: new RegExp(`^${name}`),
   });
 
-const modeTab = (name: "Buy" | "Swap"): HTMLElement =>
+const modeTab = (name: "Buy" | "Swap" | "Cash out"): HTMLElement =>
   within(screen.getByRole("tablist", { name: "Trade mode" })).getByRole("tab", { name });
 
 const tabNames = (): string[] => topTabs().map((t) => (t.textContent ?? "").replace(/\d.*$/, ""));
@@ -189,7 +189,7 @@ const seedActivity = (...items: SwapActivityItem[]): void => {
 
 /** Open the activity strip, then expand its single row. */
 const expandActivityRow = async (): Promise<void> => {
-  fireEvent.click(await screen.findByRole("button", { name: "Toggle activity" }, WAIT));
+  fireEvent.click(await screen.findByRole("button", { name: /^Activity/ }, WAIT));
   const row = await waitFor(() => {
     const found = document.querySelector(".activity-row");
     if (!found) throw new Error("activity row not rendered");
@@ -279,6 +279,8 @@ describe("tablist", () => {
     expect(selectedTab()).toBe("Trade");
 
     fireEvent.keyDown(modeTab("Buy"), { key: "End" });
+    expect(selectedMode()).toBe("Cash out");
+    fireEvent.keyDown(modeTab("Cash out"), { key: "ArrowLeft" });
     expect(selectedMode()).toBe("Swap");
     expect(
       within(screen.getByRole("tablist", { name: "Trade mode" }))
@@ -337,20 +339,17 @@ describe("tablist", () => {
     ).toEqual(["Swap"]);
     fireEvent.click(tab("Send"));
     expect(
-      within(screen.getByRole("tablist", { name: "Send to" }))
-        .getAllByRole("tab")
-        .map((t) => t.textContent),
-    ).toEqual(["Address", "Stealth"]);
+      within(screen.getByRole("group", { name: "Send to" }))
+        .getAllByRole("radio")
+        .map((t) => t.getAttribute("aria-label")),
+    ).toEqual(["Wallet address", "Stealth address"]);
     cleanup();
 
     await renderTrade(
-      <Trade look={FULL_LOOK} embed={{ initialTab: "send", sendDestinations: ["payment_app"] }} />,
+      <Trade look={FULL_LOOK} embed={{ initialTab: "trade", initialMode: "offramp" }} />,
     );
-    expect(selectedTab()).toBe("Send");
-    const kinds = within(screen.getByRole("tablist", { name: "Send to" })).getAllByRole("tab");
-    expect(kinds.map((t) => [t.textContent, t.getAttribute("aria-selected")])).toEqual([
-      ["Payment app", "true"],
-    ]);
+    expect(selectedTab()).toBe("Trade");
+    expect(selectedMode()).toBe("Cash out");
     cleanup();
 
     await renderTrade(<Trade look={FULL_LOOK} embed={{ tabs: ["activity"] }} />);

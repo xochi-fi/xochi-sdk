@@ -270,7 +270,7 @@ function ConnectedOnrampRoute({
                   setRecipientKind("own");
                 }}
               >
-                <option value="public">Public — my wallet</option>
+                <option value="public">Public (my wallet)</option>
                 <option value="stealth">Stealth recipient</option>
               </select>
             </label>

@@ -370,3 +370,47 @@
 .stealth-payee-note p {
   margin: 0;
 }
+
+.send-destinations {
+  min-inline-size: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.send-destinations legend {
+  margin-bottom: 8px;
+}
+
+.send-destination {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  background: var(--panel-bg-subtle);
+  border: 2px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 8px;
+  cursor: pointer;
+}
+
+.send-destination:has(:checked) {
+  border-color: var(--muted-gold);
+}
+
+.launch-screen :is(button, input, select, textarea, summary):focus-visible,
+.send-destination:has(:focus-visible),
+.ramp-tile:has(:focus-visible) {
+  outline: 2px solid var(--pearl-cream);
+  outline-offset: 2px;
+}
+
+@media (forced-colors: active) {
+  .launch-screen :is(button, input, select, textarea, summary):focus-visible,
+  .send-destination:has(:focus-visible),
+  .ramp-tile:has(:focus-visible) {
+    outline-color: Highlight;
+  }
+}

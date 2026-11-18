@@ -26,9 +26,10 @@ interface BuyPanelProps {
   /** Whether Buy is the visible mode; a hidden panel reads nothing from Peer. */
   active: boolean;
   fiatCurrency?: string;
+  onConnectRequest?: () => void;
 }
 
-export function BuyPanel({ active, fiatCurrency }: BuyPanelProps) {
+export function BuyPanel({ active, fiatCurrency, onConnectRequest }: BuyPanelProps) {
   const { address, chainId } = useAccount();
   const { switchChain, isPending } = useSwitchChain();
   const { data: wallet } = useWalletClient();
@@ -54,10 +55,10 @@ export function BuyPanel({ active, fiatCurrency }: BuyPanelProps) {
 
   return (
     <div className="send-card">
-      <h2 className="send-card__title">Buy</h2>
+      <h2 className="sr-only">Buy</h2>
       {address && chainId !== 8453 && (
         <button type="button" disabled={isPending} onClick={() => switchChain({ chainId: 8453 })}>
-          Switch wallet to Base for Peer purchase
+          Switch to Base
         </button>
       )}
       {resume && (
@@ -84,6 +85,7 @@ export function BuyPanel({ active, fiatCurrency }: BuyPanelProps) {
           account={address}
           fiatCurrency={fiatCurrency}
           active={active}
+          onConnectRequest={onConnectRequest}
           renderSelected={(intent, offer, lock) => (
             <BuyOnramp
               key={offer.capability_revision}

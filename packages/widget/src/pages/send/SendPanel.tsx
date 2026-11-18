@@ -1,51 +1,22 @@
-/**
- * SendPanel
- *
- * The Send tab: one surface for moving value out of the connected wallet. The
- * user picks a destination kind (a nested tablist, same keys as the top row):
- *
- *   - `address`: a public ERC-20 transfer to a wallet address (AddressSend);
- *   - `stealth`: the existing Stealth settlement to the user's own stealth
- *     keys, handed to the Swap card (StealthSend);
- *   - `payment_app`: cashing out Base USDC to the user's own payment-app
- *     account through a Peer maker deposit (ramp/offramp/PaymentAppSend).
- *
- * Neither `address` nor `stealth` touches Peer. Inside an iframe, `payment_app`
- * waits for a current host (lib/rampHostGate); Activity keeps any cash-out
- * already submitted. Each destination stays mounted
- * while hidden, so switching kinds keeps what was typed.
- */
-
-import { useId } from "react";
-import { PaymentAppSend } from "../../ramp/offramp/PaymentAppSend.js";
-import { RAMP_HOST_GATE_COPY, useRampHostGate } from "../../lib/rampHostGate.js";
+import { useId, useState } from "react";
+import { PrivacyBars } from "../../components/PrivacyBars.js";
+import { MODE_META } from "../trade/settlementCopy.js";
 import type { SwapPrefill } from "../trade/SwapPanel.js";
-import {
-  WidgetTabs,
-  widgetTabIds,
-  SEND_DESTINATION_KINDS,
-  type SendDestinationKind,
-  type WidgetTab,
-} from "../trade/WidgetTabs.js";
+import { SEND_DESTINATION_KINDS, type SendDestinationKind } from "../trade/WidgetTabs.js";
 import { AddressSend } from "./AddressSend.js";
 import { StealthSend } from "./StealthSend.js";
 
 const LABELS: Record<SendDestinationKind, string> = {
-  address: "Address",
-  stealth: "Stealth",
-  payment_app: "Payment app",
+  address: "Wallet address",
+  stealth: "Stealth address",
 };
 
 interface SendPanelProps {
   destination: SendDestinationKind;
   onDestinationChange: (next: SendDestinationKind) => void;
-  /** The kinds offered, in order (a host may narrow them later). */
   destinations?: readonly SendDestinationKind[];
   onStealthContinue: (order: Omit<SwapPrefill, "nonce">) => void;
   onConnectRequest?: () => void;
-  /** Whether the Send tab is visible; a hidden payment_app slot reads nothing from Peer. */
-  active?: boolean;
-  fiatCurrency?: string;
 }
 
 export function SendPanel({
@@ -54,59 +25,81 @@ export function SendPanel({
   destinations = SEND_DESTINATION_KINDS,
   onStealthContinue,
   onConnectRequest,
-  active = true,
-  fiatCurrency,
 }: SendPanelProps) {
-  const baseId = useId();
-  const gate = useRampHostGate();
-  const tabs: WidgetTab<SendDestinationKind>[] = destinations.map((kind) => ({
-    id: kind,
-    label: LABELS[kind],
-  }));
-  const panel = (kind: SendDestinationKind) => {
-    const ids = widgetTabIds(baseId, kind);
-    return {
-      role: "tabpanel",
-      id: ids.panel,
-      "aria-labelledby": ids.tab,
-      hidden: destination !== kind,
-      className: "send-card__panel",
-    } as const;
+  const id = useId();
+  const [walletAddress, setWalletAddress] = useState("");
+  const [metaAddress, setMetaAddress] = useState("");
+  const [pasteError, setPasteError] = useState("");
+
+  const applyPaste = (raw: string) => {
+    const value = raw.trim();
+    const kind = /^st:eth:/i.test(value) ? "stealth" : /^0x/i.test(value) ? "address" : destination;
+    if (!destinations.includes(kind)) {
+      setPasteError("This recipient type is unavailable here.");
+      return;
+    }
+    setPasteError("");
+    if (kind === "stealth") setMetaAddress(value);
+    else setWalletAddress(value);
+    onDestinationChange(kind);
+  };
+
+  const paste = async () => {
+    try {
+      applyPaste(await navigator.clipboard.readText());
+    } catch {
+      setPasteError("Paste into the recipient field directly.");
+    }
   };
 
   return (
     <div className="send-card">
-      <h2 className="send-card__title">Send</h2>
-      <WidgetTabs
-        baseId={baseId}
-        tabs={tabs}
-        active={destination}
-        onSelect={onDestinationChange}
-        label="Send to"
-        className="send-card__kinds"
-      />
+      <h2 className="sr-only">Send</h2>
+      <fieldset className="send-destinations">
+        <legend>Send to</legend>
+        {destinations.map((kind) => (
+          <label className="send-destination" key={kind}>
+            <input
+              className="sr-only"
+              type="radio"
+              aria-label={LABELS[kind]}
+              aria-controls={`${id}-${kind}`}
+              name={id}
+              checked={destination === kind}
+              onChange={() => onDestinationChange(kind)}
+            />
+            <PrivacyBars count={kind === "address" ? 1 : 2} active={destination === kind} />
+            <strong>{LABELS[kind]}</strong>
+            <small>{MODE_META[kind === "address" ? "public" : "stealth"]}</small>
+          </label>
+        ))}
+      </fieldset>
+      {pasteError && (
+        <p className="send-note" role="status">
+          {pasteError}
+        </p>
+      )}
       {destinations.includes("address") && (
-        <div {...panel("address")}>
-          <AddressSend onConnectRequest={onConnectRequest} />
+        <div id={`${id}-address`} hidden={destination !== "address"} className="send-card__panel">
+          <AddressSend
+            onConnectRequest={onConnectRequest}
+            recipient={walletAddress}
+            onRecipient={setWalletAddress}
+            onPaste={paste}
+            onPasteValue={applyPaste}
+          />
         </div>
       )}
       {destinations.includes("stealth") && (
-        <div {...panel("stealth")}>
-          <StealthSend onContinue={onStealthContinue} onConnectRequest={onConnectRequest} />
-        </div>
-      )}
-      {destinations.includes("payment_app") && (
-        <div {...panel("payment_app")}>
-          {gate === "ready" ? (
-            <PaymentAppSend
-              fiatCurrency={fiatCurrency}
-              active={active && destination === "payment_app"}
-            />
-          ) : (
-            <p className="ramp-resume__blocked" role="status">
-              {RAMP_HOST_GATE_COPY[gate]}
-            </p>
-          )}
+        <div id={`${id}-stealth`} hidden={destination !== "stealth"} className="send-card__panel">
+          <StealthSend
+            onContinue={onStealthContinue}
+            onConnectRequest={onConnectRequest}
+            recipient={metaAddress}
+            onRecipient={setMetaAddress}
+            onPaste={paste}
+            onPasteValue={applyPaste}
+          />
         </div>
       )}
     </div>

@@ -55,7 +55,7 @@ export function buildRampIntent(input: {
 }
 
 /** Display names for rail ids Peer returns. Availability comes only from live data. */
-const RAIL_NAMES: Readonly<Record<string, string>> = {
+export const RAIL_NAMES: Readonly<Record<string, string>> = {
   venmo: "Venmo",
   revolut: "Revolut",
   wise: "Wise",
@@ -286,18 +286,19 @@ export function nextExpiry(offers: readonly RampOffer[], now: number): number | 
 /** Critical facts, shown before any rail can be chosen. Plain text, no hover. */
 export function rampFacts(direction: RampDirection): string[] {
   const shared = [
-    "Settlement on Base is public: the USDC transfer and your wallet address are visible onchain.",
-    "The person on the other side of the fiat payment sees your payment details, including the name on your account.",
-    "Peer's access checks and its secure enclave (TEE) must be online for this to complete.",
+    "Your Base transfer and wallet address are public.",
+    "The other person sees your payment details and name.",
+    "Peer’s access checks and secure payment verifier must be online.",
   ];
   return direction === "onramp"
     ? [
         ...shared,
-        "Fiat sent for an expired or unverifiable purchase cannot be refunded by the protocol.",
+        "Expired or unverifiable purchases have no protocol refund.",
+        "Without Peer stake, Venmo or PayPal payouts can be held for 14 days.",
       ]
     : [
-        "Pays out only to a payment-app account that belongs to you, never to someone else's.",
+        "Cash out only to your own account.",
         ...shared,
-        "Amounts are estimates: the rate is not locked, and fills arrive asynchronously and can be partial.",
+        "Rates can change. Payments can arrive later and in parts.",
       ];
 }

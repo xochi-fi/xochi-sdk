@@ -62,9 +62,10 @@ export function RampActivityList({
               )}{" "}
               {row.receive.asset.kind === "crypto" ? row.receive.asset.symbol : ""}
             </span>
-            <span className="send-activity__meta">
-              via Peer / {row.rail.label} · {label(row)} ·{" "}
-              {formatTimeAgo(Date.parse(row.created_at))}
+            <span className="send-activity__meta">Via {row.rail.label}</span>
+            <span className="send-activity__status">
+              {label(row)}{" "}
+              <time dateTime={row.created_at}>{formatTimeAgo(Date.parse(row.created_at))}</time>
             </span>
           </li>
         ))}

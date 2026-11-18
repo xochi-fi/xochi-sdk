@@ -23,11 +23,11 @@ export const WIDGET_TAB_IDS = ["trade", "send", "activity", "claims"] as const;
 export type WidgetTabId = (typeof WIDGET_TAB_IDS)[number];
 
 /** Trade's modes, in display order, named by their API terms (Buy is `onramp`). */
-export const TRADE_MODES = ["onramp", "swap"] as const;
+export const TRADE_MODES = ["onramp", "swap", "offramp"] as const;
 export type TradeMode = (typeof TRADE_MODES)[number];
 
 /** Send's destination kinds, in display order. */
-export const SEND_DESTINATION_KINDS = ["address", "stealth", "payment_app"] as const;
+export const SEND_DESTINATION_KINDS = ["address", "stealth"] as const;
 export type SendDestinationKind = (typeof SEND_DESTINATION_KINDS)[number];
 
 export interface WidgetTab<Id extends string = WidgetTabId> {
@@ -67,6 +67,7 @@ export function WidgetTabs<Id extends string = WidgetTabId>({
 
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
     const current = tabs.findIndex((t) => t.id === active);
+    if (current < 0) return;
     let next: number;
     switch (e.key) {
       case "ArrowRight":
@@ -75,6 +76,27 @@ export function WidgetTabs<Id extends string = WidgetTabId>({
       case "ArrowLeft":
         next = (current - 1 + tabs.length) % tabs.length;
         break;
+      case "ArrowUp":
+      case "ArrowDown": {
+        const origin = tabRefs.current.get(active)?.getBoundingClientRect();
+        if (!origin) return;
+        const direction = e.key === "ArrowUp" ? -1 : 1;
+        const candidates = tabs.flatMap(({ id }, index) => {
+          const rect = tabRefs.current.get(id)?.getBoundingClientRect();
+          if (!rect || direction * (rect.top - origin.top) <= 1) return [];
+          return [
+            {
+              index,
+              row: Math.abs(rect.top - origin.top),
+              distance: Math.abs(rect.left + rect.width / 2 - origin.left - origin.width / 2),
+            },
+          ];
+        });
+        candidates.sort((a, b) => a.row - b.row || a.distance - b.distance);
+        if (!candidates[0]) return;
+        next = candidates[0].index;
+        break;
+      }
       case "Home":
         next = 0;
         break;

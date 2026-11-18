@@ -58,9 +58,13 @@ export function OfframpActivityList({ items }: { items: readonly OfframpActivity
                 : formatUsdc(item.data.amount)}
             </span>
             <span className="send-activity__meta">
-              {`to your ${railName({ rail: { id: item.data.rail, label: item.data.rail } })} account in ${item.data.currency} · `}
+              {`to your ${railName({ rail: { id: item.data.rail, label: item.data.rail } })} (${item.data.currency})`}
+            </span>
+            <span className="send-activity__status">
               {item.status === "open" && item.phase ? PHASE[item.phase] : STATUS[item.status]}
-              {` · ${formatTimeAgo(item.timestamp)}`}
+              <time dateTime={new Date(item.timestamp).toISOString()}>
+                {formatTimeAgo(item.timestamp)}
+              </time>
             </span>
           </li>
         ))}

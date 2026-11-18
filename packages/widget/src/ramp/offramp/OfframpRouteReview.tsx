@@ -1,3 +1,4 @@
+import { formatRampTime } from "../availability/model.js";
 import type { ReactNode } from "react";
 import type { RampLegState, XochiRampPreview } from "@xochi/client";
 import { chainName } from "../../pages/send/addressSend.js";
@@ -43,7 +44,7 @@ export function OfframpRouteReview({
           <dt>Recipient</dt>
           <dd className="send-review__mono">{preview.recipient}</dd>
           <dt>Quote expires</dt>
-          <dd>{preview.expiresAt}</dd>
+          <dd>{formatRampTime(preview.expiresAt)}</dd>
         </dl>
       )}
       {status === "failed" && (
@@ -67,16 +68,23 @@ export function OfframpRouteReview({
           disabled={busy || !authorized || !preview || Date.parse(preview.expiresAt) <= Date.now()}
           onClick={() => onAction("execute")}
         >
-          Approve wallet: route into Base USDC
+          Route to Base
         </button>
       )}
       {["processing", "in_doubt"].includes(status) && (
         <>
           <p role="status">
-            Xochi route {status.replaceAll("_", " ")}. Do not repeat the transfer. Peer has not
-            started.
+            {status === "processing"
+              ? "Confirming your transfer to Base."
+              : "Transfer status unknown. Check it before trying again."}{" "}
+            Cash out has not started.
           </p>
-          <button disabled={busy} onClick={() => onAction("check")}>
+          <button
+            type="button"
+            className="send-secondary"
+            disabled={busy}
+            onClick={() => onAction("check")}
+          >
             Check Xochi route status
           </button>
         </>
@@ -84,7 +92,12 @@ export function OfframpRouteReview({
       {status === "completed" && (
         <>
           <p>Route receipt: {receipt}</p>
-          <button disabled={busy} onClick={() => onAction("balance")}>
+          <button
+            type="button"
+            className="send-secondary"
+            disabled={busy}
+            onClick={() => onAction("balance")}
+          >
             Check spendable Base USDC
           </button>
         </>

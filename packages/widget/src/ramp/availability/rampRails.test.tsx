@@ -41,7 +41,7 @@ const radios = (): HTMLInputElement[] => screen.queryAllByRole<HTMLInputElement>
 const radioNames = (): string[] =>
   radios().map((r) => r.closest("label")?.querySelector(".ramp-rail__name")?.textContent ?? "");
 const blockedList = (): HTMLElement =>
-  screen.getByRole("region", { name: "Not selectable now" }) as HTMLElement;
+  screen.getByRole("region", { name: "Unavailable payment apps" }) as HTMLElement;
 const blockedCard = (name: string): HTMLElement => {
   const card = within(blockedList())
     .getAllByRole("listitem")
@@ -69,7 +69,7 @@ describe("Buy rails", () => {
     const port = recordedPort({ account: ACCOUNT, clock, stakeRails: ["revolut"] });
     renderRails(port, <RampRails direction="onramp" account={ACCOUNT} active />);
     typeAmount("25");
-    await screen.findByRole("group", { name: "Available now" });
+    await screen.findAllByRole("radio");
     expect(port.calls).toEqual(["25000000"]);
 
     expect(radioNames()).toContain("Wise");
@@ -240,7 +240,7 @@ describe("Buy rails", () => {
     const port = { ...recordedPort({ account: ACCOUNT, clock }), onrampCanaryCap: () => undefined };
     renderRails(port, <RampRails direction="onramp" account={ACCOUNT} active />);
     typeAmount("25");
-    await screen.findByRole("group", { name: "Available now" });
+    await screen.findAllByRole("radio");
     expect(port.calls).toEqual(["25000000"]);
   });
 });
@@ -256,7 +256,7 @@ describe("Send to a payment app rails", () => {
     expect(facts).toMatch(/Base is public/);
 
     typeAmount("25");
-    await screen.findByRole("group", { name: "Available now" });
+    await screen.findAllByRole("radio");
     expect(radioNames()).toEqual(["Wise"]);
     expect(blockedCard("Revolut").textContent).toMatch(/Availability unknown/);
     expect(blockedCard("Revolut").textContent).toMatch(/not confirmed live cash-out limits/);

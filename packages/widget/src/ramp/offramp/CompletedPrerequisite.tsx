@@ -9,7 +9,7 @@ export function CompletedPrerequisite({
 }) {
   return (
     <section className="send-review" aria-label="Completed prerequisite">
-      <h4>Xochi prerequisite completed</h4>
+      <h4>Transfer to Base complete</h4>
       <p className="send-review__mono">Route receipt: {receipt}</p>
       {peerFailed && (
         <p role="alert">

@@ -39,7 +39,7 @@ export function zkMoneyTagValid(tag: string): boolean {
 /** The tag's own field error, or null while empty or valid. */
 export function zkMoneyTagError(tag: string): string | null {
   if (tag.length === 0 || zkMoneyTagValid(tag)) return null;
-  return "Use 1–63 letters, numbers or hyphens.";
+  return "Use 1 to 63 letters, numbers or hyphens.";
 }
 
 /**

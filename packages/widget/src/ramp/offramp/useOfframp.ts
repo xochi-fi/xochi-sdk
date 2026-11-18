@@ -73,6 +73,7 @@ export interface OfframpOrder {
   amount: string;
   snapshot: RampSnapshot;
   amounts?: MakerOrderAmounts;
+  estimatedPayout?: RampPreview["receive"];
   phase?: MakerPhase;
   reason?: MakerReason;
   stage: OfframpStage;
@@ -420,6 +421,7 @@ export function useOfframp(
           railName: quote.railName,
           currency: quote.intent.fiat.currency,
           amount: quote.preview.pay.atomic,
+          estimatedPayout: quote.preview.receive,
           snapshot,
           stage: "before_deposit",
           resumed: false,

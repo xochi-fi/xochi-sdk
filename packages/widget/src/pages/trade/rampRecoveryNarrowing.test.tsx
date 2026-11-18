@@ -122,7 +122,7 @@ describe("a host that drops Peer", () => {
     const port = memoryOfframpPort({ account: TEST_ACCOUNT });
     await renderTrade(
       <OfframpPortContext value={port}>
-        <Trade look={FULL_LOOK} embed={{ initialTab: "send", sendDestinations: ["payment_app"] }} />
+        <Trade look={FULL_LOOK} embed={{ initialTab: "trade", initialMode: "offramp" }} />
       </OfframpPortContext>,
       { connected: true },
     );
@@ -137,7 +137,7 @@ describe("a host that drops Peer", () => {
     });
     fireEvent.click(form.getByLabelText(/belongs to me/));
     fireEvent.click(form.getByRole("button", { name: "Use this account" }));
-    fireEvent.click(screen.getByLabelText(/I understand the payout is an estimate/));
+    fireEvent.click(screen.getByLabelText(/I accept the cash-out terms/));
     fireEvent.click(screen.getByRole("button", { name: "Confirm cash-out" }));
     for (const count of [1, 2]) {
       await approveInWallet(port, count);
@@ -155,10 +155,10 @@ describe("a host that drops Peer", () => {
     );
     fireEvent.click(tab("Send"));
     expect(
-      within(screen.getByRole("tablist", { name: "Send to" }))
-        .getAllByRole("tab")
-        .map((t) => t.textContent),
-    ).toEqual(["Address", "Stealth"]);
+      within(screen.getByRole("group", { name: "Send to" }))
+        .getAllByRole("radio")
+        .map((t) => t.getAttribute("aria-label")),
+    ).toEqual(["Wallet address", "Stealth address"]);
     fireEvent.click(tab("Activity"));
     const recovery = await screen.findByRole("region", { name: "Cash-out to recover" }, WAIT);
     await within(recovery).findByText("Awaiting a buyer", { selector: "strong" }, WAIT);

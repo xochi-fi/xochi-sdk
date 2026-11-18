@@ -5,19 +5,19 @@ describe("widgetSurfaces", () => {
   it("offers everything, on Trade/Swap, without narrowing", () => {
     expect(widgetSurfaces()).toEqual({
       tabs: ["trade", "send", "activity", "claims"],
-      modes: ["onramp", "swap"],
-      destinations: ["address", "stealth", "payment_app"],
+      modes: ["onramp", "swap", "offramp"],
+      destinations: ["address", "stealth"],
       initialTab: "trade",
       initialMode: "swap",
       initialDestination: "address",
     });
   });
 
-  it("opens the ramp facade's offramp on Send with payment_app only", () => {
-    const s = widgetSurfaces({ initialTab: "send", sendDestinations: ["payment_app"] });
-    expect(s.initialTab).toBe("send");
-    expect(s.destinations).toEqual(["payment_app"]);
-    expect(s.initialDestination).toBe("payment_app");
+  it("opens the ramp facade's offramp on Trade with Cash out only", () => {
+    const s = widgetSurfaces({ initialTab: "trade", initialMode: "offramp", modes: ["offramp"] });
+    expect(s.initialTab).toBe("trade");
+    expect(s.modes).toEqual(["offramp"]);
+    expect(s.initialMode).toBe("offramp");
   });
 
   it("opens the ramp facade's onramp on Trade/Buy", () => {

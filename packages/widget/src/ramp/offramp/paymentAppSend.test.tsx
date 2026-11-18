@@ -52,11 +52,11 @@ async function mount(port: TestOfframpPort) {
   );
 }
 
-const section = () => screen.getByRole("region", { name: "Cash out to your own payment app" });
+const section = () => screen.getByRole("region", { name: "Cash out" });
 
 async function chooseRail(amount = "25", rail = /Wise/) {
   fireEvent.change(screen.getByLabelText("USDC to cash out"), { target: { value: amount } });
-  await screen.findByRole("group", { name: "Available now" }, WAIT);
+  await screen.findByRole("radio", { name: rail }, WAIT);
   fireEvent.click(screen.getByLabelText(rail));
   fireEvent.click(screen.getByRole("button", { name: "Get estimate" }));
   await screen.findByRole("region", { name: "Review cash-out" }, WAIT);
@@ -71,7 +71,7 @@ function enterPayee() {
 
 async function confirmReview() {
   enterPayee();
-  fireEvent.click(screen.getByLabelText(/I understand the payout is an estimate/));
+  fireEvent.click(screen.getByLabelText(/I accept the cash-out terms/));
   fireEvent.click(screen.getByRole("button", { name: "Confirm cash-out" }));
   await screen.findByRole("region", { name: "Cash-out order" }, WAIT);
   await screen.findByRole("button", { name: "Approve in wallet" }, WAIT);
@@ -121,7 +121,7 @@ describe("estimate and review", () => {
     await mount(port);
     expect(
       within(section()).getByRole("region", { name: "Before you choose" }).textContent,
-    ).toMatch(/belongs to you/);
+    ).toMatch(/your own account/);
 
     fireEvent.change(screen.getByLabelText("Cash out from"), { target: { value: "other" } });
     expect(screen.getByRole("region", { name: "Two-leg cash-out review" }).textContent).toMatch(
@@ -132,9 +132,10 @@ describe("estimate and review", () => {
 
     fireEvent.change(screen.getByLabelText("Cash out from"), { target: { value: "base_usdc" } });
     fireEvent.change(screen.getByLabelText("USDC to cash out"), { target: { value: "25" } });
-    const group = await screen.findByRole("group", { name: "Available now" }, WAIT);
+    await screen.findByRole("radio", { name: /Wise/ }, WAIT);
+    const group = screen.getByRole("group", { name: "Cash out to your own account" });
     expect(within(group).getAllByRole("radio")).toHaveLength(1);
-    expect(group.textContent).toMatch(/Estimated payout about 24\.75 USD\./);
+    expect(group.textContent).toMatch(/about 24\.75 USD/);
     expect(screen.getByRole("button", { name: "Get estimate" })).toHaveProperty("disabled", true);
     expect(port.signed).toEqual([]);
   });
@@ -157,7 +158,7 @@ describe("estimate and review", () => {
     enterPayee();
     expect(review.textContent).not.toContain(PAYEE);
     expect(review.textContent).toMatch(/sy••••42/);
-    fireEvent.click(screen.getByLabelText(/I understand the payout is an estimate/));
+    fireEvent.click(screen.getByLabelText(/I accept the cash-out terms/));
     const confirm = screen.getByRole("button", { name: "Confirm cash-out" });
     expect(confirm).toHaveProperty("disabled", false);
 
@@ -178,11 +179,11 @@ describe("canary cap", () => {
     await mount(port);
     fireEvent.change(screen.getByLabelText("USDC to cash out"), { target: { value: "25" } });
     expect(screen.getByRole("status").textContent).toMatch(/limits each cash-out to 5(\.0+)? USDC/);
-    expect(screen.queryByRole("group", { name: "Available now" })).toBeNull();
+    expect(screen.queryByRole("radio", { name: /Wise/ })).toBeNull();
     expect(screen.getByRole("button", { name: "Get estimate" })).toHaveProperty("disabled", true);
 
     fireEvent.change(screen.getByLabelText("USDC to cash out"), { target: { value: "5" } });
-    await screen.findByRole("group", { name: "Available now" }, WAIT);
+    await screen.findByRole("radio", { name: /Wise/ }, WAIT);
   });
 });
 
@@ -257,7 +258,7 @@ describe("wallet approvals and order progress", () => {
     await mount(port);
     await chooseRail();
     enterPayee();
-    fireEvent.click(screen.getByLabelText(/I understand the payout is an estimate/));
+    fireEvent.click(screen.getByLabelText(/I accept the cash-out terms/));
     fireEvent.click(screen.getByRole("button", { name: "Confirm cash-out" }));
     const button = await screen.findByRole("button", { name: "Switch wallet to Base" }, WAIT);
     await waitFor(() => expect(button).toHaveProperty("disabled", false), WAIT);

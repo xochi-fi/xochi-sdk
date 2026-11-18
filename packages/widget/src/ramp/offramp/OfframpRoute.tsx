@@ -204,9 +204,12 @@ export function OfframpRoute({
       onAction={(action) => void act(action)}
       note={checkpoint === null ? "Route recovery storage is unavailable." : note}
     >
-      <fieldset disabled={!!checkpoint || !!route || busy} className="send-form">
+      <fieldset
+        disabled={!!checkpoint || !!route || busy}
+        className="send-form offramp-route-fields"
+      >
         <label className="send-field">
-          Source asset
+          <span className="send-field__label">Source asset</span>
           <select
             className="send-field__control"
             value={source?.key ?? ""}
@@ -220,7 +223,7 @@ export function OfframpRoute({
           </select>
         </label>
         <label className="send-field">
-          Source amount
+          <span className="send-field__label">Source amount</span>
           <input
             className="send-field__control"
             value={text}
@@ -229,9 +232,18 @@ export function OfframpRoute({
           />
         </label>
       </fieldset>
-      {!source && <p>No live supported route into Base USDC is available.</p>}
+      {!source && (
+        <p className="send-note" role="status">
+          No live supported route into Base USDC is available.
+        </p>
+      )}
       {intent.awaitingPull && (
-        <button disabled={intent.isSigningPull} onClick={intent.signPull}>
+        <button
+          type="button"
+          className="send-secondary"
+          disabled={intent.isSigningPull}
+          onClick={intent.signPull}
+        >
           Approve wallet: sign source authorization
         </button>
       )}

@@ -45,12 +45,23 @@ interface StealthSendProps {
   /** Open the Swap card on this order with Stealth selected. */
   onContinue: (order: Omit<SwapPrefill, "nonce">) => void;
   onConnectRequest?: () => void;
+  recipient: string;
+  onRecipient: (value: string) => void;
+  onPaste: () => void;
+  onPasteValue: (value: string) => void;
 }
 
-export function StealthSend({ onContinue, onConnectRequest }: StealthSendProps) {
+export function StealthSend({
+  onContinue,
+  onConnectRequest,
+  recipient: metaInput,
+  onRecipient,
+  onPaste,
+  onPasteValue,
+}: StealthSendProps) {
   const id = useId();
   const config = useConfig();
-  const { isConnected, chainId: walletChainId } = useAccount();
+  const { isConnected } = useAccount();
   const { openConnectModal } = useConnectModal();
   const connectWallet = onConnectRequest ?? openConnectModal;
   const stealth = useStealth();
@@ -59,17 +70,14 @@ export function StealthSend({ onContinue, onConnectRequest }: StealthSendProps) 
 
   const chainIds = useMemo(() => sendChainIds(config.chains.map((c) => c.id)), [config.chains]);
   const [chainId, setChainId] = useState(() =>
-    walletChainId !== undefined && chainIds.includes(walletChainId)
-      ? walletChainId
-      : (chainIds[0] ?? 0),
+    chainIds.includes(8453) ? 8453 : (chainIds[0] ?? 0),
   );
   const tokens = sendTokens(chainId);
   const [symbol, setSymbol] = useState(() => defaultSendToken(chainId)?.symbol ?? "");
   const token = tokens.find((t) => t.symbol === symbol) ?? tokens[0];
   const [amount, setAmount] = useState("");
   const [attempted, setAttempted] = useState(false);
-  const [payee, setPayee] = useState<Payee>("self");
-  const [metaInput, setMetaInput] = useState("");
+  const [payee, setPayee] = useState<Payee>("other");
   const [review, setReview] = useState<StealthOrder | null>(null);
 
   const destinations = token
@@ -164,9 +172,8 @@ export function StealthSend({ onContinue, onConnectRequest }: StealthSendProps) 
         </dl>
         <p className="send-note">
           The payout lands at a one-time address derived from these keys. Only the recipient can
-          find and claim it, with their own stealth keys; it never appears in your Claims. Check the
-          meta-address against the one the recipient gave you: a payment to the wrong keys cannot be
-          recovered.
+          find and claim it with their own stealth keys. Check the meta-address against the one the
+          recipient gave you: a payment to the wrong keys cannot be recovered.
         </p>
         <p className="send-note">{STEALTH_PRIVACY_LIMITS}</p>
         <p className="send-note">
@@ -184,7 +191,7 @@ export function StealthSend({ onContinue, onConnectRequest }: StealthSendProps) 
               setReview(null);
             }}
           >
-            Continue to Stealth swap
+            Opens Swap to quote
           </button>
         </div>
       </section>
@@ -199,29 +206,28 @@ export function StealthSend({ onContinue, onConnectRequest }: StealthSendProps) 
           <input
             type="radio"
             name={`${id}-payee`}
-            value="self"
-            checked={payee === "self"}
-            onChange={() => setPayee("self")}
-          />
-          My stealth keys
-        </label>
-        <label className="send-payee__option">
-          <input
-            type="radio"
-            name={`${id}-payee`}
             value="other"
             checked={payee === "other"}
             onChange={() => setPayee("other")}
           />
           Someone else
         </label>
+        <label className="send-payee__option">
+          <input
+            type="radio"
+            name={`${id}-payee`}
+            value="self"
+            checked={payee === "self"}
+            onChange={() => setPayee("self")}
+          />
+          My stealth keys
+        </label>
       </fieldset>
 
       {payee === "self" ? (
         <p className="send-note">
           A Stealth send pays out to a one-time address only your stealth keys control. You claim it
-          from Claims with the receiving wallet. It settles as a Xochi order, so you review the
-          quote and approve it in Swap.
+          with the receiving wallet. Review the quote and approve it in Swap.
         </p>
       ) : (
         <div className="send-field">
@@ -239,8 +245,15 @@ export function StealthSend({ onContinue, onConnectRequest }: StealthSendProps) 
             value={metaInput}
             aria-invalid={metaError ? true : undefined}
             aria-describedby={`${fieldIds.meta}-hint`}
-            onChange={(e) => setMetaInput(e.target.value)}
+            onChange={(e) => onRecipient(e.target.value)}
+            onPaste={(e) => {
+              e.preventDefault();
+              onPasteValue(e.clipboardData.getData("text"));
+            }}
           />
+          <button type="button" className="send-secondary" onClick={onPaste}>
+            Paste
+          </button>
           <span id={`${fieldIds.meta}-hint`} className="send-field__hint">
             {metaError ??
               "The st:eth:0x... meta-address the recipient shared. They claim the payment with their own stealth keys."}
@@ -363,7 +376,7 @@ export function StealthSend({ onContinue, onConnectRequest }: StealthSendProps) 
               : "Set up Stealth keys"
             : payee === "other"
               ? "Review Stealth send"
-              : "Continue to Stealth swap"}
+              : "Opens Swap to quote"}
       </button>
     </form>
   );
