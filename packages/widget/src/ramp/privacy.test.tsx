@@ -36,6 +36,9 @@ import { PeerSigningSetupRequired, type PeerOnrampRuntime } from "./peer/onramp.
 import { buyerHarness } from "../test/buyerPort.js";
 import { OfframpPortContext } from "./offramp/port.js";
 import { memoryOfframpPort, SYNTHETIC_DEPOSIT_ID } from "../test/offrampPort.js";
+import { listLocalOfframps } from "./offramp/localOfframps.js";
+import { ResumeOnramp } from "./recovery/ResumeOnramp.js";
+import { getRampSummary, listRampSummaries, markRampOperationLive } from "./recovery/summaries.js";
 import { RampDiscoveryContext } from "./availability/useRampDiscovery.js";
 import { recordedPort, RECORDED_AT } from "../test/rampPort.js";
 import vectors from "../lib/reverse-stealth-vectors.json";
@@ -435,5 +438,169 @@ describe("production fails closed on the host", () => {
     );
     expect(screen.queryByLabelText("USDC to cash out")).toBeNull();
     expect(port.calls).toEqual([]);
+  });
+});
+
+/** Ramp events the host received, parsed. */
+function rampEvents(frame: ScriptedFrame): Record<string, unknown>[] {
+  return frame.posted
+    .filter((m) => m.includes('"ramp:'))
+    .map((m) => (JSON.parse(m) as { event: Record<string, unknown> }).event);
+}
+
+describe("interruptions keep one lifecycle and leak nothing", () => {
+  it("resumes an in-doubt purchase after a reload under the same reference", async () => {
+    channels.frame = frameWidget();
+    channels.frame.pinCurrent();
+    const h = await buyerHarness(Date.now());
+    const store = browserStore();
+    h.setSignalError(new Error("receipt_unknown"));
+    h.chain.findable = false;
+    runtimes.push(h.runtime);
+    render(<BuyOnramp intent={h.intent} offer={h.offer} runtime={h.runtime} store={store} />);
+    fireEvent.click(screen.getByRole("button", { name: "Review exact Peer quote" }));
+    fireEvent.click(await screen.findByRole("checkbox"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Approve wallet: signal Peer purchase on Base" }),
+    );
+    await screen.findByText(/Do not start another transfer and do not pay again/, {}, WAIT);
+
+    // The reload: page and provider gone, storage and the host's frame remain.
+    cleanup();
+    const id = listRampSummaries()[0].operation_id;
+    markRampOperationLive(id, false);
+    const runtime = h.createRuntime(TEST_ACCOUNT);
+    runtimes.push(runtime);
+    render(
+      <ResumeOnramp
+        summary={getRampSummary(id)!}
+        connected={TEST_ACCOUNT}
+        runtime={runtime}
+        store={store}
+      />,
+    );
+    await screen.findByText(/Do not start another transfer and do not pay again/, {}, WAIT);
+    h.chain.findable = true;
+    fireEvent.click(screen.getByRole("button", { name: "Check existing purchase status" }));
+    await screen.findByRole("button", { name: "Open Peer extension to capture my payment" }, WAIT);
+
+    const events = rampEvents(channels.frame);
+    expect(events.filter((e) => e.name === "ramp:started")).toHaveLength(1);
+    expect(new Set(events.map((e) => e.rampRef)).size).toBe(1);
+    // The in-doubt fact reached the host once before the reload, and the
+    // resumed view's move out of doubt reached it too.
+    expect(events.some((e) => e.name === "ramp:recovery-required" && e.leg === "peer")).toBe(true);
+    expect(events.some((e) => e.name === "ramp:status" && e.peer === "action_required")).toBe(true);
+    expectClean([h.privateRecipient, h.privateMaterial, h.privateHash, "receipt_unknown"]);
+  });
+
+  async function cashOut(port: ReturnType<typeof memoryOfframpPort>, payee: string) {
+    await renderTrade(
+      <OfframpPortContext value={port}>
+        <Trade look={FULL_LOOK} embed={{ initialTab: "send", sendDestinations: ["payment_app"] }} />
+      </OfframpPortContext>,
+      { connected: true },
+    );
+    fireEvent.change(await screen.findByLabelText("USDC to cash out", {}, WAIT), {
+      target: { value: "25" },
+    });
+    await screen.findByRole("group", { name: "Available now" }, WAIT);
+    fireEvent.click(screen.getByLabelText(/Wise/));
+    fireEvent.click(screen.getByRole("button", { name: "Get estimate" }));
+    await screen.findByRole("region", { name: "Review cash-out" }, WAIT);
+    const form = within(screen.getByRole("form", { name: "Payout account" }));
+    fireEvent.change(form.getByLabelText(/Your own .* account/), { target: { value: payee } });
+    fireEvent.click(form.getByLabelText(/belongs to me/));
+    fireEvent.click(form.getByRole("button", { name: "Use this account" }));
+    fireEvent.click(screen.getByLabelText(/I understand the payout is an estimate/));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm cash-out" }));
+  }
+
+  it("reconciles a lost deposit hash after a reload, one lifecycle, nothing leaked", async () => {
+    channels.frame = frameWidget();
+    channels.frame.pinCurrent();
+    const payee = `own-handle-${crypto.randomUUID().slice(0, 8)}`;
+    const port = memoryOfframpPort({ account: TEST_ACCOUNT });
+    port.maker.hasAllowance = true;
+    await cashOut(port, payee);
+    port.walletAnswer = "lost";
+    fireEvent.click(await screen.findByRole("button", { name: "Approve in wallet" }, WAIT));
+    await screen.findByText(/did not confirm whether it sent/, {}, WAIT);
+    cleanup();
+
+    port.reload();
+    port.walletAnswer = "approve";
+    await renderTrade(
+      <OfframpPortContext value={port}>
+        <Trade look={FULL_LOOK} embed={{ initialTab: "send", sendDestinations: ["payment_app"] }} />
+      </OfframpPortContext>,
+      { connected: true },
+    );
+    await screen.findByText("Checking with Base", { selector: "strong" }, WAIT);
+    const form = within(screen.getByRole("form", { name: "Attach transaction" }));
+    fireEvent.change(form.getByLabelText(/^Transaction hash from your wallet/), {
+      target: { value: port.lastHash },
+    });
+    fireEvent.click(form.getByRole("button", { name: "Attach and check" }));
+    await screen.findByText("Awaiting a buyer", { selector: "strong" }, WAIT);
+
+    const events = rampEvents(channels.frame);
+    expect(events.filter((e) => e.name === "ramp:started")).toHaveLength(1);
+    expect(new Set(events.map((e) => e.rampRef)).size).toBe(1);
+    expectClean([payee, SYNTHETIC_DEPOSIT_ID, "synthetic_payee_hash", "connection lost"]);
+  });
+
+  it("ends a mixed fill-and-return cash-out with one terminal and only totals stored", async () => {
+    channels.frame = frameWidget();
+    channels.frame.pinCurrent();
+    const payee = `own-handle-${crypto.randomUUID().slice(0, 8)}`;
+    const port = memoryOfframpPort({ account: TEST_ACCOUNT });
+    await cashOut(port, payee);
+    for (const count of [1, 2]) {
+      fireEvent.click(await screen.findByRole("button", { name: "Approve in wallet" }, WAIT));
+      await waitFor(() => expect(port.signed).toHaveLength(count), WAIT);
+    }
+    await screen.findByText("Awaiting a buyer", { selector: "strong" }, WAIT);
+    const check = async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Check status" }));
+      await waitFor(
+        () => expect(screen.queryByRole("button", { name: "Checking..." })).toBeNull(),
+        WAIT,
+      );
+    };
+    Object.assign(port.maker.facts, {
+      remaining: "10000000",
+      unmatched: "10000000",
+      filled: "15000000",
+    });
+    await check();
+    const form = within(screen.getByRole("form", { name: "Withdraw unmatched USDC" }));
+    fireEvent.change(form.getByLabelText(/^USDC to withdraw/), { target: { value: "10" } });
+    fireEvent.click(form.getByRole("button", { name: "Prepare withdrawal" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Approve in wallet" }, WAIT));
+    await waitFor(() => expect(port.signed).toHaveLength(3), WAIT);
+    Object.assign(port.maker.facts, {
+      remaining: "0",
+      unmatched: "0",
+      withdrawn: "10000000",
+      closed: true,
+    });
+    await check();
+    await waitFor(() => expect(listLocalOfframps(TEST_ACCOUNT)[0].status).toBe("mixed"), WAIT);
+
+    const events = rampEvents(channels.frame);
+    expect(events.filter((e) => e.name === "ramp:started")).toHaveLength(1);
+    expect(events.filter((e) => e.name === "ramp:terminal")).toHaveLength(1);
+    // Totals are public amounts the user saw; nothing provider-side is stored.
+    expect(listLocalOfframps(TEST_ACCOUNT)[0].totals).toEqual({
+      filled: "15000000",
+      returned: "10000000",
+    });
+    expectClean([
+      payee,
+      SYNTHETIC_DEPOSIT_ID,
+      "synthetic_payee_hash",
+      ...port.signed.map((s) => s.data),
+    ]);
   });
 });
