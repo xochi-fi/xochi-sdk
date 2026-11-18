@@ -9,6 +9,8 @@ import {
   getContracts,
   parseDeferredPayoutFromLogs,
   type PreparedTransaction,
+  type IndexerIntent,
+  type OrchestratorV4Intent,
 } from "@zkp2p/sdk";
 import {
   erc20Abi,
@@ -84,6 +86,39 @@ const urls = {
   preproduction: "https://api-preprod.zkp2p.xyz",
   staging: "https://api-staging.zkp2p.xyz",
 };
+// Provider-private correlation only: no intent/deposit/payee identifier or
+// transaction handle is stored. Old purchases without this evidence fail closed.
+const resumeCheckpoint = z.object({
+  terms: hex32,
+  payee: hex32,
+  payAtomic: uint,
+  receiveAtomic: uint,
+  after: z.number().int().nonnegative().safe(),
+  before: z.number().int().nonnegative().safe(),
+});
+const submissionWindowMs = 120_000;
+const resumeKey = (id: string) => `xochi:peer-buyer-binding:v1:${id}`;
+function termsDigest(facts: {
+  owner: string;
+  to: string;
+  escrow: string;
+  depositId: bigint;
+  amount: bigint;
+  conversionRate: bigint;
+  paymentMethod: string;
+  fiatCurrency: string;
+}): string {
+  return digest([
+    facts.owner.toLowerCase(),
+    facts.to.toLowerCase(),
+    facts.escrow.toLowerCase(),
+    facts.depositId.toString(),
+    facts.amount.toString(),
+    facts.conversionRate.toString(),
+    facts.paymentMethod.toLowerCase(),
+    facts.fiatCurrency.toLowerCase(),
+  ]);
+}
 interface Binding {
   intent: Pick<RampIntent, "recipient" | "fiat">;
   depositId: bigint;
@@ -116,7 +151,18 @@ export function peerRecipientTransfer(
 
 /** SDK wallet writes are prepared separately, then submitted through the connected wallet. */
 export function createPeerBuyerDriver(
-  options: PeerDiscoveryOptions & { wallet: WalletClient; publicClient: PublicClient },
+  options: PeerDiscoveryOptions & {
+    wallet: WalletClient;
+    publicClient: PublicClient;
+    /** Protected correlation storage; never part of public summaries or events. */
+    resumeStorage?: Pick<Storage, "getItem" | "setItem">;
+    /** Trusted read ports for deterministic recovery tests. */
+    resumeReads?: {
+      ownerIntents(): Promise<IndexerIntent[]>;
+      intent(hash: Hex): Promise<OrchestratorV4Intent>;
+      payee(id: string, rail: string): Promise<string | undefined>;
+    };
+  },
 ): PeerBuyerDriver {
   const config = peerConfiguration(options);
   const environment = options.environment ?? PEER_ENVIRONMENT;
@@ -131,6 +177,9 @@ export function createPeerBuyerDriver(
     baseApiUrl: urls[environment],
   });
   const bindings = new Map<string, Binding>();
+  function storage() {
+    return options.resumeStorage ?? globalThis.localStorage;
+  }
   async function send(prepared: PreparedTransaction): Promise<Hex> {
     if (
       prepared.chainId !== 8453 ||
@@ -301,6 +350,30 @@ export function createPeerBuyerDriver(
           // Gating/prepare can take time: expiry is checked again before the wallet prompt.
           if (Date.parse(preview.expires_at) <= (options.now ?? Date.now)())
             throw new Error("quote_expired");
+          // Reserve the exact approved binding before requesting the wallet. A
+          // storage failure stops before submission; recovery never guesses.
+          const after = (options.now ?? Date.now)();
+          const terms = termsDigest({
+            owner: account.address,
+            to: intent.recipient,
+            escrow: config.escrow,
+            depositId: BigInt(q.intent.depositId),
+            amount: BigInt(q.signalIntentAmount),
+            conversionRate: BigInt(q.conversionRate),
+            paymentMethod: config.rails[offer.rail.id].paymentMethodHash,
+            fiatCurrency: resolveFiatCurrencyBytes32(intent.fiat.currency),
+          });
+          storage().setItem(
+            resumeKey(preview.operation_id),
+            JSON.stringify({
+              terms,
+              payee: digest([terms, q.intent.payeeDetails.toLowerCase()]),
+              payAtomic: preview.pay.atomic,
+              receiveAtomic: preview.receive.atomic,
+              after,
+              before: Math.min(after + submissionWindowMs, Date.parse(preview.expires_at)),
+            }),
+          );
           const receipt = await confirmed(await send(tx));
           const events = parseEventLogs({
             abi: buyerEvents,
@@ -349,10 +422,30 @@ export function createPeerBuyerDriver(
       // Read-only: indexer and chain reads by the public owner address. The intent
       // hash is re-derived here and never persisted by the widget.
       if (!same(lookup.wallet, account.address)) return undefined;
+      if (!lookup.operationId) return undefined;
+      let checkpoint: z.infer<typeof resumeCheckpoint>;
+      try {
+        checkpoint = resumeCheckpoint.parse(
+          JSON.parse(storage().getItem(resumeKey(lookup.operationId)) ?? "null"),
+        );
+      } catch {
+        return undefined;
+      }
+      if (
+        checkpoint.payAtomic !== lookup.payAtomic ||
+        checkpoint.receiveAtomic !== lookup.receiveAtomic ||
+        !Number.isSafeInteger(lookup.approvedAfter) ||
+        checkpoint.after < lookup.approvedAfter ||
+        checkpoint.before < checkpoint.after ||
+        checkpoint.before - checkpoint.after > submissionWindowMs
+      )
+        return undefined;
       const rail = config.rails[lookup.rail];
       if (!rail) return undefined;
       const currency = resolveFiatCurrencyBytes32(lookup.currency);
-      const rows = (await sdk.indexer.getOwnerIntents(account.address)).filter(
+      const rows = (
+        await (options.resumeReads?.ownerIntents() ?? sdk.indexer.getOwnerIntents(account.address))
+      ).filter(
         (row) =>
           same(row.owner, account.address) &&
           same(row.toAddress, lookup.wallet) &&
@@ -360,13 +453,49 @@ export function createPeerBuyerDriver(
           !!row.paymentMethodHash &&
           same(row.paymentMethodHash, rail.paymentMethodHash) &&
           same(row.fiatCurrency, currency) &&
-          /^[0-9]{1,20}$/.test(row.signalTimestamp) &&
-          Number(row.signalTimestamp) * 1000 >= lookup.approvedAfter - 120_000,
+          uint.safeParse(row.signalTimestamp).success &&
+          Number(row.signalTimestamp) >= Math.floor(checkpoint.after / 1000) &&
+          Number(row.signalTimestamp) <= Math.floor(checkpoint.before / 1000) &&
+          uint.safeParse(row.amount).success &&
+          uint.safeParse(row.conversionRate).success &&
+          uint.safeParse(row.depositId).success &&
+          termsDigest({
+            owner: row.owner,
+            to: row.toAddress,
+            escrow: config.escrow,
+            depositId: BigInt(row.depositId),
+            amount: BigInt(row.amount),
+            conversionRate: BigInt(row.conversionRate),
+            paymentMethod: row.paymentMethodHash,
+            fiatCurrency: row.fiatCurrency,
+          }) === checkpoint.terms,
       );
       // Ambiguity is never resolved by guessing: two candidates stay in doubt.
       if (rows.length !== 1) return undefined;
       const row = rows[0];
       const hash = row.intentHash as Hex;
+      if (!hex32.safeParse(hash).success || !hex32.safeParse(row.signalTxHash).success)
+        return undefined;
+      // Terminal indexer statuses are subject to the same receipt identity and
+      // original economic binding as active intents.
+      const receipt = await confirmed(row.signalTxHash as Hex);
+      if (
+        !same(receipt.from, account.address) ||
+        !receipt.to ||
+        !same(receipt.to, config.orchestrator)
+      )
+        return undefined;
+      const event = parseEventLogs({
+        abi: buyerEvents,
+        eventName: "IntentSignaled",
+        logs: receipt.logs,
+      }).find((log) => same(log.address, config.orchestrator) && same(log.args.intentHash, hash));
+      if (
+        !event ||
+        termsDigest(event.args) !== checkpoint.terms ||
+        event.args.timestamp.toString() !== row.signalTimestamp
+      )
+        return undefined;
       if (row.status === "PRUNED") return { kind: "expired" };
       if (row.status === "FULFILLED") {
         if (!row.fulfillTxHash || !/^0x[0-9a-fA-F]{64}$/.test(row.fulfillTxHash)) return undefined;
@@ -381,26 +510,28 @@ export function createPeerBuyerDriver(
           conversionRate: BigInt(row.conversionRate),
           paymentMethod: rail.paymentMethodHash,
           payeeDetails: "",
-          signalBlock: 0n,
+          signalBlock: receipt.blockNumber,
           fulfillHash: row.fulfillTxHash as Hex,
         });
         return { kind: "fulfilled", intentHash: hash };
       }
       if (row.status !== "SIGNALED") return undefined;
-      const live = (await sdk.getIntent(hash)).intent;
+      const live = options.resumeReads
+        ? await options.resumeReads.intent(hash)
+        : (await sdk.getIntent(hash)).intent;
       if (
-        !same(live.owner, account.address) ||
-        !same(live.to, lookup.wallet) ||
-        !same(live.escrow, config.escrow) ||
-        !same(live.paymentMethod, rail.paymentMethodHash) ||
-        !same(live.fiatCurrency, currency) ||
-        !live.payeeId
+        !live.payeeId ||
+        !hex32.safeParse(live.payeeId).success ||
+        termsDigest(live) !== checkpoint.terms ||
+        digest([checkpoint.terms, live.payeeId.toLowerCase()]) !== checkpoint.payee ||
+        live.timestamp !== event.args.timestamp
       )
         return undefined;
       const period = await options.publicClient.readContract({
         address: config.escrow as Address,
         abi: escrowAbi!,
         functionName: "intentExpirationPeriod",
+        blockNumber: receipt.blockNumber,
       });
       bindings.set(hash, {
         intent: {
@@ -413,16 +544,20 @@ export function createPeerBuyerDriver(
         conversionRate: live.conversionRate,
         paymentMethod: live.paymentMethod,
         payeeDetails: live.payeeId,
-        signalBlock: 0n,
+        signalBlock: receipt.blockNumber,
       });
       // The payee handle is re-read for this session's instructions and capture
       // matching only; it stays in provider memory.
-      const payee = await apiGetPayeeDetails(
-        { hashedOnchainId: live.payeeId, processorName: lookup.rail },
-        urls[environment],
-        10_000,
-      ).catch(() => undefined);
-      const offchainId = payee?.responseObject?.offchainId;
+      const payee = options.resumeReads
+        ? undefined
+        : await apiGetPayeeDetails(
+            { hashedOnchainId: live.payeeId, processorName: lookup.rail },
+            urls[environment],
+            10_000,
+          ).catch(() => undefined);
+      const offchainId = options.resumeReads
+        ? await options.resumeReads.payee(live.payeeId, lookup.rail)
+        : payee?.responseObject?.offchainId;
       const result: PeerResumeResult = {
         kind: "active",
         intentHash: hash,

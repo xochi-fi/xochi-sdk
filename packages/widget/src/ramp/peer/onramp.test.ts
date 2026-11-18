@@ -103,6 +103,45 @@ describe("Peer buyer provider", () => {
     await h.runtime.provider.approve(h.preview, context());
     expect(h.counts().signals).toBe(1);
   });
+  it("keeps a recovered intent without payment instructions in doubt after a status check", async () => {
+    const h = await buyerHarness();
+    const runtime = createPeerOnrampProvider({
+      extension: h.extension,
+      now: () => h.clock.now,
+      driver: {
+        async quote() {
+          throw new Error("unexpected quote");
+        },
+        async fulfill() {
+          throw new Error("unexpected fulfillment");
+        },
+        async status() {
+          return "pending";
+        },
+        async resume() {
+          return {
+            kind: "active",
+            intentHash: "synthetic-intent",
+            signaledAt: h.clock.now,
+            expiresAt: h.clock.now + 60_000,
+          };
+        },
+      },
+    });
+    runtimes.push(runtime);
+    const id = h.preview.operation_id;
+    await runtime.resume(id, {
+      wallet: h.intent.recipient,
+      rail: h.offer.rail.id,
+      pay: h.preview.pay,
+      receive: h.preview.receive,
+      quoteExpiresAt: h.preview.expires_at,
+      approvedAfter: h.clock.now,
+    });
+    expect((await runtime.provider.status(id)).peer.state).toBe("in_doubt");
+    expect(runtime.phase(id)).toBe("processing");
+    expect(runtime.paymentRecipient(id)).toBe("");
+  });
   it("runs S4 with persisted sanitized records and frame-minted lifecycle events", async () => {
     // S4 uses the real clock for quote validation; keep the fixture comfortably fresh.
     const h = await buyerHarness(Date.now());
