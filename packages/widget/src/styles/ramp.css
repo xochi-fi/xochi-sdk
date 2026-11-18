@@ -13,7 +13,7 @@
   padding: 0.75rem;
   background: var(--inset-bg);
   border: 1px solid var(--line-subtle);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
 }
 
 .ramp-facts__title {
@@ -65,7 +65,7 @@
   padding: 0.7rem 0.8rem;
   background: var(--panel-bg);
   border: 1px solid var(--line-subtle);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
 }
 
 .ramp-rail--selectable {
@@ -167,7 +167,7 @@
   padding: 0.75rem;
   background: var(--inset-bg);
   border: 1px solid var(--line-subtle);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
 }
 
 .onramp-steps__title {
@@ -192,7 +192,7 @@
   margin-block: 0.5rem;
   padding: 0.65rem 0.8rem;
   border: 1px solid var(--line-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--panel-bg);
   color: var(--text-primary);
   font: inherit;
@@ -248,10 +248,10 @@
   padding: 1rem;
   border: 1px solid var(--line-subtle);
   background: var(--inset-bg);
-  font-family: var(--font-body);
+  font-family: var(--font-mono);
   font-size: 0.9rem;
   line-height: 1.5;
-  border-radius: 12px;
+  border-radius: var(--radius-card);
 }
 .ramp-route__address,
 .ramp-route dd {
@@ -280,7 +280,7 @@
   margin-block: 0.5rem;
   padding: 0.65rem 0.8rem;
   border: 1px solid var(--line-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--panel-bg);
   color: var(--text-primary);
   font: inherit;
@@ -319,7 +319,7 @@
   background: var(--panel-bg);
   color: var(--text-primary);
   border: 1px solid var(--line-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   font: inherit;
 }
 
@@ -333,22 +333,24 @@
 
 .ramp-tile-group legend {
   margin-bottom: 8px;
-  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
 }
 
 .ramp-tile-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(9.5rem, 1fr);
   gap: 8px;
 }
 
-@container (max-width: 255px) {
+@container (width < 300px) {
   .ramp-tile-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 
-@container (min-width: 365px) {
+@container (min-width: 478px) {
   .ramp-tile-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -357,14 +359,15 @@
 .ramp-tile {
   position: relative;
   display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 56px;
-  padding: 5px 6px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  padding: 6px;
   color: inherit;
   background: var(--panel-bg-subtle);
   border: 2px solid var(--panel-border);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   font: inherit;
   text-align: left;
 }
@@ -384,16 +387,27 @@ button.ramp-tile {
   gap: 2px;
   font-size: 0.8rem;
   overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
+.ramp-tile__name {
+  min-block-size: 2lh;
+}
+
+/* The row reserves the same artwork and clearance space on every tile, including text-only rails. */
+.ramp-tile__logo-row {
+  display: flex;
+  align-items: center;
+  block-size: 78px;
+  flex: none;
 }
 
 .ramp-tile__logo {
-  flex: none;
   box-sizing: content-box;
-  width: 24px;
-  height: 24px;
 }
 
 .ramp-tile__logo img {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: contain;
@@ -431,18 +445,38 @@ button.ramp-tile {
   bottom: 0;
   z-index: 1;
   background: var(--obsidian);
-  padding-block: 4px;
+  padding-block: var(--ramp-action-inset);
 }
 
-.ramp-tile:has(.ramp-tile__logo--wordmark) {
-  flex-direction: column;
-  justify-content: center;
-  gap: 0;
-  text-align: center;
+/* Leave one action bar of scroll room so the last row can clear the sticky CTA. */
+:root {
+  --ramp-action-inset: 4px;
+  --ramp-action-target: 44px;
+  --ramp-action-space: calc(var(--ramp-action-target) + 2 * var(--ramp-action-inset));
 }
 
-.ramp-tile__logo img {
-  display: block;
+.ramp-bottom-action .send-cta {
+  margin: 0;
+  min-block-size: var(--ramp-action-target);
+  padding-block: 0;
+  line-height: 1.4;
+}
+
+.launch-screen:has(
+  .widget-panel:not([hidden]) > .widget-panel:not([hidden]) .ramp-bottom-action .send-cta
+) {
+  padding-block-end: var(--ramp-action-space);
+  scroll-padding-block-end: var(--ramp-action-space);
+}
+
+html:has(
+  .launch-screen:not(.launch-screen--fixed)
+    .widget-panel:not([hidden])
+    > .widget-panel:not([hidden])
+    .ramp-bottom-action
+    .send-cta
+) {
+  scroll-padding-block-end: var(--ramp-action-space);
 }
 
 .ramp-unavailable summary {

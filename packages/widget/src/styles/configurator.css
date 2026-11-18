@@ -676,7 +676,7 @@ select.config-input option {
 
 .config-theme__look--light {
   --thumb-obsidian: #f5f3ef;
-  --thumb-panel-bg: rgba(255, 255, 255, 0.85);
+  --thumb-panel-bg: rgba(248, 244, 234, 0.85);
   --thumb-panel-border: rgba(26, 26, 28, 0.1);
   --thumb-text-emphasis: rgba(26, 26, 28, 0.8);
   --thumb-muted-gold: #7a6e5a;

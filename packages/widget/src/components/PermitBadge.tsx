@@ -53,7 +53,7 @@ const PERMIT_INFO: Record<PermitType, PermitInfo> = {
   },
   none: {
     label: "Approval",
-    shortDesc: "On-chain approval",
+    shortDesc: "Onchain approval",
     benefit: "Requires approval transaction (gas fee). Fallback for older tokens.",
     gasless: false,
   },

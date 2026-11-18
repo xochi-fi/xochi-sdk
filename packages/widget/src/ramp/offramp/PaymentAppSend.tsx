@@ -745,6 +745,10 @@ function ReviewStep({
         )
       )}
 
+      <p id={consentId} className="send-note">
+        The rate can change and payments can arrive later or in parts. The buyer sees your payment
+        details and the deposit is public on Base.
+      </p>
       <label className="send-check">
         <input
           type="checkbox"
@@ -754,10 +758,6 @@ function ReviewStep({
         />
         <span>I accept the cash-out terms.</span>
       </label>
-      <p id={consentId} className="send-note">
-        The rate can change and payments can arrive later or in parts. The buyer sees your payment
-        details and the deposit is public on Base.
-      </p>
       <p className="send-note">Each wallet step needs your approval before funds move.</p>
 
       <div className="send-review__actions">

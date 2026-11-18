@@ -152,7 +152,7 @@ export function PrivacyPanel({
 
         {stealthInitialized && !stealthRegistered && (
           <p className="pp-status-hint">
-            Keys are set up on this device. Register once on-chain to receive private payments.
+            Keys are set up on this device. Register once onchain to receive private payments.
           </p>
         )}
 

@@ -5,13 +5,15 @@ import { formatRampTime, RAIL_NAMES, type RailCard } from "./model.js";
 function RailLogo({ id }: { id: string }) {
   const logo = railLogo(id);
   if (!logo) return null;
+  // Monzo's artwork occupies 340 of the 808 canvas pixels vertically.
   const wordmarkWidth =
-    id === "monzo" ? Math.ceil((20 * logo.width) / logo.height) : id === "revolut" ? 80 : 24;
-  const height = id === "wise" ? 24 : (wordmarkWidth * logo.height) / logo.width;
+    id === "monzo" ? Math.ceil((20 * logo.width) / 340) : id === "revolut" ? 80 : 64;
+  const height = (wordmarkWidth * logo.height) / logo.width;
+  const padding = id === "revolut" ? height * logo.clearSpaceRatio : 0;
   return (
     <span
-      className={`ramp-tile__logo ${wordmarkWidth > 24 ? "ramp-tile__logo--wordmark" : ""}`}
-      style={{ width: wordmarkWidth, height, padding: height * logo.clearSpaceRatio }}
+      className="ramp-tile__logo"
+      style={{ width: wordmarkWidth, height, paddingInline: padding }}
       aria-hidden="true"
     >
       <img src={logo.light} width={logo.width} height={logo.height} alt="" />
@@ -41,7 +43,9 @@ export function RailTileContent({
 }) {
   return (
     <>
-      <RailLogo id={id} />
+      <span className="ramp-tile__logo-row" aria-hidden="true">
+        <RailLogo id={id} />
+      </span>
       <span className="ramp-tile__text">
         <strong className="ramp-tile__name">{name}</strong>
         <small>{status}</small>

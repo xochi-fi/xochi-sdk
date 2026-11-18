@@ -174,32 +174,34 @@ function WalletAddressSend({
           <label className="send-field__label" htmlFor={fieldIds.recipient}>
             Recipient address
           </label>
-          <input
-            id={fieldIds.recipient}
-            className="send-field__control send-field__control--mono"
-            autoComplete="off"
-            autoCapitalize="off"
-            spellCheck={false}
-            placeholder="0x..."
-            value={recipient}
-            aria-invalid={errors.recipient ? true : undefined}
-            aria-describedby={`${fieldIds.recipient}-hint`}
-            onChange={(e) => onRecipient(e.target.value)}
-            onPaste={(e) => {
-              e.preventDefault();
-              onPasteValue(e.clipboardData.getData("text"));
-            }}
-          />
-          <button type="button" className="send-secondary" onClick={onPaste}>
-            Paste
-          </button>
+          <div className="send-field__with-action">
+            <input
+              id={fieldIds.recipient}
+              className="send-field__control send-field__control--mono"
+              autoComplete="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              placeholder="0x..."
+              value={recipient}
+              aria-invalid={errors.recipient ? true : undefined}
+              aria-describedby={`${fieldIds.recipient}-hint`}
+              onChange={(e) => onRecipient(e.target.value)}
+              onPaste={(e) => {
+                e.preventDefault();
+                onPasteValue(e.clipboardData.getData("text"));
+              }}
+            />
+            <button type="button" className="send-secondary" onClick={onPaste}>
+              Paste
+            </button>
+          </div>
           <span id={`${fieldIds.recipient}-hint`} className="send-field__hint">
             {errors.recipient ?? `A wallet address on ${chainName(draft.chainId)}.`}
           </span>
         </div>
 
         <p className="send-note">
-          A public transfer: the amount and both addresses are visible on-chain, and it cannot be
+          A public transfer: the amount and both addresses are visible onchain, and it cannot be
           reversed.
         </p>
 
@@ -278,7 +280,7 @@ function WalletAddressSend({
           {phase.outcome === "confirmed"
             ? "Sent"
             : phase.outcome === "reverted"
-              ? "The transfer failed on-chain"
+              ? "The transfer failed onchain"
               : "Submitted, waiting for confirmation"}
         </h3>
         {summary}

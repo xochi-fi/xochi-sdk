@@ -184,7 +184,7 @@ export function QuoteDetails({
     ? "Settles to a one-time stealth address only the connected wallet controls."
     : privateBlocked
       ? `${stealthOption?.reason ?? "Private settlement unavailable"}. This order settles to the connected wallet.`
-      : "Goes to the connected wallet, visible on-chain.";
+      : "Goes to the connected wallet, visible onchain.";
 
   // Every cost figure on this panel (fee anatomy, its denomination, the served
   // fees and their dollar companion) comes from one pure derivation, which the

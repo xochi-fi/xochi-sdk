@@ -198,7 +198,12 @@
   --radius-md: 8px; /* inputs, badges */
   --radius-lg: 12px; /* panels, cards */
   --radius-xl: 16px; /* modals */
-  --radius-full: 9999px; /* circles */
+  --radius-full: 9999px;
+
+  /* Widget surfaces use 8px controls, 12px cards, and fully rounded pills.
+     Use the micro radius for indicators and other small details. */
+  --radius-control: var(--radius-md);
+  --radius-card: var(--radius-lg);
 
   /* ========================================
      Transitions

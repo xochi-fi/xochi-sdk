@@ -134,15 +134,12 @@
    ============================================================ */
 
 :root {
-  /* Primary font families - all Monaspace */
   --font-mono: "Monaspace Argon", "SF Mono", "Fira Code", "Consolas", monospace;
-  --font-sans: "Monaspace Xenon", "Monaspace Argon", system-ui, sans-serif;
-  --font-serif: "Monaspace Neon", "Monaspace Argon", Georgia, serif;
-
-  /* Semantic font assignments */
-  --font-body: var(--font-serif);
-  --font-heading: var(--font-sans);
-  --font-ui: var(--font-sans);
+  --font-sans: var(--font-mono);
+  --font-serif: var(--font-mono);
+  --font-body: var(--font-mono);
+  --font-heading: var(--font-mono);
+  --font-ui: var(--font-mono);
   --font-code: var(--font-mono);
   --font-numeric: var(--font-mono);
 
@@ -266,4 +263,15 @@ h6 {
 [data-numeric] {
   font-variant-numeric: tabular-nums;
   font-family: var(--font-mono);
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+.launch-screen :is(h1, h2, h3, h4) {
+  text-wrap: balance;
 }

@@ -101,7 +101,7 @@ export const PAYMENT_METHODS: Record<PaymentMethod, PaymentMethodInfo> = {
   approval: {
     method: "approval",
     label: "Approval",
-    description: "On-chain approval (gas required)",
+    description: "Onchain approval (gas required)",
     gasless: false,
   },
   deposit: {
