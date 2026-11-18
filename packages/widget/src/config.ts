@@ -18,6 +18,11 @@ export interface WidgetSettings {
    * cap beyond Peer's own live limits.
    */
   offrampCanaryCapAtomic?: string;
+  /**
+   * The Buy equivalent: the most Base USDC (canonical atomic units) one Peer
+   * purchase may receive. Unset means no cap beyond Peer's own live limits.
+   */
+  onrampCanaryCapAtomic?: string;
   authApiUrl?: string;
   development?: boolean;
   appVersion?: string;
@@ -52,6 +57,7 @@ export interface WidgetSettings {
 export let PEER_ENVIRONMENT: NonNullable<WidgetSettings["peerEnvironment"]> = "production";
 export let PEER_REFERRAL_CODE: string | undefined;
 export let OFFRAMP_CANARY_CAP_ATOMIC: string | undefined;
+export let ONRAMP_CANARY_CAP_ATOMIC: string | undefined;
 export let API_URL = "https://api.xochi.fi";
 export let AUTH_API_URL = API_URL;
 export let isDevelopment = false;
@@ -93,9 +99,15 @@ export function configureWidget(settings: WidgetSettings): void {
     !/^[1-9][0-9]{0,30}$/.test(settings.offrampCanaryCapAtomic)
   )
     throw new Error("Invalid cash-out canary cap");
+  if (
+    settings.onrampCanaryCapAtomic !== undefined &&
+    !/^[1-9][0-9]{0,30}$/.test(settings.onrampCanaryCapAtomic)
+  )
+    throw new Error("Invalid purchase canary cap");
   PEER_ENVIRONMENT = settings.peerEnvironment ?? "production";
   PEER_REFERRAL_CODE = settings.peerReferralCode;
   OFFRAMP_CANARY_CAP_ATOMIC = settings.offrampCanaryCapAtomic;
+  ONRAMP_CANARY_CAP_ATOMIC = settings.onrampCanaryCapAtomic;
   API_URL = settings.apiUrl;
   AUTH_API_URL = settings.authApiUrl || API_URL;
   isDevelopment = settings.development ?? false;

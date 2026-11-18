@@ -221,6 +221,28 @@ describe("Buy rails", () => {
     await act(async () => {});
     expect(port.calls).toEqual([]);
   });
+
+  it("refuses a purchase over the canary cap before any Peer read", async () => {
+    const clock: Clock = { t: RECORDED_AT };
+    const port = { ...recordedPort({ account: ACCOUNT, clock }), onrampCanaryCap: () => "5000000" };
+    renderRails(port, <RampRails direction="onramp" account={ACCOUNT} active />);
+    typeAmount("25");
+    await act(async () => {});
+    expect(screen.getByRole("status").textContent).toMatch(/limits each purchase to 5(\.0+)? USDC/);
+    expect(radios()).toHaveLength(0);
+    expect(port.calls).toEqual([]);
+    typeAmount("5");
+    await waitFor(() => expect(port.calls).toEqual(["5000000"]));
+  });
+
+  it("applies no cap when the setting is unset", async () => {
+    const clock: Clock = { t: RECORDED_AT };
+    const port = { ...recordedPort({ account: ACCOUNT, clock }), onrampCanaryCap: () => undefined };
+    renderRails(port, <RampRails direction="onramp" account={ACCOUNT} active />);
+    typeAmount("25");
+    await screen.findByRole("group", { name: "Available now" });
+    expect(port.calls).toEqual(["25000000"]);
+  });
 });
 
 describe("Send to a payment app rails", () => {

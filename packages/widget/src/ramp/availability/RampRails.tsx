@@ -20,6 +20,7 @@ import {
   type RailCard,
 } from "./model.js";
 import { useRampDiscovery } from "./useRampDiscovery.js";
+import { formatUsdc } from "../offramp/model.js";
 
 const COPY: Record<
   RampDirection,
@@ -29,13 +30,13 @@ const COPY: Record<
     title: "Buy USDC on Base with a payment app",
     amountLabel: "USDC to receive",
     currencyLabel: "Pay in",
-    selected: "Buying is not live in this build yet; nothing will be charged.",
+    selected: "This view cannot start a purchase; nothing will be charged.",
   },
   offramp: {
     title: "Cash out to your own payment app",
     amountLabel: "USDC to cash out",
     currencyLabel: "Receive in",
-    selected: "Cashing out is not live in this build yet; nothing will be sent.",
+    selected: "This view cannot start a cash-out; nothing will be sent.",
   },
 };
 
@@ -69,7 +70,7 @@ export function RampRails({
   const [selected, setSelected] = useState<string | undefined>();
   const amount = parseRampAmount(amountText);
   const amountInvalid = amountText.trim() !== "" && amount === undefined;
-  const { state, now, settlement, refresh } = useRampDiscovery({
+  const { state, now, settlement, refresh, cap } = useRampDiscovery({
     direction,
     amount,
     currency,
@@ -92,6 +93,8 @@ export function RampRails({
     status = "Peer's Base USDC configuration did not validate, so no rail can be used.";
   else if (!account) status = "Connect a wallet to check live Peer rails for it.";
   else if (amount === undefined) status = "Enter an amount to check live Peer rails.";
+  else if (cap !== undefined)
+    status = `This deployment limits each purchase to ${formatUsdc(cap)} for now. Enter ${formatUsdc(cap)} or less.`;
   else if (state.status !== "done") status = "Checking live Peer rails...";
   else
     status =

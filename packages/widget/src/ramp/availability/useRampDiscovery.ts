@@ -14,7 +14,7 @@ import type { RampDirection, RampIntent, RampSettlement } from "@xochi/client";
 import { fetchPeerCapabilities, peerConfiguration } from "../peer/index.js";
 import type { PeerDiscoveryResult } from "../peer/index.js";
 import { buildRampIntent, nextExpiry } from "./model.js";
-import { TIMEOUTS } from "../../config.js";
+import { ONRAMP_CANARY_CAP_ATOMIC, TIMEOUTS } from "../../config.js";
 
 export interface RampDiscoveryPort {
   discover(intent: RampIntent, user: string, signal?: AbortSignal): Promise<PeerDiscoveryResult>;
@@ -22,6 +22,11 @@ export interface RampDiscoveryPort {
   settlement(): RampSettlement | undefined;
   now(): number;
   debounceMs: number;
+  /**
+   * Deployment canary cap for a purchase (Base USDC atomic), or undefined for
+   * none. Absent on a port means no cap.
+   */
+  onrampCanaryCap?(): string | undefined;
 }
 
 function liveSettlement(): RampSettlement | undefined {
@@ -37,6 +42,7 @@ export const LIVE_RAMP_DISCOVERY: RampDiscoveryPort = {
   settlement: liveSettlement,
   now: () => Date.now(),
   debounceMs: TIMEOUTS.quoteDebounce,
+  onrampCanaryCap: () => ONRAMP_CANARY_CAP_ATOMIC,
 };
 
 export const RampDiscoveryContext = createContext<RampDiscoveryPort>(LIVE_RAMP_DISCOVERY);
@@ -57,6 +63,11 @@ export interface RampDiscoveryInput {
   enabled: boolean;
 }
 
+/** Whether an onramp amount exceeds the deployment cap. Unset cap: never. */
+export function overOnrampCap(amount: string | undefined, cap: string | undefined): boolean {
+  return amount !== undefined && cap !== undefined && BigInt(amount) > BigInt(cap);
+}
+
 export function useRampDiscovery({
   direction,
   amount,
@@ -66,12 +77,20 @@ export function useRampDiscovery({
 }: RampDiscoveryInput) {
   const port = useContext(RampDiscoveryContext);
   const settlement = useMemo(() => port.settlement(), [port]);
+  const cap = direction === "onramp" ? port.onrampCanaryCap?.() : undefined;
+  const capped = overOnrampCap(amount, cap);
   const [state, setState] = useState<RampDiscoveryState>({ status: "idle" });
   const [nonce, setNonce] = useState(0);
   const [now, setNow] = useState(() => port.now());
 
   useEffect(() => {
-    if (!enabled || amount === undefined || account === undefined || settlement === undefined) {
+    if (
+      !enabled ||
+      capped ||
+      amount === undefined ||
+      account === undefined ||
+      settlement === undefined
+    ) {
       setState({ status: "idle" });
       return;
     }
@@ -101,7 +120,7 @@ export function useRampDiscovery({
       controller.abort();
       clearTimeout(timer);
     };
-  }, [port, settlement, direction, amount, currency, account, enabled, nonce]);
+  }, [port, settlement, direction, amount, currency, account, enabled, capped, nonce]);
 
   const offers = state.status === "done" ? state.result.offers : undefined;
   useEffect(() => {
@@ -113,5 +132,5 @@ export function useRampDiscovery({
   }, [port, offers, now]);
 
   const refresh = useCallback(() => setNonce((n) => n + 1), []);
-  return { state, now, settlement, refresh };
+  return { state, now, settlement, refresh, cap: capped ? cap : undefined };
 }
