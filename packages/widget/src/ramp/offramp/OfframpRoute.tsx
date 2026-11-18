@@ -1,7 +1,7 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAccount, useConfig } from "wagmi";
 import { atomic, isChainId, type RampMoney } from "@xochi/client";
-import { parseUnits } from "viem";
+import { formatUnits, parseUnits } from "viem";
 import { useCapabilities } from "../../hooks/useCapabilities.js";
 import { useIntent } from "../../hooks/useIntent.js";
 import { findTokenBySymbol } from "../../pages/trade/config.js";
@@ -10,30 +10,46 @@ import { useEmbedDefaults } from "../../pages/trade/useEmbedDefaults.js";
 import { chainName } from "../../pages/send/addressSend.js";
 import { useXochiRampDriver } from "../route/useXochiRampDriver.js";
 import { OfframpRouteReview } from "./OfframpRouteReview.js";
-import { createOfframpPrerequisite, type OfframpPrerequisite } from "./prerequisite.js";
+import {
+  createOfframpPrerequisite,
+  inspectOfframpPrerequisite,
+  type OfframpPrerequisite,
+} from "./prerequisite.js";
 import type { OfframpPort } from "./port.js";
 
 export function OfframpRoute({
   port,
   onReady,
   onLock,
+  onReceipt,
 }: {
   port: OfframpPort;
   onLock(): void;
+  onReceipt?(route: OfframpPrerequisite): void;
   onReady(route: OfframpPrerequisite, amount: string): void;
 }) {
   const { address } = useAccount();
   const config = useConfig();
   const { capabilities, state } = useCapabilities();
   const embed = useEmbedDefaults();
-  const [key, setKey] = useState("");
-  const [text, setText] = useState("");
+  const [checkpoint] = useState(() => (address ? inspectOfframpPrerequisite(address) : undefined));
+  const restoredAsset = checkpoint?.source.asset;
+  const [key, setKey] = useState(
+    restoredAsset?.kind === "crypto"
+      ? `${restoredAsset.chain_id.slice(7)}:${restoredAsset.asset_id}`
+      : "",
+  );
+  const [text, setText] = useState(() =>
+    checkpoint
+      ? formatUnits(BigInt(checkpoint.source.atomic), checkpoint.source.asset.decimals)
+      : "",
+  );
   const [route, setRoute] = useState<OfframpPrerequisite>();
   const [, render] = useState(0);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   const lock = useRef(false);
-  const [id] = useState(() => crypto.randomUUID());
+  const [id] = useState(() => checkpoint?.snapshot.operation_id ?? crypto.randomUUID());
   const sources = useMemo(
     () =>
       state !== "live"
@@ -73,7 +89,7 @@ export function OfframpRoute({
     /* Invalid input stays non-executable. */
   }
   const base = findTokenBySymbol(8453, "USDC")!;
-  const pay: RampMoney = {
+  const pay: RampMoney = checkpoint?.source ?? {
     asset: {
       kind: "crypto",
       chain_id: `eip155:${source?.chainId ?? 8453}`,
@@ -91,9 +107,11 @@ export function OfframpRoute({
     decimals: 6,
   };
   const authorized =
+    checkpoint !== null &&
     !!address &&
     !!source &&
     !!amount &&
+    (!checkpoint || source.key === key) &&
     state === "live" &&
     policyHolds(
       embed.settled ?? embed.seed,
@@ -127,8 +145,12 @@ export function OfframpRoute({
     operationId: id,
     wallet: address ?? "",
     payee: "own",
-    routeState: route?.snapshot().xochi?.state,
+    requireDurableCorrelation: true,
+    routeState: (route?.snapshot() ?? checkpoint?.snapshot)?.xochi?.state,
   });
+  useEffect(() => {
+    if (checkpoint) void act("check");
+  }, [checkpoint, intent.receipt.phase, intent.status]);
   async function act(action: "quote" | "execute" | "check" | "balance") {
     if (lock.current || !address) return;
     lock.current = true;
@@ -152,6 +174,7 @@ export function OfframpRoute({
       if (action !== "balance") await current.act(action);
       const quote = current.preview();
       if (current.snapshot().xochi?.state === "completed" && quote) {
+        onReceipt?.(current);
         if (await current.funded(quote.receive.atomic)) onReady(current, quote.receive.atomic);
         else
           setNote(
@@ -168,9 +191,9 @@ export function OfframpRoute({
       setBusy(false);
     }
   }
-  const snapshot = route?.snapshot();
+  const snapshot = route?.snapshot() ?? checkpoint?.snapshot;
   const status = snapshot?.xochi?.state ?? "not_started";
-  const preview = route?.preview();
+  const preview = route?.preview() ?? checkpoint?.preview;
   return (
     <OfframpRouteReview
       status={status}
@@ -179,9 +202,9 @@ export function OfframpRoute({
       busy={busy}
       authorized={authorized}
       onAction={(action) => void act(action)}
-      note={note}
+      note={checkpoint === null ? "Route recovery storage is unavailable." : note}
     >
-      <fieldset disabled={!!route || busy} className="send-form">
+      <fieldset disabled={!!checkpoint || !!route || busy} className="send-form">
         <label className="send-field">
           Source asset
           <select

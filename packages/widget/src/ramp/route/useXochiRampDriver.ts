@@ -73,6 +73,7 @@ export function useXochiRampDriver(options: {
   wallet: string;
   payee: "own" | "other";
   routeState?: RampLegSnapshot["state"];
+  requireDurableCorrelation?: boolean;
 }): XochiRampDriver {
   const latest = useRef(options);
   latest.current = options;
@@ -150,6 +151,15 @@ export function useXochiRampDriver(options: {
           },
         };
         upsertLocalSwap(o.wallet, captured.current);
+        // Activity is the public Xochi correlation checkpoint. Its writer may
+        // suppress storage errors, so verify durability before requesting a signature.
+        if (
+          o.requireDurableCorrelation &&
+          findOnrampRoute(o.wallet, o.operationId, o.pay)?.id !== captured.current.id
+        ) {
+          captured.current = undefined;
+          throw new Error("xochi_in_doubt");
+        }
         const result = new Promise<RampLegSnapshot>((resolve, reject) => {
           executeWait.current = { resolve, reject };
         });
