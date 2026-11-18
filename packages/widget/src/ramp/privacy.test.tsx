@@ -45,6 +45,20 @@ import vectors from "../lib/reverse-stealth-vectors.json";
 
 vi.setConfig({ testTimeout: testBudget({ renders: 2, waits: 16 }) });
 
+/** One wallet step: an enabled prompt, one signature, and the prompt settled. */
+async function approveInWallet(port: { signed: readonly unknown[] }, count: number) {
+  if (count === 2)
+    await screen.findByText(/Next wallet step: Create the cash-out deposit/, {}, WAIT);
+  const button = await screen.findByRole("button", { name: "Approve in wallet" }, WAIT);
+  await waitFor(() => expect(button).toHaveProperty("disabled", false), WAIT);
+  fireEvent.click(button);
+  await waitFor(() => expect(port.signed).toHaveLength(count), WAIT);
+  await waitFor(
+    () => expect(screen.queryByRole("button", { name: "Waiting for wallet..." })).toBeNull(),
+    WAIT,
+  );
+}
+
 const HOST = "https://host.example";
 
 /** A frame window whose parent records what the frame posts, as wire JSON. */
@@ -297,8 +311,7 @@ describe("Send to a payment app through a current host", () => {
     fireEvent.click(screen.getByLabelText(/I understand the payout is an estimate/));
     fireEvent.click(screen.getByRole("button", { name: "Confirm cash-out" }));
     for (const count of [1, 2]) {
-      fireEvent.click(await screen.findByRole("button", { name: "Approve in wallet" }, WAIT));
-      await waitFor(() => expect(port.signed).toHaveLength(count), WAIT);
+      await approveInWallet(port, count);
     }
     await screen.findByText("Awaiting a buyer", { selector: "strong" }, WAIT);
 
@@ -524,7 +537,9 @@ describe("interruptions keep one lifecycle and leak nothing", () => {
     port.maker.hasAllowance = true;
     await cashOut(port, payee);
     port.walletAnswer = "lost";
-    fireEvent.click(await screen.findByRole("button", { name: "Approve in wallet" }, WAIT));
+    const button = await screen.findByRole("button", { name: "Approve in wallet" }, WAIT);
+    await waitFor(() => expect(button).toHaveProperty("disabled", false), WAIT);
+    fireEvent.click(button);
     await screen.findByText(/did not confirm whether it sent/, {}, WAIT);
     cleanup();
 
@@ -557,8 +572,7 @@ describe("interruptions keep one lifecycle and leak nothing", () => {
     const port = memoryOfframpPort({ account: TEST_ACCOUNT });
     await cashOut(port, payee);
     for (const count of [1, 2]) {
-      fireEvent.click(await screen.findByRole("button", { name: "Approve in wallet" }, WAIT));
-      await waitFor(() => expect(port.signed).toHaveLength(count), WAIT);
+      await approveInWallet(port, count);
     }
     await screen.findByText("Awaiting a buyer", { selector: "strong" }, WAIT);
     const check = async () => {
@@ -577,8 +591,8 @@ describe("interruptions keep one lifecycle and leak nothing", () => {
     const form = within(screen.getByRole("form", { name: "Withdraw unmatched USDC" }));
     fireEvent.change(form.getByLabelText(/^USDC to withdraw/), { target: { value: "10" } });
     fireEvent.click(form.getByRole("button", { name: "Prepare withdrawal" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Approve in wallet" }, WAIT));
-    await waitFor(() => expect(port.signed).toHaveLength(3), WAIT);
+    await screen.findByText(/Next wallet step: Withdraw unmatched USDC/, {}, WAIT);
+    await approveInWallet(port, 3);
     Object.assign(port.maker.facts, {
       remaining: "0",
       unmatched: "0",
