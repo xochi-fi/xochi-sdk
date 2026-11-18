@@ -10,7 +10,7 @@ import {
   type RampProvider,
   type RampSnapshot,
 } from "@xochi/client";
-import type { PreparedTransaction } from "@zkp2p/sdk";
+import type { Address, Hex } from "viem";
 import { peerConfiguration } from "./discovery.js";
 import { makeOffer } from "./normalization.js";
 import {
@@ -30,10 +30,17 @@ export type MakerReason =
   | "quote_expired"
   | "quote_changed";
 export type MakerWalletAction = "approve_usdc" | "create_deposit" | "withdraw_unmatched";
+/** Unsigned transaction passed to the connected wallet. */
+export interface MakerPreparedTransaction {
+  to: Address;
+  data: Hex;
+  value: bigint;
+  chainId: number;
+}
 /** Wallet-only material, never an event, snapshot, bridge payload or persistence record. */
 export interface MakerUnsignedPlan {
   readonly action: MakerWalletAction;
-  readonly transaction: PreparedTransaction;
+  readonly transaction: MakerPreparedTransaction;
   /** The connected wallet must match this public sender before signing. */
   readonly account: string;
   readonly expiresAt: string;
@@ -80,7 +87,7 @@ export interface PeerMakerIO {
   /** POST /v2/makers/create, via SDK registerPayeeDetails. Own account only. */
   registerOwnPayee(rail: string, ownAccount: string): Promise<string>;
   allowance(owner: string, amount: string, signal?: AbortSignal): Promise<boolean>;
-  prepareApproval(amount: string): Promise<PreparedTransaction>;
+  prepareApproval(amount: string): Promise<MakerPreparedTransaction>;
   prepareDeposit(
     input: {
       intent: RampIntent;
@@ -90,7 +97,7 @@ export interface PeerMakerIO {
       capabilityRevision: string;
     },
     signal?: AbortSignal,
-  ): Promise<PreparedTransaction>;
+  ): Promise<MakerPreparedTransaction>;
   /** Confirm the receipt AND exact sender, chain, target, calldata and value against expected.
    * For creation, return only the deposit ID decoded from that successful escrow receipt.
    * Missing/unknown receipts remain pending; never infer absence or resubmit. */
@@ -98,7 +105,7 @@ export interface PeerMakerIO {
     hash: string,
     action: MakerWalletAction,
     owner: string,
-    expected: PreparedTransaction,
+    expected: MakerPreparedTransaction,
     signal?: AbortSignal,
   ): Promise<MakerReconciliation>;
   /** Validate deposit owner, Base USDC identity, confirmation/finality and indexer/chain
@@ -110,7 +117,7 @@ export interface PeerMakerIO {
     amount: string,
     full: boolean,
     signal?: AbortSignal,
-  ): Promise<PreparedTransaction>;
+  ): Promise<MakerPreparedTransaction>;
 }
 /** Safe bounded failures; never use Error.message from a provider response. */
 export class MakerSetupRequired extends Error {
@@ -445,7 +452,7 @@ export function createPeerOfframpProvider(options: {
     if (!preview.ok) fail(preview.code);
   }
   function validatePlan(
-    transaction: PreparedTransaction,
+    transaction: MakerPreparedTransaction,
     action: MakerWalletAction,
     expiresAt: string,
   ): MakerUnsignedPlan {

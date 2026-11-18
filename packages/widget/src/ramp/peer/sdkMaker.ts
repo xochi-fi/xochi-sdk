@@ -1,5 +1,4 @@
 import { atomic, type RampIntent } from "@xochi/client";
-import type { PreparedTransaction, Zkp2pClient } from "@zkp2p/sdk";
 import { encodeFunctionData, erc20Abi, type Address } from "viem";
 import {
   boundedPeerRead,
@@ -12,17 +11,41 @@ import {
   MakerWithdrawalBlocked,
   type PeerMakerIO,
   type MakerReadiness,
+  type MakerPreparedTransaction,
 } from "./offramp.js";
 import type { PeerDiscoveryOptions } from "./types.js";
 
 /** Only unsigned SDK methods are admitted; no wallet client, key, send or signature method. */
-export type UnsignedMakerSDK = Pick<
-  Zkp2pClient,
-  "registerPayeeDetails" | "prepareCreateDeposit"
-> & {
-  removeFunds: Pick<Zkp2pClient["removeFunds"], "prepare">;
-  withdrawDeposit: Pick<Zkp2pClient["withdrawDeposit"], "prepare">;
-};
+export interface UnsignedMakerSDK {
+  registerPayeeDetails(input: {
+    processorNames: string[];
+    payeeData: { offchainId: string }[];
+  }): Promise<{ hashedOnchainIds: string[] }>;
+  prepareCreateDeposit(input: {
+    token: Address;
+    escrowAddress: Address;
+    amount: bigint;
+    intentAmountRange: { min: bigint; max: bigint };
+    processorNames: string[];
+    payeeDetailsHashes: string[];
+    conversionRates: { currency: string; conversionRate: string }[][];
+    retainOnEmpty: boolean;
+    referralCode?: string;
+  }): Promise<{ prepared: MakerPreparedTransaction }>;
+  removeFunds: {
+    prepare(input: {
+      depositId: bigint;
+      amount: bigint;
+      escrowAddress: Address;
+    }): Promise<MakerPreparedTransaction>;
+  };
+  withdrawDeposit: {
+    prepare(input: {
+      depositId: bigint;
+      escrowAddress: Address;
+    }): Promise<MakerPreparedTransaction>;
+  };
+}
 export interface MakerExecutionTerms {
   /** Current provider/protocol bounds and price, independently of buyer quotes. */
   minimum: string;
@@ -102,7 +125,7 @@ export function createSDKMakerIO(options: {
         return registered.hashedOnchainIds[0];
       });
     },
-    async prepareApproval(amount): Promise<PreparedTransaction> {
+    async prepareApproval(amount): Promise<MakerPreparedTransaction> {
       return {
         chainId: 8453,
         to: token,

@@ -9,8 +9,6 @@ import {
   getContracts,
   parseDeferredPayoutFromLogs,
   type PreparedTransaction,
-  type IndexerIntent,
-  type OrchestratorV4Intent,
 } from "@zkp2p/sdk";
 import {
   erc20Abi,
@@ -149,6 +147,27 @@ export function peerRecipientTransfer(
   );
 }
 
+interface PeerIndexedBuyerIntent {
+  owner: string;
+  toAddress: string;
+  orchestratorAddress: string;
+  paymentMethodHash?: string | null;
+  fiatCurrency: string;
+  signalTimestamp: string;
+  amount: string;
+  conversionRate: string;
+  depositId: string;
+  intentHash: string;
+  signalTxHash: string;
+  fulfillTxHash?: string | null;
+  status: string;
+}
+
+type PeerChainBuyerIntent = Parameters<typeof termsDigest>[0] & {
+  payeeId: Hex;
+  timestamp: bigint;
+};
+
 /** SDK wallet writes are prepared separately, then submitted through the connected wallet. */
 export function createPeerBuyerDriver(
   options: PeerDiscoveryOptions & {
@@ -158,8 +177,8 @@ export function createPeerBuyerDriver(
     resumeStorage?: Pick<Storage, "getItem" | "setItem">;
     /** Trusted read ports for deterministic recovery tests. */
     resumeReads?: {
-      ownerIntents(): Promise<IndexerIntent[]>;
-      intent(hash: Hex): Promise<OrchestratorV4Intent>;
+      ownerIntents(): Promise<PeerIndexedBuyerIntent[]>;
+      intent(hash: Hex): Promise<PeerChainBuyerIntent>;
       payee(id: string, rail: string): Promise<string | undefined>;
     };
   },

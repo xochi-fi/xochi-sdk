@@ -6,12 +6,31 @@ import type {
   RampMoney,
   RampSettlement,
 } from "@xochi/client";
-import type { QuoteRequest, QuotesBestByPlatformRequest } from "@zkp2p/sdk";
+/** Widget-owned request sent to the Peer V3 best-by-platform read. */
+export interface PeerBestQuoteRequest {
+  fiatCurrency: string;
+  user: string;
+  recipient: string;
+  destinationChainId: number;
+  destinationToken: string;
+  escrowAddresses: string[];
+  amount: string;
+  isExactFiat: boolean;
+  mode: "eligible";
+  quotePreference: "EXCLUSIVE_BUYER_TEE";
+}
+
+/** Widget-owned request for a quote on a selected payment rail. */
+export interface PeerQuoteRequest extends PeerBestQuoteRequest {
+  paymentPlatforms: string[];
+  quotesToReturn: number;
+  includeNearbyQuotes: boolean;
+}
 
 /** Read-only ports in the trusted widget runtime. Never bridge these callbacks or their input/output. */
 export interface PeerDiscoveryReads {
-  bestByPlatform(request: QuotesBestByPlatformRequest, signal?: AbortSignal): Promise<unknown>;
-  quote(request: QuoteRequest, signal?: AbortSignal): Promise<unknown>;
+  bestByPlatform(request: PeerBestQuoteRequest, signal?: AbortSignal): Promise<unknown>;
+  quote(request: PeerQuoteRequest, signal?: AbortSignal): Promise<unknown>;
   /** S5 supplies authoritative live protocol bounds/rate and seller status; no static defaults. */
   makerEvidence?(
     intent: RampIntent,

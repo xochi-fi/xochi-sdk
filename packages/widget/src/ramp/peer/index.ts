@@ -8,6 +8,8 @@ export type {
   PeerConfiguration,
   PeerDiscoveryOptions,
   PeerDiscoveryReads,
+  PeerBestQuoteRequest,
+  PeerQuoteRequest,
   PeerDiscoveryResult,
   PeerOfferEstimate,
 } from "./types.js";
@@ -23,6 +25,7 @@ export type {
   PeerMakerIO,
   MakerReadiness,
   MakerUnsignedPlan,
+  MakerPreparedTransaction,
   MakerDepositFacts,
   MakerOrderAmounts,
   MakerReconciliation,

@@ -288,15 +288,20 @@ assert(
   `React peer validation returned no usable result: ${peerCheck.stderr}`,
 );
 const failures = [];
-if (!reactPeerValidation.valid) {
-  failures.push(`React peer closure: ${reactPeerValidation.problems.join("; ")}`);
+if (reactPeerValidation.valid) {
+  console.log(`PASS: React peer closure (${reactPeerValidation.react})`);
+} else {
+  const failure = `React peer closure: ${reactPeerValidation.problems.join("; ")}`;
+  console.error(`FAIL: ${failure}`);
+  failures.push(failure);
 }
 const verify = (label, command, args) => {
   try {
     console.log(run(command, args));
+    console.log(`PASS: ${label}`);
     return "passed";
   } catch (error) {
-    console.error(error.stdout || error.message);
+    console.error(`FAIL: ${label}`, error.stdout || error.message);
     failures.push(label);
     return "failed";
   }
@@ -331,6 +336,16 @@ console.log(JSON.stringify({ contract_version: fixtures.contract_version, wire_v
   ]),
 );
 const installedRoot = join(consumer, "node_modules/@xochi/widget");
+const peerTypeReferences = globSync("dist/**/*.d.{ts,mts,cts}", { cwd: installedRoot }).filter(
+  (path) => readFileSync(join(installedRoot, path), "utf8").includes("@zkp2p/sdk"),
+);
+if (peerTypeReferences.length) {
+  const failure = `Packed widget declarations reference @zkp2p/sdk: ${peerTypeReferences.join(", ")}`;
+  console.error(`FAIL: ${failure}`);
+  failures.push(failure);
+} else {
+  console.log("PASS: packed widget declarations have no @zkp2p/sdk references");
+}
 const installed = json(join(installedRoot, "package.json"));
 assertExports(installed, installedRoot, new Set(globSync("**/*", { cwd: installedRoot })));
 const asset = globSync("dist/assets/*", { cwd: installedRoot }).find((path) =>
@@ -449,6 +464,7 @@ const result = {
   privateRegistryDependency: false,
   peerSdkVersion: PEER_SDK_VERSION,
   declarations,
+  peerTypeReferences,
   consumerBuild,
   configuratorBuild,
   failures,

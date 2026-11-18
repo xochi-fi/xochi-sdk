@@ -37,12 +37,24 @@ Published-dependencies verification checks registry tarball integrity, React pee
 compatibility and the configurator's wallet boundary. Both verification modes
 exercise the package installation and build without attempting a live trade.
 
-The candidate's anonymous consumer builds both entries, but two release checks
-currently fail. The public Peer SDK `0.15.0-rc.11` declares an unresolved
-`./types` import in its ESM declarations. The wallet dependency graph resolves
-`use-sync-external-store@1.2.0` via Valtio. That version of the store package excludes
-React 19. Keep strict declaration and peer checks enabled. Any wallet dependency
-change must preserve the approved redistribution terms.
+The packed widget passes strict TypeScript checking without loading Peer SDK
+declarations. Its discovery and unsigned maker ports use widget-owned types.
+The runtime remains pinned to `@zkp2p/sdk@0.15.0-rc.11`. The rc.12 tarball still
+contains unresolved `./types` imports in its ESM declarations.
+
+The React 19 wallet gate also fails on the packed widget from `origin/main`.
+Wagmi 2 selects WalletConnect's Apache-licensed provider, which pulls AppKit
+1.7.8, Valtio 1.13.2 and `use-sync-external-store@1.2.0`. The store's peer range
+excludes React 19. RainbowKit 2 supports Wagmi 2. WalletConnect provider 2.21.9
+selects the Valtio 2 graph and changes the provider license from Apache-2.0 to
+the WalletConnect Community License.
+
+The [Apache-compatible backport request](https://github.com/WalletConnect/walletconnect-monorepo/issues/7393)
+tracks a candidate that passed the React peer check and wallet production
+build, but failed strict provider declaration checks on `Core.relayUrl` and
+`SignClient.signConfig`. Pairing and signing remain unqualified. Keep the React
+peer gate enabled and repeat complete packed-widget and host qualification
+after a redistribution-cleared compatible wallet graph becomes public.
 
 ## Rendering
 

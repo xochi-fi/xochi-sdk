@@ -1,11 +1,5 @@
 import { parseRamp, sameRampAsset, validateRampSettlement, type RampIntent } from "@xochi/client";
-import {
-  getContracts,
-  getPaymentMethodsCatalog,
-  resolveFiatCurrencyBytes32,
-  type QuoteRequest,
-  type QuotesBestByPlatformRequest,
-} from "@zkp2p/sdk";
+import { getContracts, getPaymentMethodsCatalog, resolveFiatCurrencyBytes32 } from "@zkp2p/sdk";
 import { PEER_ENVIRONMENT } from "../../config.js";
 import { isPeerMobileWeb } from "./environment.js";
 import { formatUnits } from "viem";
@@ -17,6 +11,8 @@ import {
 } from "./normalization.js";
 import { normalizePeerMakerEvidence } from "./maker.js";
 import type {
+  PeerBestQuoteRequest,
+  PeerQuoteRequest,
   PeerConfiguration,
   PeerDiscoveryOptions,
   PeerDiscoveryReads,
@@ -103,13 +99,13 @@ export function peerReads(options: PeerDiscoveryOptions): PeerDiscoveryReads {
   // The pinned SDK quote adapters do not forward signals. Mirror their V3
   // read-only wire format and use fetch directly to cancel the actual request.
   const quoteRead = async (
-    request: QuotesBestByPlatformRequest | QuoteRequest,
+    request: PeerBestQuoteRequest | PeerQuoteRequest,
     best: boolean,
     signal?: AbortSignal,
   ) => {
-    const { amount, isExactFiat, ...body } = request;
-    const quotesToReturn = "quotesToReturn" in body ? body.quotesToReturn : undefined;
-    if ("quotesToReturn" in body) delete body.quotesToReturn;
+    const { amount, isExactFiat, quotesToReturn, ...body } = request as PeerBestQuoteRequest & {
+      quotesToReturn?: number;
+    };
     const exactFiat = isExactFiat !== false;
     const endpoint = best
       ? exactFiat
@@ -142,7 +138,7 @@ function requestFor(
   intent: RampIntent,
   config: PeerConfiguration,
   user?: string,
-): QuotesBestByPlatformRequest {
+): PeerBestQuoteRequest {
   return {
     fiatCurrency: intent.fiat.currency,
     user: user ?? intent.recipient,
@@ -207,7 +203,7 @@ export async function readPeerQuotes(
                 paymentPlatforms: [rail],
                 quotesToReturn: 1,
                 includeNearbyQuotes: false,
-              } as QuoteRequest,
+              },
               signal,
             ),
       options.signal,

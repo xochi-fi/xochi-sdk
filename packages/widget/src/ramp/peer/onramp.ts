@@ -6,7 +6,6 @@ import {
   type RampProvider,
   type RampSnapshot,
 } from "@xochi/client";
-import type { BuyerTeePaymentProofInput, PeerExtensionSdk, PeerMetadataMessage } from "@zkp2p/sdk";
 import { parseUnits } from "viem";
 import { fetchPeerCapabilities } from "./discovery.js";
 import { isPeerMobileWeb } from "./environment.js";
@@ -28,6 +27,51 @@ export type BuyerPhase =
   | "held"
   | "completed";
 
+type PeerPaymentParams = Record<string, string | number | boolean>;
+
+/** Transient payment capture used only inside the trusted runtime. */
+export interface PeerBuyerPaymentProof {
+  proofType: "buyerTee";
+  encryptedSessionMaterial: string;
+  params: PeerPaymentParams;
+  actionPlatform?: string;
+  actionType?: string;
+}
+
+interface PeerBuyerMetadata {
+  platform: string;
+  requestId: string;
+  expiresAt: number;
+  errorMessage?: string;
+  metadata: {
+    hidden: boolean;
+    currency?: string;
+    recipient?: string;
+    date?: string;
+    amount?: string;
+    params?: PeerPaymentParams;
+  }[];
+  buyerTeeCapture?: {
+    encryptedSessionMaterial: string;
+    params?: PeerPaymentParams[];
+  } | null;
+}
+
+export interface PeerBuyerExtension {
+  getState(): Promise<"needs_install" | "needs_connection" | "ready">;
+  getVersion(): Promise<string>;
+  requestConnection(): Promise<boolean>;
+  openInstallPage(): void;
+  onMetadataMessage(callback: (message: PeerBuyerMetadata) => void): () => void;
+  authenticate(input: {
+    platform: string;
+    actionType: string;
+    captureMode: "buyerTee";
+    attestationServiceUrl: string;
+    callerAddress: string;
+  }): void;
+}
+
 /** All inputs and outputs of this port are provider-private; never persist or emit them. */
 export interface PeerBuyerDriver {
   quote(
@@ -45,7 +89,7 @@ export interface PeerBuyerDriver {
     }>;
   }>;
   /** Must verify on-chain intent identity/amount/recipient before requesting attestation. */
-  fulfill(intentHash: string, proof: BuyerTeePaymentProofInput): Promise<void>;
+  fulfill(intentHash: string, proof: PeerBuyerPaymentProof): Promise<void>;
   status(intentHash: string): Promise<"pending" | "held" | "paid" | "released" | "unknown">;
   /**
    * Re-find an intent this wallet already signaled, after the transient runtime was
@@ -77,7 +121,7 @@ export type PeerResumeResult =
   | { kind: "fulfilled"; intentHash: string }
   | { kind: "expired" };
 export interface PeerBuyerOptions extends PeerDiscoveryOptions {
-  extension: PeerExtensionSdk;
+  extension: PeerBuyerExtension;
   driver: PeerBuyerDriver;
   /** Injection for deterministic environment tests; true can only narrow the real mobile gate. */
   desktop?: boolean;
@@ -108,7 +152,7 @@ interface Operation {
   failure?: "quote_expired";
   /** Public facts to re-find a lost runtime's intent; never a provider handle. */
   resumeBinding?: PeerResumeBinding;
-  proof?: BuyerTeePaymentProofInput;
+  proof?: PeerBuyerPaymentProof;
   capture?: Promise<boolean>;
   stopCapture?: () => void;
 }
@@ -226,9 +270,9 @@ export function createPeerOnrampProvider(options: PeerBuyerOptions) {
     };
   }
   function paymentMatches(
-    message: PeerMetadataMessage,
+    message: PeerBuyerMetadata,
     op: Operation,
-  ): BuyerTeePaymentProofInput | undefined {
+  ): PeerBuyerPaymentProof | undefined {
     // The extension API cannot carry our operation ID. Bind a single active capture to
     // the selected rail, intent lifetime, exact fiat amount and selected maker recipient.
     if (

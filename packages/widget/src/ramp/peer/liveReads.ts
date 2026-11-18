@@ -1,5 +1,5 @@
 import { atomic, parseRamp, type RampIntent } from "@xochi/client";
-import { getContracts, type PreparedTransaction } from "@zkp2p/sdk";
+import { getContracts } from "@zkp2p/sdk";
 import {
   createPublicClient,
   http,
@@ -18,6 +18,7 @@ import { normalizePeerMakerEvidence } from "./maker.js";
 import { boundedPeerRead, checkPeerAbort, peerConfiguration } from "./discovery.js";
 import type {
   MakerDepositFacts,
+  MakerPreparedTransaction,
   MakerReadiness,
   MakerReconciliation,
   PeerMakerIO,
@@ -329,7 +330,7 @@ export function createDefaultMakerReads(options: {
       broken();
     }
   }
-  async function receipt(hash: string, owner: string, expected?: PreparedTransaction) {
+  async function receipt(hash: string, owner: string, expected?: MakerPreparedTransaction) {
     const height = await block();
     const [tx, result] = await Promise.all([
       client.getTransaction({ hash: hash as Hex }),
@@ -658,7 +659,7 @@ export function createDefaultMakerReads(options: {
         hash: string,
         action: Parameters<PeerMakerIO["reconcile"]>[1],
         owner: string,
-        expected: PreparedTransaction,
+        expected: MakerPreparedTransaction,
         signal?: AbortSignal,
       ) => scoped(signal, (s) => s.reads.reconcile(hash, action, owner, expected)),
       deposit: (id: string, owner: string, signal?: AbortSignal) =>
