@@ -44,6 +44,10 @@
       "types": "./dist/types/styles.d.ts",
       "default": "./dist/styles.css"
     },
+    "./assets/rails": {
+      "types": "./dist/types/assets/rails/index.d.ts",
+      "default": "./dist/assets/rails/index.js"
+    },
     "./assets/*": {
       "types": "./dist/types/asset.d.ts",
       "default": "./dist/assets/*"

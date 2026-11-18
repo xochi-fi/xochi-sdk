@@ -33,6 +33,9 @@ await build({
           new URL("../src/configurator-model.ts", import.meta.url),
         ),
         integration: fileURLToPath(new URL("../src/integration.ts", import.meta.url)),
+        "assets/rails/index": fileURLToPath(
+          new URL("../src/assets/rails/index.ts", import.meta.url),
+        ),
         styles: fileURLToPath(new URL("../src/style-entry.ts", import.meta.url)),
       },
       formats: ["es"],
@@ -63,4 +66,8 @@ await copyFile(
 await copyFile(
   new URL("../src/asset.d.ts", import.meta.url),
   new URL("../dist/types/asset.d.ts", import.meta.url),
+);
+await copyFile(
+  new URL("../src/assets/rails/SOURCES.md", import.meta.url),
+  new URL("../dist/assets/rails/SOURCES.md", import.meta.url),
 );
