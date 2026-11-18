@@ -12,7 +12,7 @@ import { EMBED_FRAME, type EmbedLayout } from "@xochi/widget-lib";
 import { heightProblem } from "../trade/embedParams.js";
 
 const LAYOUTS: readonly { id: EmbedLayout; name: string; meta: string }[] = [
-  { id: "full", name: "Full widget", meta: "Swap, Activity and Claims tabs." },
+  { id: "full", name: "Full widget", meta: "Trade, Send, Activity and Claims tabs." },
   {
     id: "swap",
     name: "Swap only",

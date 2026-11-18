@@ -19,11 +19,12 @@ import { widgetLibModuleDir } from "../../widgetLibModule.js";
 export const widgetLibModuleUrl = (origin: string): string =>
   `${origin}/${widgetLibModuleDir(widgetLibPackage.version)}/index.js`;
 
-export type CodeFormat = "html" | "react" | "url";
+export type CodeFormat = "html" | "react" | "url" | "ramp";
 
 export const CODE_FORMATS: readonly { id: CodeFormat; tab: string; label: string }[] = [
   { id: "html", tab: "HTML", label: "HTML code" },
   { id: "react", tab: "React", label: "React code" },
+  { id: "ramp", tab: "Ramp", label: "Ramp helper code" },
   { id: "url", tab: "URL", label: "Embed URL" },
 ];
 
@@ -99,7 +100,26 @@ export function codeFor(format: CodeFormat, origin: string, params: EmbedParams)
       return htmlSnippet(origin, params);
     case "react":
       return reactSnippet(origin, params);
+    case "ramp":
+      return rampSnippet(origin, params);
     case "url":
       return embedUrl(origin, frameParams(params));
   }
+}
+
+/** The public ramp facade takes direction, while updateParams carries EmbedParams. */
+export function rampSnippet(origin: string, params: EmbedParams): string {
+  const direction = params.initialTab === "send" ? "offramp" : "onramp";
+  return [
+    '<div id="xochi-swap"></div>',
+    '<script type="module">',
+    `  import { createXochiRampWidget } from "${widgetLibModuleUrl(origin)}";`,
+    "",
+    '  const widget = createXochiRampWidget(document.getElementById("xochi-swap"), {',
+    `    origin: ${JSON.stringify(origin)},`,
+    `    direction: ${JSON.stringify(direction)},`,
+    "  });",
+    `  widget.updateParams(${paramsLiteral(params, "  ")});`,
+    "</script>",
+  ].join("\n");
 }

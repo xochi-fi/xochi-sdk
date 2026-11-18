@@ -8,8 +8,14 @@
  */
 
 import { useMemo, useState } from "react";
-import { resolveEmbedDefaults, type EmbedDefaults, type EmbedOffer } from "../trade/embedParams.js";
+import {
+  embedOverrides,
+  resolveEmbedDefaults,
+  type EmbedDefaults,
+  type EmbedOffer,
+} from "../trade/embedParams.js";
 import { type EmbedParams } from "@xochi/widget-lib";
+import { withSurfaceParams } from "./surfaceParams.js";
 import { paramsText, readParamsDraft } from "./paramsDraft.js";
 
 export interface ParamsDraftState {
@@ -35,8 +41,9 @@ export function useParamsDraft(
   config: EmbedDefaults,
   offer: EmbedOffer,
   apply: (params: EmbedParams) => void,
+  publicParams?: EmbedParams,
 ): ParamsDraftState {
-  const canonical = paramsText(config);
+  const canonical = paramsText(config, publicParams);
   const [draft, setDraft] = useState(canonical);
   // The canonical text the draft was last synced with. When the controls move
   // away from it, the draft follows them.
@@ -56,7 +63,8 @@ export function useParamsDraft(
       if (read.problems.length > 0) return;
       apply(read.params);
       // What the controls will now show; matching it keeps the draft as typed.
-      setDraftBase(paramsText(resolveEmbedDefaults(read.params, offer)));
+      const next = resolveEmbedDefaults(read.params, offer);
+      setDraftBase(paramsText(next, withSurfaceParams(embedOverrides(next), read.params)));
     },
     settle: () => {
       if (problems.length === 0) setDraft(canonical);

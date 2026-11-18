@@ -60,8 +60,9 @@ export function configuratorSearch(
   config: EmbedDefaults,
   backdrop: Backdrop,
   device: PreviewDevice,
+  params: EmbedParams = embedOverrides(config),
 ): string {
-  const query = new URLSearchParams(encodeEmbedParams(embedOverrides(config)));
+  const query = new URLSearchParams(encodeEmbedParams(params));
   if (backdrop.kind !== DEFAULT_BACKDROP.kind) query.set(VIEW_PARAM.backdrop, backdrop.kind);
   if (backdrop.custom !== DEFAULT_BACKDROP.custom) {
     query.set(VIEW_PARAM.color, backdrop.custom.replace(/^#/, ""));
