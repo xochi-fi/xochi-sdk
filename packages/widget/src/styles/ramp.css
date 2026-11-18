@@ -18,10 +18,12 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.25rem;
+  gap: 0.125rem;
+  margin-inline-end: -0.875rem;
   font:
-    0.8125rem/1.4 system-ui,
+    0.75rem/1.4 system-ui,
     sans-serif;
+  letter-spacing: normal;
   color: var(--text-secondary);
 }
 
