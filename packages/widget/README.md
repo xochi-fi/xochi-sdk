@@ -4,38 +4,45 @@ The complete Xochi trading widget and configurator, extracted from the hosted im
 
 ## Release state
 
-This source extraction is not a published widget release. The manifest deliberately has no approved release version. The client additions are unreleased; published `@xochi/client@0.1.13` does not contain them. Do not install that published client beside this widget and assume workspace verification proves compatibility. Publication is guarded by `check:published-dependencies`; release the changed client first, then pin its real published version here.
+The ramp release candidate pairs `@xochi/widget@0.1.0` with
+`@xochi/widget-lib@0.6.0`, `@xochi/client@0.1.17` and the existing
+`@xochi/signer@0.9.0`. A hosted shell serving ramps must mount at least widget
+`0.1.0` at `/embed` and mount the configurator from that same exact package
+version. Upgrade the hosted frame before enabling ramp entry points in hosts,
+and use loader `0.6.0` or a compatible later loader. The bridge stays on protocol v1.
 
-For a private, credential-free artifact rehearsal from the SDK root:
+From the SDK root, rehearse the release with local package tarballs:
 
 ```sh
 npm ci
-npm run build -w @xochi/signer
-npm run build -w @xochi/client
-npm run build -w @xochi/widget-lib
-npm run build -w @xochi/widget
+npm run build
 node scripts/verify-widget-consumer.mjs
 ```
 
-The default verifier installs the four local signer/client/loader/widget tarballs outside the repository with empty npm configuration, no registry credentials and **no workspace dependency overrides**. It requires declared package files, licenses and notices, checks every packed export including declarations, CSS and assets, and builds strict production consumers for the complete widget and wallet-free configurator. This is a **local-artifact rehearsal, not published-dependency qualification**. Only this mode may use the historical host's temporary `0.1.0` widget metadata, marked rehearsal-only. Never copy temporary artifacts or dependencies into a production host manifest.
+This installs the signer, client, loader and widget tarballs into a scratch
+consumer. It uses anonymous public npm resolution for external dependencies,
+with no workspace links or overrides. It checks exports and strict declarations
+and builds the widget and the wallet-free configurator from their public entry points.
 
-### Published-dependencies release gate
-
-After prerequisites are actually published, pin their exact versions in the widget manifest, assign the approved widget source version, build, and run:
+After approval and publication of the prerequisites, verify the widget against
+the exact public registry versions before publishing it:
 
 ```sh
+npm run check:redistribution -w @xochi/widget
+npm run check:published-dependencies -w @xochi/widget
 node scripts/verify-widget-consumer.mjs --published-dependencies
 ```
 
-This mode packs only the local widget. All prerequisites resolve anonymously from the public registry without overrides. It checks installed versions, registry tarballs and integrity against registry metadata and rejects non-registry resolutions. It never synthesizes a release version. Both modes strip credential-related environment variables, use isolated npm configuration and `NODE_ENV=production`, typecheck declarations without `skipLibCheck`, and check the configurator's wallet-free graph. The verification record distinguishes source/packed versions, dependency provenance and rehearsal status.
+Published-dependencies verification checks registry tarball integrity, React peer
+compatibility and the configurator's wallet boundary. Both verification modes
+exercise the package installation and build without attempting a live trade.
 
-`npm run check:published-dependencies -w @xochi/widget` checks the default declared runtime/peer closure and required public exports before release; it does not replace the packed-widget gate. Until approved versions exist, release qualification must fail closed. Workspace overrides are development policy, not published dependency constraints. Neither verifier publishes, deploys or qualifies live trading.
-
-The current default wallet dependency chain (`wagmi@2.19.5` → WalletConnect/Reown → `valtio` → `use-sync-external-store@1.2.0`) declares a transitive React peer range that excludes React 19. The anonymous production build succeeds, but `npm ls react react-dom` reports that conflict. Rehearsal records it explicitly; published-dependencies verification refuses it. Resolving the public dependency compatibility is a release prerequisite, not permission to add hidden consumer overrides or upgrade the wallet stack during extraction. Current RainbowKit `2.2.11` supports Wagmi 2, not the current Wagmi 3 release.
-
-An upstream bump is also a licensing decision: provider `2.21.9`, the first stable `2.21.x` release selecting the Valtio 2 graph, changed from Apache-2.0 to the WalletConnect Community License. Wagmi documents this constraint in its connector. Do not treat a newer provider or the workspace's development overrides as an approved, permissively licensed public dependency closure.
-
-The [Apache-compatible backport request](https://github.com/WalletConnect/walletconnect-monorepo/issues/7393) includes a local candidate selecting Apache-licensed AppKit `1.7.13`. Its anonymous, override-free React 19 peer check and wallet production bundle passed, but strict provider declarations failed on `Core.relayUrl` and `SignClient.signConfig`; wallet/session behavior was not exercised. This is upstream investigation, not a qualified widget artifact or permission to install modified tarballs in a production host. Wait for a reviewed, published upstream release, retain existing security constraints, then repeat the complete packed-widget and host qualification.
+The candidate's anonymous consumer builds both entries, but two release checks
+currently fail. The public Peer SDK `0.15.0-rc.11` declares an unresolved
+`./types` import in its ESM declarations. The wallet dependency graph resolves
+`use-sync-external-store@1.2.0` via Valtio. That version of the store package excludes
+React 19. Keep strict declaration and peer checks enabled. Any wallet dependency
+change must preserve the approved redistribution terms.
 
 ## Rendering
 
@@ -77,7 +84,7 @@ import { Configurator } from "@xochi/widget/configurator";
 // Render under Suspense after configureWidget(settings), with the same stylesheet.
 ```
 
-The configurator mounts a query provider, not trading/wallet/Stealth providers. Its preview is an iframe of the serving origin's `/embed`. `@xochi/widget/configurator-model` exports the shared URL, preset, lock, route-selection and snippet operations. Existing snippets require the host to continue serving every previously shipped `widget-lib/<version>/` browser ESM artifact.
+The configurator mounts a query provider, not trading/wallet/Stealth providers. Its preview is an iframe of the serving origin's `/embed`. `@xochi/widget/configurator-model` exports the shared URL, preset, lock, route-selection and snippet operations. Existing snippets require the host to serve `widget-lib/0.6.0/index.js` and preserve every previously shipped versioned loader URL.
 
 The published `@xochi/widget-lib@0.5.0` host's `updateTheme` changes the visual theme without reloading the iframe or resetting route, form, privacy or wallet state. Wallet dialogs and auto mode follow live theme resolution; runtime security settings remain immutable.
 
@@ -89,13 +96,18 @@ The published `@xochi/widget-lib@0.5.0` host's `updateTheme` changes the visual 
 
 The host supplies settings, never alternate trading algorithms. Exact route authorization, stale/fallback refusal, privacy preferences, signing checks and recovery live in public code. No Vite environment reads or import-time bridge handshake exist in this package. Mounting the widget owns the bridge; unmounting destroys it and rejects pending requests. Wallet signatures still require the existing explicit user actions.
 
-Peer launch settings are off unless the deployment sets them:
+The shell supplies Peer settings to `configureWidget` before mounting. Keep
+them in deployment configuration and out of embed URLs and snippet defaults.
 
-- `peerReferralCode`: unset sends no referral code. Set it only after legal
+- `peerEnvironment`: `production` (default), `preproduction` or `staging`.
+  These select Peer endpoints. Peer has no testnet, so staging still uses Base
+  mainnet funds. Live transaction checks require explicit approval.
+
+- `peerReferralCode`: six ASCII alphanumeric characters. Unset sends no referral code. Set it only after legal
   sign-off on Peer referral income and a check against Peer's referral terms.
 - `offrampCanaryCapAtomic` and `onrampCanaryCapAtomic`: the most Base USDC
   (canonical atomic units, e.g. `"5000000"` for 5 USDC) one cash-out may deposit
-  or one purchase may receive. Unset means no cap beyond Peer's own live limits.
+  or one purchase may receive. Each setting accepts a positive string of up to 31 digits without leading zeroes. Unset applies no extra deployment cap.
   An amount over a set cap shows the limit and reads no rails.
 
 Browser RPC URLs and WalletConnect identifiers are public bundle settings, not a place for secret provider keys. Preserve wallet telemetry opt-outs. Existing storage namespaces and history/session formats remain unchanged; signing keys are not persisted.
@@ -292,6 +304,36 @@ or mainnet spending is part of the deterministic checks.
 
 `preview-offramp-route.html` and `?failure` render the actual presentation components
 with in-memory route facts for 460px review and Peer-failure-after-route evidence.
+
+## Support and recovery
+
+Base settlement is public. Fiat participants see the payment and identity
+information needed to settle, and Peer eligibility and the Peer TEE affect
+availability. Buy requires desktop Chrome or Brave with the Peer extension, or
+the Peer app. Mobile web shows setup guidance. A linked Peer sign-in can also be
+required. The widget displays live rail availability and Cash-out estimates.
+
+Direct users to Activity to resume a submitted operation. Ask for the sanitized
+state and bounded support code, and use the public Base transaction hash if
+already available in a receipt. An opaque `rampRef` can correlate events within
+a host integration. Keep the credentials and other data listed in the contract's
+secret boundary out of support tickets and telemetry.
+
+- For `in_doubt`, reconcile the original leg before suggesting any further
+  action. Keep the operation pinned to its original provider.
+- For a held Buy payout, wait for verified USDC release before offering a
+  Xochi route. Peer may hold eligible Venmo or PayPal payouts for up to 14 days.
+  The protocol cannot refund fiat paid for an expired or unverifiable intent.
+- For cash-out, show verified fills and any returned Base USDC separately.
+  Withdrawal of unmatched escrow funds is a separate wallet approval when Peer
+  permits it.
+- If Buy succeeds and routing fails, locate the confirmed Base USDC in the
+  wallet and offer recovery of the Xochi leg. If the route into cash-out
+  succeeds and Peer fails, determine whether Base USDC is in the wallet or
+  Peer escrow and recover only the Peer leg.
+
+See the [ramp/1 contract and state diagrams](../client/ramp/README.md) and
+[loader migration and event payloads](../widget-lib/README.md#tabs-and-ramp-integration).
 
 ## Release privacy inspection
 

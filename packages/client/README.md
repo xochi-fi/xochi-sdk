@@ -153,7 +153,7 @@ This #98 ownership disposition is an extraction prerequisite only: publication
 remains gated on the producer/claim-chain prerequisites tracked in #98 and
 separate registry approval.
 
-## Ramp contract (unreleased)
+## Ramp contract (0.1.17 release candidate)
 
 `atomic`, `parseRamp`, `rampOutcome`, and `checkRampCommand` expose the provider-neutral
 [`ramp/1` contract](ramp/README.md). TypeScript uses canonical snake_case wire fields.
@@ -161,6 +161,21 @@ Atomic money never uses floating-point numbers. Independent Peer/Xochi snapshots
 preserve partial success; in-doubt operations permit reconciliation, never execute-again.
 The exported JSON Schema and runtime-neutral conformance vectors are available at
 `@xochi/client/ramp/contract.schema.json` and `@xochi/client/ramp/conformance.json`.
+
+```ts
+import { atomic, parseRamp, rampOutcome } from "@xochi/client";
+
+const baseUsdcAmount = atomic("5000000"); // 5 USDC in atomic units
+const message = parseRamp(untrustedJson);
+if (message.ok && message.value.kind === "snapshot") {
+  const outcome = rampOutcome(message.value);
+  renderRampState(outcome.state);
+}
+```
+
+Preserve optional `peer.payout_state` and `peer.partial_result` when storing
+sanitized snapshots. Older ramp/1 messages can omit either field.
+
 `createRampClient` serializes commands through a `RampOperationStore`; trusted adapters
 own external provider and wallet boundaries. `offerRoute(operationId, context)` adds
 an optional onramp Xochi leg only after confirmed Peer delivery and hold release.

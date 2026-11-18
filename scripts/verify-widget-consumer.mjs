@@ -14,6 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertPeerLock, PEER_SDK_VERSION } from "./verify-peer-graph.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -30,12 +31,12 @@ const exactVersion = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const prerequisites = Object.entries(widgetManifest.dependencies).filter(([name]) =>
   name.startsWith("@xochi/"),
 );
+assert(
+  typeof widgetManifest.version === "string" && exactVersion.test(widgetManifest.version),
+  "Assign the widget release candidate version before verification",
+);
+assert(!widgetManifest.xochiRehearsalOnly, "Use the real source package metadata");
 if (publishedDependencies) {
-  assert(
-    typeof widgetManifest.version === "string" && exactVersion.test(widgetManifest.version),
-    "Published-dependencies gate blocked: assign the real approved widget source version before release verification",
-  );
-  assert(!widgetManifest.xochiRehearsalOnly, "Rehearsal metadata cannot qualify a release");
   for (const name of ["@xochi/client", "@xochi/signer", "@xochi/widget-lib"]) {
     assert(
       prerequisites.some(([dependency]) => dependency === name),
@@ -158,12 +159,6 @@ for (const name of publishedDependencies
     }
   }
   assert(existsSync(join(stage, "dist")), `${name}: build before packing`);
-  if (name === "widget" && !manifest.version) {
-    assert(!publishedDependencies, "Release verification must never invent a widget version");
-    // Metadata inherited from the extracted host manifest, not an approved npm release version.
-    manifest.version = "0.1.0";
-    manifest.xochiRehearsalOnly = true;
-  }
   writeFileSync(join(stage, "package.json"), JSON.stringify(manifest, null, 2));
   const packed = JSON.parse(
     run("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", artifacts], stage),
@@ -251,20 +246,24 @@ for (const prerequisite of publishedPrerequisites) {
     `${prerequisite.name}: registry integrity mismatch`,
   );
 }
-if (publishedDependencies) {
-  for (const [path, entry] of Object.entries(installedLock.packages)) {
-    if (!path || path === "node_modules/@xochi/widget") continue;
-    assert(
-      typeof entry.resolved === "string" && entry.resolved.startsWith(registry),
-      `${path}: published-dependencies mode requires default public-registry resolution`,
-    );
+const localArtifacts = new Map(records.map((record) => [`node_modules/${record.name}`, record]));
+for (const [path, entry] of Object.entries(installedLock.packages)) {
+  if (!path) continue;
+  assert(!entry.link, `${path}: consumer must not use links`);
+  const local = localArtifacts.get(path);
+  if (local) {
+    assert.equal(entry.version, local.packedVersion, `${path}: wrong installed version`);
+    assert.equal(resolve(consumer, entry.resolved.replace(/^file:/, "")), local.file);
+    assert.equal(entry.integrity, `sha512-${Buffer.from(local.sha512, "hex").toString("base64")}`);
+  } else {
+    assert(entry.resolved?.startsWith(registry), `${path}: public registry resolution required`);
   }
 }
-const lock = readFileSync(join(consumer, "package-lock.json"), "utf8");
-assert(
-  !/npm\.pkg\.github\.com|@xochi-fi\/|workspace:|git\+ssh|git@github/.test(lock),
-  "private dependency or workspace alias in installed closure",
-);
+for (const path of localArtifacts.keys()) {
+  assert(installedLock.packages[path], `${path}: local tarball was not installed`);
+}
+assertPeerLock(installedLock);
+console.log(`PASS: one public Peer SDK (${PEER_SDK_VERSION}); no @zkp2p/cash`);
 const peerCheck = spawnSync("npm", ["ls", "react", "react-dom", "--json"], {
   cwd: consumer,
   env,
@@ -288,14 +287,20 @@ assert(
   reactPeerValidation.valid || reactPeerValidation.problems.length > 0,
   `React peer validation returned no usable result: ${peerCheck.stderr}`,
 );
-if (publishedDependencies) {
-  assert(
-    reactPeerValidation.valid,
-    `Published-dependencies gate blocked by React peers: ${reactPeerValidation.problems.join("; ")}`,
-  );
-} else if (!reactPeerValidation.valid) {
-  console.warn("RELEASE BLOCKER — React peer closure:", reactPeerValidation.problems.join("; "));
+const failures = [];
+if (!reactPeerValidation.valid) {
+  failures.push(`React peer closure: ${reactPeerValidation.problems.join("; ")}`);
 }
+const verify = (label, command, args) => {
+  try {
+    console.log(run(command, args));
+    return "passed";
+  } catch (error) {
+    console.error(error.stdout || error.message);
+    failures.push(label);
+    return "failed";
+  }
+};
 console.log(
   run("node", [
     "--input-type=module",
@@ -388,8 +393,8 @@ createRoot(document.getElementById('root')!).render(<StrictMode><Suspense fallba
 </Suspense></StrictMode>);
 `,
 );
-console.log(run("npx", ["--no-install", "tsc"]));
-console.log(run("npx", ["--no-install", "vite", "build"]));
+const declarations = verify("Strict TypeScript declarations", "npx", ["--no-install", "tsc"]);
+const consumerBuild = verify("Widget production build", "npx", ["--no-install", "vite", "build"]);
 writeFileSync(
   join(consumer, "configurator-only.html"),
   '<!doctype html><html><body><div id="root"></div><script type="module" src="/configurator-only.tsx"></script></body></html>',
@@ -417,12 +422,20 @@ export default defineConfig({
 });
 `,
 );
-console.log(run("npx", ["--no-install", "vite", "build", "--config", "configurator.config.mjs"]));
+const configuratorBuild = verify("Wallet-free configurator production build", "npx", [
+  "--no-install",
+  "vite",
+  "build",
+  "--config",
+  "configurator.config.mjs",
+]);
 const result = {
   mode,
-  state: publishedDependencies
-    ? "LOCAL WIDGET ARTIFACT VERIFIED AGAINST PUBLISHED DEPENDENCIES — NOT PUBLISHED OR DEPLOYED"
-    : "LOCAL-ARTIFACT REHEARSAL ONLY — NOT RELEASE QUALIFICATION",
+  state: failures.length
+    ? "CONSUMER VERIFICATION FAILED"
+    : publishedDependencies
+      ? "LOCAL WIDGET ARTIFACT VERIFIED AGAINST PUBLISHED DEPENDENCIES — NOT PUBLISHED OR DEPLOYED"
+      : "LOCAL-ARTIFACT REHEARSAL ONLY — NOT RELEASE QUALIFICATION",
   widgetSourceVersion: widgetManifest.version ?? null,
   prerequisiteProvenance: publishedDependencies
     ? "public npm registry"
@@ -434,9 +447,12 @@ const result = {
   consumer,
   credentialFreeInstall: true,
   privateRegistryDependency: false,
-  declarations: "tsc passed without skipLibCheck",
-  consumerBuild: "Vite production build passed",
-  configuratorWalletBoundary: "Installed Vite graph contains no wallet providers or wallet SDKs",
+  peerSdkVersion: PEER_SDK_VERSION,
+  declarations,
+  consumerBuild,
+  configuratorBuild,
+  failures,
 };
 writeFileSync(join(rehearsal, "verification.json"), JSON.stringify(result, null, 2));
 console.log(JSON.stringify(result, null, 2));
+assert.equal(failures.length, 0, failures.join("\n"));

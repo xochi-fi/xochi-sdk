@@ -184,3 +184,80 @@ not a fiat receipt amount. A mixed result is `partial_success`, never a wholly
 refunded leg; it permits no resubmission. Pure completion and pure return retain
 their existing shapes. Public readers should preserve this additive ramp/1 field
 to explain the split after reload.
+
+## State diagrams
+
+These diagrams show the user-visible execution and recovery paths. Use the
+snapshot's `allowed_actions` to decide which action is available at a given
+revision.
+
+### Peer onramp
+
+```mermaid
+stateDiagram-v2
+    [*] --> Quoted
+    Quoted --> ApprovalRequired: fresh live offer
+    ApprovalRequired --> ActionRequired: approve reviewed quote
+    ActionRequired --> Processing: user payment and verification
+    Processing --> Held: payout held (processing)
+    Held --> Completed: verified payout release
+    Processing --> Completed: verified Base USDC delivery
+    Processing --> Failed: confirmed failure
+    Processing --> InDoubt: submission outcome unknown
+    InDoubt --> Processing: reconcile original operation
+    InDoubt --> Completed: delivery verified
+    InDoubt --> Failed: failure verified
+```
+
+### Peer offramp
+
+```mermaid
+stateDiagram-v2
+    [*] --> Quoted
+    Quoted --> ApprovalRequired: review own-account cash-out
+    ApprovalRequired --> Processing: wallet approves Base USDC deposit
+    Processing --> InDoubt: submission outcome unknown
+    InDoubt --> Processing: reconcile original deposit
+    Processing --> Completed: verified fills
+    Processing --> Withdrawal: unmatched escrow is withdrawable
+    Withdrawal --> Refunded: wallet-approved return with no fills
+    Withdrawal --> Completed: verified fills plus return (partial_result)
+    Processing --> Failed: confirmed failure
+```
+
+### Buy then Xochi route
+
+```mermaid
+flowchart TD
+    P[Peer Buy approval and settlement] --> C{Base USDC delivery verified?}
+    C -->|Held or unresolved| W[Wait or reconcile Peer]
+    W --> C
+    C -->|Confirmed failure| F[Xochi stays unstarted]
+    C -->|Yes| Q[Offer fresh Xochi quote]
+    Q -->|Skip| K[Keep Base USDC]
+    Q --> A[Separate wallet approval and route execution]
+    A -->|Confirmed| D[Both legs complete]
+    A -->|Failed| R[Base USDC remains available for route recovery]
+    A -->|Unknown| S[Reconcile only the existing Xochi leg]
+    R --> Q
+```
+
+### Xochi route then cash-out
+
+```mermaid
+flowchart TD
+    Q[Fresh Xochi quote and separate wallet approval] --> C{Route completed and Base USDC spendable?}
+    C -->|Unknown| S[Reconcile original Xochi route]
+    S --> C
+    C -->|Failed| F[Peer stays unstarted]
+    C -->|Yes| P[Fresh Peer quote and separate deposit approval]
+    P -->|Full fill| D[Both legs complete]
+    P -->|Confirmed failure or return| R[Preserve Xochi receipt and locate wallet or escrow funds]
+    P -->|Unknown| U[Reconcile original Peer deposit]
+    P -->|Fill plus return| M[Preserve both receipts and show partial_result]
+```
+
+Available offers expire. Refresh the exact corridor and amount before approval,
+and reapprove any replacement quote. Each composition is non-atomic. Persist
+and recover each leg independently, and derive the overall outcome with
+`rampOutcome`.

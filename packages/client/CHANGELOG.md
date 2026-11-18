@@ -4,6 +4,8 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+## [0.1.17] - 2026-11-18
+
 ### Added
 
 - Independently approved post-onramp routing through `createXochiRampLeg` and `RampClient.offerRoute`. Fresh route quotes require completed, released Peer delivery; expired or failed quotes remain recoverable partial success, while unknown execution permits reconciliation only. Route retry and skip never repeat Peer.

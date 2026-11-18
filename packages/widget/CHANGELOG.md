@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-18
+
 ### Added
 
 - Release hardening for the ramp and Send (xochi-sdk#180). Inside an iframe, Buy and `payment_app` stay unexecutable until a current-protocol host pins the frame, and say so (waiting, or a permanent refusal for a legacy loader). New deployment setting `onrampCanaryCapAtomic` (per-purchase cap, unset by default, enforced before any rail read), beside `offrampCanaryCapAtomic`. Activity resumes a submitted purchase or open cash-out when narrowing has removed Buy or `payment_app`. Ramp host events are deduplicated per fact, and a reload continues the stored `rampRef` instead of announcing a second operation. Setup prose for Peer's linked-session sign-in (the production `/v3/sign` 401) and `maker_account_setup`. Stealth copy discloses that Xochi sees the recipient's meta-address. Ramp call-to-action buttons use the shared button style. A release privacy test drives each ramp and Send flow through a scripted host and asserts nothing forbidden reaches messages, storage, logs or reports.

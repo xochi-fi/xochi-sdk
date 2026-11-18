@@ -4,6 +4,8 @@ All notable changes to `@xochi/widget-lib` are documented here. Format follows [
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-18
+
 Runtime-additive on protocol v1. Custom TypeScript implementations of `HostConnection` must add `hostProtocol` and `onHostProtocol`.
 
 ### Added

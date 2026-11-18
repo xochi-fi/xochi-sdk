@@ -194,3 +194,20 @@ accepts trade events. `bridge.test.ts` exercises the new events over the same v1
 origin-pinned bridge. Older frames ignore the new URL keys, so v1 readiness alone
 does not establish ramp UI support: deploy the compatible frame before ramp hosts.
 Custom TypeScript exhaustive event switches must add the new union members.
+
+### Migrate a hosted embed
+
+Use `@xochi/widget-lib@0.6.0` with a hosted shell serving
+`@xochi/widget@0.1.0` or later compatible widget at `/embed`. Deploy that shell
+first. A standalone or legacy Swap embed can continue using `layout=swap`.
+For the full layout, use `initialTab: "trade"` with `initialMode: "swap"` to
+retain a Swap landing view. Move cash-out entry points to Send
+(`initialTab: "send"`, `sendDestinations: ["payment_app"]`), or use
+`createXochiRampWidget(container, { direction: "offramp" })`. The original
+Trade/Swap events remain on the same bridge.
+
+An iframe waits for the origin-pinned current handshake before offering new
+Peer execution. Legacy handshakes leave ramp entry points unavailable.
+Activity can recover submitted operations even after ramp entry points are hidden.
+For additional data-handling requirements, see the
+[ramp/1 secret boundary](../client/ramp/README.md#secret-boundary).
