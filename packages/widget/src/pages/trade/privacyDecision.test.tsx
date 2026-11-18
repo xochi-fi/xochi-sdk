@@ -310,7 +310,7 @@ describe("stealth blockers are triaged, not collapsed", () => {
     expect(document.querySelector<HTMLButtonElement>(".submit-btn")?.disabled).toBe(true);
   });
 
-  it("preserves Stealth through the hosted-wallet EIP-1193 bridge", async () => {
+  it("refuses Stealth key setup through a third-party wallet relay", async () => {
     const walletMethods: string[] = [];
     vi.stubGlobal(
       "fetch",
@@ -329,10 +329,10 @@ describe("stealth blockers are triaged, not collapsed", () => {
     expect(walletMethods).not.toContain("personal_sign");
     expect(walletMethods).not.toContain("eth_sign");
     fireEvent.click(screen.getByRole("button", { name: "Set up Stealth" }));
-    await waitFor(() => expect(metaLines("Stealth")).toEqual({ lines: 1, fixes: 0 }), WAIT);
-    expect(
-      walletMethods.some((method) => method === "personal_sign" || method === "eth_sign"),
-    ).toBe(true);
+    await screen.findByText("Connect a wallet in the widget to set up Stealth.", {}, WAIT);
+    expect(metaLines("Stealth")).toEqual({ lines: 1, fixes: 1 });
+    expect(walletMethods).not.toContain("personal_sign");
+    expect(walletMethods).not.toContain("eth_sign");
   });
 
   it("keeps Stealth selected but blocks it when a refresh removes route support", async () => {
