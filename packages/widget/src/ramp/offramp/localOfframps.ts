@@ -12,6 +12,7 @@
  * Every row is shape-checked on read; a malformed one is dropped.
  */
 
+import { RAMP_REF_PATTERN } from "@xochi/widget-lib";
 import { STORAGE_KEYS } from "../../constants.js";
 import type { MakerPhase, MakerWalletAction } from "../peer/index.js";
 
@@ -42,6 +43,11 @@ export interface OfframpActivityItem {
   phase?: MakerPhase;
   /** Sanitized terminal Base USDC totals; no provider correlation. */
   totals?: { filled: string; returned: string };
+  /**
+   * The frame-minted reference its `ramp:started` carried (opaque,
+   * non-authorizing), so a reload continues that lifecycle for the host.
+   */
+  rampRef?: string;
   /** The wallet step handed out last, so a reload can ask for its hash. */
   pendingAction?: MakerWalletAction;
   data: {
@@ -121,6 +127,11 @@ export function parseOfframpRecord(value: unknown): OfframpActivityItem | null {
       return null;
     totals = { filled, returned };
   }
+  if (
+    row.rampRef !== undefined &&
+    (typeof row.rampRef !== "string" || !RAMP_REF_PATTERN.test(row.rampRef))
+  )
+    return null;
   if (row.status === "mixed" && (!totals || totals.filled === "0" || totals.returned === "0"))
     return null;
   return {
@@ -132,6 +143,7 @@ export function parseOfframpRecord(value: unknown): OfframpActivityItem | null {
     ...(row.phase ? { phase: row.phase as MakerPhase } : {}),
     ...(row.pendingAction ? { pendingAction: row.pendingAction as MakerWalletAction } : {}),
     ...(totals ? { totals } : {}),
+    ...(row.rampRef ? { rampRef: row.rampRef as string } : {}),
     data: { rail: data.rail, currency: data.currency, amount: data.amount },
   };
 }

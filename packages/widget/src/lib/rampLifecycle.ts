@@ -6,6 +6,7 @@ import {
   type RampLegName,
   type RampLegState,
 } from "@xochi/widget-lib";
+import type { RampSnapshot } from "@xochi/client";
 import { hostBridge } from "./hostBridge.js";
 
 export interface RampEmitter {
@@ -85,4 +86,15 @@ export function resumeRampEmitter(
 ): RampEmitter | null {
   if (rampRef === undefined || !RAMP_REF_PATTERN.test(rampRef)) return null;
   return { rampRef, ...emitterFor(rampRef, bridge) };
+}
+
+/** Tell the host what one S4 snapshot says, through an emitter's deduplication. */
+export function emitSnapshot(emitter: RampEmitter | null | undefined, next: RampSnapshot): void {
+  if (!emitter) return;
+  emitter.status(next.peer.state, next.xochi?.state);
+  if (next.peer.state === "in_doubt") emitter.recoveryRequired("peer", "peer_in_doubt");
+  if (next.xochi?.state === "in_doubt") emitter.recoveryRequired("xochi", "xochi_in_doubt");
+  if (next.xochi?.state === "failed")
+    emitter.recoveryRequired("xochi", next.xochi.failure_code ?? "route_failed");
+  if (next.terminal) emitter.terminal(next.peer.state, next.xochi?.state);
 }

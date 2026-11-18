@@ -12,9 +12,12 @@
  *    flow may be abandoned from here;
  *  - submitted: it rebinds the provider runtime with read-only lookups, runs one
  *    status reconciliation, and continues in the shared OnrampSteps view.
+ *
+ * Host events continue under the summary's stored `ramp_ref`, never a second
+ * `ramp:started`; a summary without one emits nothing (lib/rampLifecycle).
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { RampOperationStore, RampSnapshot } from "@xochi/client";
 import type { PublicClient, WalletClient } from "viem";
 import type { PeerOnrampRuntime } from "../peer/onramp.js";
@@ -28,6 +31,7 @@ import {
   type RampOperationSummary,
 } from "./summaries.js";
 import { formatUnits } from "viem";
+import { emitSnapshot, resumeRampEmitter } from "../../lib/rampLifecycle.js";
 
 export interface ResumeOnrampProps {
   summary: RampOperationSummary;
@@ -66,9 +70,16 @@ export function ResumeOnramp({
   });
   const [ownedStore] = useState(() => store ?? browserRampStore());
   const client = useRampClient(bound && summary.submitted ? runtime : undefined, ownedStore);
-  const [snapshot, setSnapshot] = useState<RampSnapshot>();
+  const [snapshot, setRawSnapshot] = useState<RampSnapshot>();
   const [failed, setFailed] = useState(false);
   const id = summary.operation_id;
+  // One emitter per operation: the stored reference, deduplicated per fact.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const emitter = useMemo(() => resumeRampEmitter(summary.ramp_ref), [id]);
+  const setSnapshot = (next: RampSnapshot) => {
+    setRawSnapshot(next);
+    emitSnapshot(emitter, next);
+  };
 
   useEffect(() => {
     if (!client || !runtime) return;

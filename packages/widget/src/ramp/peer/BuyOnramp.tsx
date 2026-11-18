@@ -8,7 +8,7 @@ import type {
 } from "@xochi/client";
 import { formatUnits } from "viem";
 import type { PublicClient, WalletClient } from "viem";
-import { createRampEmitter } from "../../lib/rampLifecycle.js";
+import { createRampEmitter, emitSnapshot } from "../../lib/rampLifecycle.js";
 import type { PeerOnrampRuntime, PeerSetupCode } from "./onramp.js";
 import { OnrampSteps } from "./OnrampSteps.js";
 import { OnrampRoute } from "../route/OnrampRoute.js";
@@ -145,13 +145,7 @@ export function BuyOnramp({
     setSnapshot(next);
     const row = summary.current ?? getRampSummary(next.operation_id);
     if (row) remember(summaryFromSnapshot(row, next));
-    emitter.current?.status(next.peer.state, next.xochi?.state);
-    if (next.peer.state === "in_doubt") emitter.current?.recoveryRequired("peer", "peer_in_doubt");
-    if (next.xochi?.state === "in_doubt")
-      emitter.current?.recoveryRequired("xochi", "xochi_in_doubt");
-    if (next.xochi?.state === "failed")
-      emitter.current?.recoveryRequired("xochi", next.xochi.failure_code ?? "route_failed");
-    if (next.terminal) emitter.current?.terminal(next.peer.state, next.xochi?.state);
+    emitSnapshot(emitter.current, next);
   }
   const context = () => ({
     expected_revision: snapshot!.revision,

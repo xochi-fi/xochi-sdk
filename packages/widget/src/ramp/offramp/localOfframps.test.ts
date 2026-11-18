@@ -45,3 +45,12 @@ describe("sanitized terminal cash-out totals", () => {
     expect(parseOfframpRecord({ ...legacy, status: "returned", phase: "returned" })).not.toBeNull();
   });
 });
+
+describe("host lifecycle reference", () => {
+  it("keeps a well-formed rampRef and refuses any other", () => {
+    const rampRef = `ramp_${"ab".repeat(16)}`;
+    expect(parseOfframpRecord({ ...mixed, rampRef })?.rampRef).toBe(rampRef);
+    for (const bad of [`tr_${"0".repeat(32)}`, "ramp_not-hex", 42])
+      expect(parseOfframpRecord({ ...mixed, rampRef: bad })).toBeNull();
+  });
+});

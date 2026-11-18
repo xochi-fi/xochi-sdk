@@ -427,6 +427,8 @@ describe("secret boundary", () => {
       "data",
       "id",
       "phase",
+      // The frame-minted host reference (opaque, non-authorizing).
+      "rampRef",
       "stage",
       "status",
       "timestamp",

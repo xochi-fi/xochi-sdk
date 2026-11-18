@@ -35,7 +35,7 @@ import type {
 } from "@xochi/client";
 import type { Hex } from "viem";
 import { isUserRejection } from "../../lib/eip712.js";
-import { createRampEmitter } from "../../lib/rampLifecycle.js";
+import { createRampEmitter, resumeRampEmitter, type RampEmitter } from "../../lib/rampLifecycle.js";
 import {
   MakerSetupRequired,
   type MakerPhase,
@@ -149,7 +149,9 @@ export function useOfframp(
   const nextRevision = useRef(0n);
   /** S4's latest public snapshot for the current, non-resumed order. */
   const s4 = useRef<RampSnapshot | undefined>(undefined);
-  const emitter = useRef<ReturnType<typeof createRampEmitter> | null>(null);
+  const emitter = useRef<RampEmitter | null>(null);
+  /** The current order's host reference, kept past terminal for its summary. */
+  const rampRef = useRef<string | undefined>(undefined);
   const lastEmitted = useRef<RampLegState | undefined>(undefined);
   const orderRef = useRef<OfframpOrder | undefined>(undefined);
   orderRef.current = view.kind === "order" ? view.order : undefined;
@@ -163,6 +165,7 @@ export function useOfframp(
     registered.current = new Map();
     s4.current = undefined;
     emitter.current = null;
+    rampRef.current = undefined;
     if (!account || !active) return;
     let stale = false;
     port.runtime(account).then(
@@ -191,6 +194,7 @@ export function useOfframp(
             }
           : {}),
         ...(order.pendingAction ? { pendingAction: order.pendingAction } : {}),
+        ...(rampRef.current ? { rampRef: rampRef.current } : {}),
         data: { rail: order.rail, currency: order.currency, amount: order.amount },
       };
       upsertLocalOfframp(account, item);
@@ -274,6 +278,10 @@ export function useOfframp(
       setBusy("checking");
       const order = await readOrder(base);
       if (stale) return;
+      // Continue the stored lifecycle; never a second ramp:started.
+      rampRef.current = row.rampRef;
+      emitter.current = resumeRampEmitter(row.rampRef);
+      lastEmitted.current = undefined;
       setBusy(false);
       showOrder(order);
     })();
@@ -396,6 +404,7 @@ export function useOfframp(
           await runtime.provider.setOwnAccount(id, payee.trim(), "own_account");
         }
         emitter.current = createRampEmitter("offramp");
+        rampRef.current = emitter.current.rampRef;
         lastEmitted.current = undefined;
         let snapshot = await runtime.client.approve(
           id,
