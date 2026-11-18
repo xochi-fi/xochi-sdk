@@ -45,7 +45,7 @@ import { BASE_CHAIN_ID, createLiveOfframpPort, OfframpPortContext } from "./port
 import { useOfframp, type OfframpOrder, type OfframpQuote } from "./useOfframp.js";
 import { CompletedPrerequisite } from "./CompletedPrerequisite.js";
 import { OfframpRoute } from "./OfframpRoute.js";
-import type { OfframpPrerequisite } from "./prerequisite.js";
+import { inspectOfframpPrerequisite, type OfframpPrerequisite } from "./prerequisite.js";
 import { useOfframpRails } from "./useOfframpRails.js";
 
 type Flow = ReturnType<typeof useOfframp>;
@@ -64,26 +64,56 @@ function useOfframpPort() {
 }
 
 export function PaymentAppSend({ active, fiatCurrency = "USD" }: PaymentAppSendProps) {
-  const id = useId();
   const port = useOfframpPort();
   const { address } = useAccount();
+  return (
+    <WalletPaymentAppSend
+      key={address}
+      address={address}
+      port={port}
+      active={active}
+      fiatCurrency={fiatCurrency}
+    />
+  );
+}
+
+function WalletPaymentAppSend({
+  active,
+  fiatCurrency = "USD",
+  address,
+  port,
+}: PaymentAppSendProps & {
+  address?: string;
+  port: ReturnType<typeof useOfframpPort>;
+}) {
+  const id = useId();
+  const checkpoint = address ? inspectOfframpPrerequisite(address) : undefined;
   const [route, setRoute] = useState<OfframpPrerequisite>();
   const [routeAmount, setRouteAmount] = useState<string>();
   const funding = useMemo(
-    () => (route ? (amount: string) => route.funded(amount) : undefined),
-    [route],
+    () =>
+      route ? (amount: string) => route.funded(amount) : checkpoint ? async () => false : undefined,
+    [route, !!checkpoint],
   );
   const flow = useOfframp(port, address, active, funding);
-  useEffect(() => {
-    setRoute(undefined);
-    setRouteAmount(undefined);
-  }, [address]);
 
   return (
     <section className="ramp-rails" aria-labelledby={`${id}-title`}>
       <h3 id={`${id}-title`} className="send-review__title">
         Cash out to your own payment app
       </h3>
+      {checkpoint && !route && flow.view.kind !== "edit" && (
+        <OfframpRoute
+          key={address}
+          port={port}
+          onLock={() => {}}
+          onReceipt={setRoute}
+          onReady={(next, amount) => {
+            setRoute(next);
+            setRouteAmount(amount);
+          }}
+        />
+      )}
       {route && (
         <CompletedPrerequisite
           receipt={route.snapshot().xochi?.transaction_hash ?? route.snapshot().operation_id}
@@ -97,11 +127,13 @@ export function PaymentAppSend({ active, fiatCurrency = "USD" }: PaymentAppSendP
       )}
       {flow.view.kind === "edit" && (
         <EditStep
+          key={address}
           flow={flow}
           account={address}
           active={active}
           fiatCurrency={fiatCurrency}
           routeAmount={routeAmount}
+          onReceipt={setRoute}
           onReady={(next, amount) => {
             setRoute(next);
             setRouteAmount(amount);
@@ -126,6 +158,7 @@ function EditStep({
   fiatCurrency,
   routeAmount,
   onReady,
+  onReceipt,
 }: {
   flow: Flow;
   account: string | undefined;
@@ -133,12 +166,17 @@ function EditStep({
   fiatCurrency: string;
   routeAmount?: string;
   onReady(route: OfframpPrerequisite, amount: string): void;
+  onReceipt(route: OfframpPrerequisite): void;
 }) {
   const id = useId();
   const port = useOfframpPort();
   const settlement = useMemo(() => port.settlement(), [port]);
-  const [routeLocked, setRouteLocked] = useState(false);
-  const [source, setSource] = useState<"base_usdc" | "other">("base_usdc");
+  const [routeLocked, setRouteLocked] = useState(
+    () => !!(account && inspectOfframpPrerequisite(account)),
+  );
+  const [source, setSource] = useState<"base_usdc" | "other">(() =>
+    account && inspectOfframpPrerequisite(account) ? "other" : "base_usdc",
+  );
   const [amountText, setAmountText] = useState(routeAmount ? usdcDecimal(routeAmount) : "");
   const [currency, setCurrency] = useState(fiatCurrency);
   const [selected, setSelected] = useState<string | undefined>();
@@ -221,7 +259,12 @@ function EditStep({
       </label>
 
       {source === "other" ? (
-        <OfframpRoute port={port} onReady={onReady} onLock={() => setRouteLocked(true)} />
+        <OfframpRoute
+          port={port}
+          onReceipt={onReceipt}
+          onReady={onReady}
+          onLock={() => setRouteLocked(true)}
+        />
       ) : (
         <>
           <div className="send-form__row">

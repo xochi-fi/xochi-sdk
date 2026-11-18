@@ -165,3 +165,45 @@ describe("independent ramp legs", () => {
     expect(io.executions).toBe(1);
   });
 });
+
+describe("W6 durable prerequisite", () => {
+  it("reload reconciles the original route without another execution", async () => {
+    const io = new MemoryPrerequisite();
+    const rows = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => rows.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        rows.set(key, value);
+      },
+    };
+    const options = {
+      source: io.source,
+      driver: io,
+      wallet: ROUTE_WALLET,
+      spendable: async () => io.balance,
+      now: () => io.now,
+      storage,
+    };
+    io.result = { name: "xochi", state: "processing", recoverable: false };
+    const first = createOfframpPrerequisite(options);
+    const stale = createOfframpPrerequisite(options);
+    await first.act("quote");
+    await stale.act("quote");
+    await first.act("execute");
+    const reloaded = createOfframpPrerequisite(options);
+    await reloaded.act("quote");
+    await reloaded.act("execute");
+    expect(io.executions).toBe(1);
+    await expect(stale.act("execute")).rejects.toThrow("checkpoint_changed");
+    expect(reloaded.snapshot().operation_id).toBe(first.snapshot().operation_id);
+    io.result = { name: "xochi", state: "completed", recoverable: false };
+    await reloaded.act("check");
+    io.balance = 24_000_000n;
+    expect(await reloaded.funded("24000000")).toBe(true);
+    const completed = createOfframpPrerequisite(options);
+    expect(completed.snapshot().xochi?.state).toBe("completed");
+    expect(await completed.funded("24000000")).toBe(true);
+    await completed.act("execute");
+    expect(io.executions).toBe(1);
+  });
+});
