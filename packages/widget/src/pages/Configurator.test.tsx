@@ -664,7 +664,7 @@ describe("get code and shared configuration", () => {
       expect(code(tab)).toContain('initialMode: "offramp"');
     }
     expect(code("Ramp")).toContain('direction: "offramp"');
-    expect(code("URL")).toBe(previewSrc());
+    expect(code("URL")).toBe(previewUrl().href);
   });
 
   it("copies the selected format and confirms it", async () => {
