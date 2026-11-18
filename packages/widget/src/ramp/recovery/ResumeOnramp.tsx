@@ -107,7 +107,8 @@ export function ResumeOnramp({
 
   const facts = (
     <p>
-      Buy {money(summary.receive)} for {money(summary.pay)} with Peer / {summary.rail.label}.
+      Reviewed purchase: {money(summary.receive)} for {money(summary.pay)} with Peer /{" "}
+      {summary.rail.label}.
     </p>
   );
   const abandon = (

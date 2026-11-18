@@ -56,6 +56,7 @@ export interface PeerBuyerDriver {
 }
 /** Public, sanitized facts from the local summary; no provider handle is persisted. */
 export interface PeerResumeBinding {
+  readonly operationId?: string;
   readonly wallet: string;
   readonly rail: string;
   readonly currency: string;
@@ -344,6 +345,7 @@ export function createPeerOnrampProvider(options: PeerBuyerOptions) {
         } else {
           // The wallet transaction may have landed: reconcile by read-only lookup only.
           op.resumeBinding = {
+            operationId: preview.operation_id,
             wallet: op.intent.recipient,
             rail: op.rail,
             currency: op.intent.fiat.currency,
@@ -399,6 +401,7 @@ export function createPeerOnrampProvider(options: PeerBuyerOptions) {
         op.stopCapture?.();
       } else if (
         state === "pending" &&
+        op.paymentRecipient &&
         !op.fulfillAttempted &&
         !op.capture &&
         !op.proof &&
@@ -456,6 +459,7 @@ export function createPeerOnrampProvider(options: PeerBuyerOptions) {
       submitted: true,
     };
     op.resumeBinding = {
+      operationId: id,
       wallet: summary.wallet,
       rail: summary.rail,
       currency: fiat.currency,
@@ -474,11 +478,11 @@ export function createPeerOnrampProvider(options: PeerBuyerOptions) {
     } catch {
       found = undefined;
     }
-    if (found?.kind === "active") {
+    if (found?.kind === "active" && found.paymentRecipient) {
       op.intentHash = found.intentHash;
       op.expiresAt = found.expiresAt;
       op.signaledAt = found.signaledAt;
-      op.paymentRecipient = found.paymentRecipient ?? "";
+      op.paymentRecipient = found.paymentRecipient;
       if (found.expiresAt > now()) {
         op.state = "action_required";
         op.phase = "payment";
