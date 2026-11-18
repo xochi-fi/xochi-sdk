@@ -266,6 +266,28 @@ describe("tablist", () => {
     expect(topTabs().map((t) => t.tabIndex)).toEqual([-1, -1, -1, 0]);
   });
 
+  it("moves between wrapped rows while keeping one tab stop", async () => {
+    stubApi();
+    await renderTrade(<Trade look={FULL_LOOK} />, { connected: true });
+    for (const [index, button] of topTabs().entries()) {
+      vi.spyOn(button, "getBoundingClientRect").mockReturnValue(
+        DOMRect.fromRect({
+          x: (index % 2) * 100,
+          y: Math.floor(index / 2) * 44,
+          width: 100,
+          height: 44,
+        }),
+      );
+    }
+    tab("Trade").focus();
+    fireEvent.keyDown(tab("Trade"), { key: "ArrowDown" });
+    expect(document.activeElement).toBe(tab("Activity"));
+    expect(selectedTab()).toBe("Activity");
+    fireEvent.keyDown(tab("Activity"), { key: "ArrowUp" });
+    expect(document.activeElement).toBe(tab("Trade"));
+    expect(topTabs().filter((button) => button.tabIndex === 0)).toEqual([tab("Trade")]);
+  });
+
   it("switches Trade between Buy and Swap with the same keys", async () => {
     stubApi();
     await renderTrade(<Trade look={FULL_LOOK} />, { connected: true });
@@ -303,7 +325,7 @@ describe("tablist", () => {
     const buy = document.getElementById(modeTab("Buy").getAttribute("aria-controls") ?? "")!;
     expect(buy.hasAttribute("hidden")).toBe(false);
     expect(within(buy).getByRole("region", { name: "Before you choose" }).textContent).toMatch(
-      /wallet address are public/,
+      /wallet addresses are public/,
     );
     expect(within(buy).queryAllByRole("radio")).toHaveLength(0);
     expect(port.calls).toEqual([]);

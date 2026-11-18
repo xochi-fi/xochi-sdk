@@ -1,5 +1,5 @@
 /**
- * Live cash-out rails for Send/payment_app, read through S5's offramp provider.
+ * Live cash-out rails for Trade/Cash out, read through S5's offramp provider.
  *
  * Unlike W1's buyer-side discovery, this goes through the maker adapter, whose
  * `capabilities` overlays the user's seller readiness (oracle pause, identity

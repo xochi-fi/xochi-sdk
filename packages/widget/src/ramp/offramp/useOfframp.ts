@@ -73,6 +73,7 @@ export interface OfframpOrder {
   amount: string;
   snapshot: RampSnapshot;
   amounts?: MakerOrderAmounts;
+  depositTransaction?: string;
   estimatedPayout?: RampPreview["receive"];
   phase?: MakerPhase;
   reason?: MakerReason;
@@ -239,6 +240,7 @@ export function useOfframp(
           ...order,
           snapshot: status.snapshot,
           amounts: status.amounts,
+          depositTransaction: status.depositTransaction,
           phase: status.phase ?? order.phase,
           reason: status.reason,
           ...(status.phase ? { stage: "deposit" as const } : {}),

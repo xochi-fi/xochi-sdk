@@ -53,11 +53,43 @@ describe("Buy rails", () => {
     const port = recordedPort({ account: ACCOUNT, clock });
     renderRails(port, <RampRails direction="onramp" account={ACCOUNT} active />);
     const facts = screen.getByRole("region", { name: "Before you choose" });
-    expect(facts.textContent).toMatch(/wallet address are public/);
+    expect(facts.textContent).toMatch(/wallet addresses are public/);
     expect(facts.textContent).toMatch(/sees your payment details and name/);
-    expect(facts.textContent).toMatch(/secure payment verifier/);
+    expect(facts.textContent).toMatch(/secure verifier/);
     expect(facts.textContent).toMatch(/no protocol refund/);
     expect(radios()).toHaveLength(0);
+    expect(port.calls).toEqual([]);
+  });
+
+  it("gives the mobile requirement before offering an amount field", () => {
+    const port = recordedPort({ account: ACCOUNT, clock: { t: RECORDED_AT } });
+    const ua = vi.spyOn(navigator, "userAgent", "get").mockReturnValue("iPhone");
+    try {
+      renderRails(port, <RampRails direction="onramp" account={ACCOUNT} active />);
+      expect(screen.getByRole("status").textContent).toMatch(/desktop Chrome or Brave/);
+      expect(screen.queryByLabelText(/USDC to receive/)).toBeNull();
+      expect(radios()).toHaveLength(0);
+      expect(port.calls).toEqual([]);
+    } finally {
+      ua.mockRestore();
+    }
+  });
+
+  it("shows a text-only catalog tile with no selection authority", () => {
+    const port = recordedPort({ account: ACCOUNT, clock: { t: RECORDED_AT } });
+    const connect = vi.fn();
+    renderRails(
+      port,
+      <RampRails direction="onramp" account={undefined} active onConnectRequest={connect} />,
+    );
+    const venue = screen.getByText("Venmo").closest("[aria-disabled=true]")!;
+    expect(within(venue as HTMLElement).getByText("Not checked yet")).toBeTruthy();
+    expect(venue.querySelector("img, input, button")).toBeNull();
+    expect(
+      screen.getByText("Wise").closest("[aria-disabled=true]")?.querySelector("img"),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Connect wallet" }));
+    expect(connect).toHaveBeenCalledOnce();
     expect(port.calls).toEqual([]);
   });
 
@@ -106,7 +138,7 @@ describe("Buy rails", () => {
     await act(() => vi.advanceTimersByTimeAsync(21_000));
     expect(radios()).toHaveLength(0);
     expect(blockedCard("Wise").textContent).toMatch(/Offer expired/);
-    expect(blockedCard("Wise").textContent).toMatch(/Next: Check again/);
+    expect(blockedCard("Wise").textContent).toMatch(/Check again/);
     expect(screen.getByRole("status").textContent).toMatch(/no longer available; choose again/);
     expect(port.calls).toHaveLength(1);
   });
@@ -254,7 +286,7 @@ describe("Send to a payment app rails", () => {
     const facts = screen.getByRole("region", { name: "Before you choose" }).textContent;
     expect(facts).toMatch(/your own account/);
     expect(facts).toMatch(/Rates can change/);
-    expect(facts).toMatch(/wallet address are public/);
+    expect(facts).toMatch(/wallet addresses are public/);
 
     typeAmount("25");
     await screen.findAllByRole("radio");

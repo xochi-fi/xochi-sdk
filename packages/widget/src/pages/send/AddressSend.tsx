@@ -16,6 +16,7 @@ import { formatTokenAmount } from "../../utils/format.js";
 import {
   chainName,
   checkAddressSend,
+  defaultSendChain,
   defaultSendToken,
   sendChainIds,
   sendTokens,
@@ -25,6 +26,7 @@ import {
 import { useAddressSend } from "./useAddressSend.js";
 
 interface AddressSendProps {
+  initialChain?: number;
   /** Hosted wallet UI delegates the connect prompt to the embedding page. */
   onConnectRequest?: () => void;
   recipient: string;
@@ -44,6 +46,7 @@ export function AddressSend(props: AddressSendProps) {
 
 function WalletAddressSend({
   onConnectRequest,
+  initialChain: requestedChain,
   recipient,
   onRecipient,
   onPaste,
@@ -59,7 +62,7 @@ function WalletAddressSend({
   const send = useAddressSend();
 
   const chainIds = useMemo(() => sendChainIds(config.chains.map((c) => c.id)), [config.chains]);
-  const initialChain = chainIds.includes(8453) ? 8453 : (chainIds[0] ?? 0);
+  const initialChain = defaultSendChain(chainIds, requestedChain);
   const [draft, setDraft] = useState<AddressSendDraft>(() => ({
     chainId: initialChain,
     tokenAddress: defaultSendToken(initialChain)?.address ?? "",

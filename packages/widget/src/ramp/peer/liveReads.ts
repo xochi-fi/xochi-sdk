@@ -1,5 +1,5 @@
-import { atomic, parseRamp, type RampIntent } from "@xochi/client";
-import { getContracts } from "@zkp2p/sdk";
+import { atomic, parseRamp, type RampIntent, type RampMoney } from "@xochi/client";
+import { getContracts, getCurrencyCodeFromHash } from "@zkp2p/sdk";
 import {
   createPublicClient,
   http,
@@ -110,7 +110,7 @@ function broken(): never {
 }
 const DEPOSIT_QUERY = `query MakerDeposit($id: String!) {
  Deposit_by_pk(id: $id) { depositId chainId escrowAddress depositor token remainingDeposits outstandingIntentAmount totalAmountTaken totalWithdrawn blockNumber status }
- Intent(where: {depositId: {_eq: $id}}, limit: 1001) { intentHash amount status releasedAmount orchestratorAddress }
+ Intent(where: {depositId: {_eq: $id}}, limit: 1001) { intentHash amount status releasedAmount orchestratorAddress paymentAmount paymentCurrency }
  DepositFundActivity(where: {depositId: {_eq: $id}}, limit: 1001) { activityType amount blockNumber }
 }`;
 const TEMPLATE_QUERY = `query MakerTemplate($method: String!, $currency: String!) {
@@ -444,6 +444,8 @@ export function createDefaultMakerReads(options: {
                   amount: uint,
                   status: z.string(),
                   releasedAmount: uint.nullable(),
+                  paymentAmount: z.unknown().optional(),
+                  paymentCurrency: z.unknown().optional(),
                   orchestratorAddress: addr,
                 }),
               )
@@ -537,7 +539,8 @@ export function createDefaultMakerReads(options: {
           activeAmount += intent.amount;
         }
         if (activeAmount !== outstanding) broken();
-        const filled = data.Intent.filter((i) => i.status === "FULFILLED").reduce((n, i) => {
+        const fulfilled = data.Intent.filter((i) => i.status === "FULFILLED");
+        const filled = fulfilled.reduce((n, i) => {
           if (i.releasedAmount === null) broken();
           return n + BigInt(i.releasedAmount);
         }, 0n);
@@ -549,8 +552,52 @@ export function createDefaultMakerReads(options: {
         }, 0n);
         if (filled !== BigInt(index.totalAmountTaken) || withdrawn !== BigInt(index.totalWithdrawn))
           broken();
+        // Use the indexer's normalized PaymentVerified fields only. Optional receipt
+        // metadata never changes whether the deposit or a withdrawal can proceed.
+        let deliveredFiat: RampMoney | undefined;
+        let receiptCurrency: string | undefined;
+        let receiptAmount = 0n;
+        for (const fill of fulfilled) {
+          const amount = uint.safeParse(fill.paymentAmount);
+          const currencyHash = hex32.safeParse(fill.paymentCurrency);
+          const currency = currencyHash.success
+            ? getCurrencyCodeFromHash(currencyHash.data.toLowerCase())
+            : undefined;
+          if (
+            !same(fill.orchestratorAddress, orchestrator) ||
+            !amount.success ||
+            BigInt(amount.data) === 0n ||
+            !currency ||
+            (receiptCurrency && receiptCurrency !== currency)
+          ) {
+            receiptCurrency = undefined;
+            break;
+          }
+          receiptCurrency = currency;
+          receiptAmount += BigInt(amount.data);
+        }
+        if (
+          receiptCurrency &&
+          receiptAmount.toString().length <= 31 &&
+          new Set(fulfilled.map((fill) => fill.intentHash.toLowerCase())).size === fulfilled.length
+        ) {
+          // Peer reports payment amounts in the currency's smallest unit.
+          const format = new Intl.NumberFormat("en", {
+            style: "currency",
+            currency: receiptCurrency,
+          });
+          deliveredFiat = {
+            asset: {
+              kind: "fiat",
+              currency: receiptCurrency,
+              decimals: format.resolvedOptions().maximumFractionDigits ?? 2,
+            },
+            atomic: atomic(receiptAmount),
+          };
+        }
         return {
           remaining: atomic(remaining + outstanding),
+          ...(deliveredFiat ? { deliveredFiat } : {}),
           unmatched: atomic(unmatched),
           filled: atomic(filled),
           withdrawn: atomic(withdrawn),

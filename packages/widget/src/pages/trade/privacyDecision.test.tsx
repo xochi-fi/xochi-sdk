@@ -393,7 +393,7 @@ describe("stealth blockers are triaged, not collapsed", () => {
     await waitFor(
       () =>
         expect(mode("Stealth").querySelector(".type-btn__meta--fix")?.textContent).toBe(
-          "Connect a wallet",
+          "Uses your wallet’s Stealth keys",
         ),
       WAIT,
     );

@@ -170,7 +170,7 @@
   --pearl-violet: rgba(40, 51, 139, 0.1);
   --pearl-blue: rgba(42, 116, 152, 0.1);
 
-  --panel-bg: #f7f4ee;
+  --panel-bg: rgba(255, 255, 255, 0.85);
   --panel-bg-elevated: rgba(255, 255, 255, 0.95);
   --panel-bg-subtle: rgba(255, 255, 255, 0.6);
   --panel-border: rgba(26, 26, 28, 0.1);
@@ -238,4 +238,8 @@
 
 [data-theme="light"] .submit-btn {
   text-shadow: none;
+}
+
+[data-theme="light"] .launch-screen {
+  --panel-bg: rgb(247, 244, 238);
 }

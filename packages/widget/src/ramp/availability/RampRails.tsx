@@ -1,7 +1,7 @@
 /**
  * RampRails
  *
- * Live Peer rail availability for Trade/Buy (`onramp`) and Send/payment_app
+ * Live Peer rail availability for Trade/Buy (`onramp`) and Trade/Cash out
  * (`offramp`). The critical facts come first, before any rail can be chosen.
  * Fresh `available` offers form a native radio group (arrow keys move, one
  * tab stop); every other rail stays readable in a list with its state, reason
@@ -89,7 +89,7 @@ export function RampRails({
     account &&
     amount !== undefined &&
     !mobile &&
-    state.intent.amount.money.atomic === amount &&
+    state.intent.exact.money.atomic === amount &&
     state.intent.fiat.currency === currency &&
     state.intent.recipient === account
       ? state.result.offers.map((offer) => railCard(offer, state.intent, settlement, now))

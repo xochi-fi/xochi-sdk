@@ -169,6 +169,12 @@ describe("estimate and review", () => {
     expect(screen.queryByRole("region", { name: "Cash-out order" })).toBeNull();
     expect(port.signed).toEqual([]);
     expect(port.maker.registeredAccounts).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: /Get a new estimate|Back/ }));
+    await chooseRail();
+    expect(screen.getByLabelText(/I accept the cash-out terms/)).toHaveProperty("checked", true);
+    const reopened = screen.getByRole("region", { name: "Review cash-out" });
+    expect(reopened.textContent).toMatch(/sy••••42/);
+    expect(reopened.textContent).not.toContain(PAYEE);
   });
 });
 
@@ -213,11 +219,17 @@ describe("wallet approvals and order progress", () => {
       remaining: "15000000",
       unmatched: "10000000",
       filled: "10000000",
+      deliveredFiat: { asset: { kind: "fiat", currency: "USD", decimals: 2 }, atomic: "992" },
     });
     await check();
     await screen.findByText("Partly paid out", { selector: "strong" }, WAIT);
     const steps = screen.getByRole("list", { name: "Order progress" });
     expect(within(steps).getByText(/Payout in progress \(now\)/)).toBeTruthy();
+    const receipt = within(screen.getByRole("region", { name: "Payment receipt" }));
+    expect(receipt.getByText(/9.92 USD/)).toBeTruthy();
+    expect(
+      receipt.getByRole("link", { name: "View Base transaction" }).getAttribute("href"),
+    ).toMatch(/basescan/);
 
     Object.assign(port.maker.facts, {
       remaining: "0",

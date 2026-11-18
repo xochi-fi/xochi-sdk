@@ -1,5 +1,5 @@
 /**
- * Live Peer rail discovery for one surface (Buy or Send/payment_app).
+ * Live Peer rail discovery for one surface (Buy or Trade/Cash out).
  *
  * Reads through S2's `fetchPeerCapabilities`; the context only lets a test or
  * the screenshot harness substitute in-memory Peer reads. Each amount,

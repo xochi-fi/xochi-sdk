@@ -3,7 +3,7 @@
  *
  * Recovery for a Peer operation already submitted from this browser, shown in
  * Activity when the host's narrowing (`rampProviders` without `peer`, or a
- * `modes` / `sendDestinations` list without Buy or payment_app) has removed
+ * `modes` list without Buy or Cash out) has removed
  * the surface that would otherwise resume it. Narrowing removes ways to START
  * an operation; it must never strand one that moved money (a rollback that
  * drops Peer mid-purchase is the case this covers).

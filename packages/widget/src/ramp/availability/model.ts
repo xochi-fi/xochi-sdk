@@ -66,6 +66,10 @@ export const RAIL_NAMES: Readonly<Record<string, string>> = {
   mercadopago: "Mercado Pago",
   chime: "Chime",
   n26: "N26",
+  monobank: "Monobank",
+  upi: "UPI",
+  xmoney: "X Money",
+  alipay: "Alipay",
 };
 
 export function railName(offer: Pick<RampOffer, "rail">): string {
@@ -286,9 +290,9 @@ export function nextExpiry(offers: readonly RampOffer[], now: number): number | 
 /** Critical facts, shown before any rail can be chosen. Plain text, no hover. */
 export function rampFacts(direction: RampDirection): string[] {
   const shared = [
-    "Your Base transfer and wallet address are public.",
+    "Base transfers and wallet addresses are public.",
     "The other person sees your payment details and name.",
-    "Peer’s access checks and secure payment verifier must be online.",
+    "Peer’s access checks and secure verifier must be online.",
   ];
   return direction === "onramp"
     ? [
@@ -297,8 +301,8 @@ export function rampFacts(direction: RampDirection): string[] {
         "Without Peer stake, Venmo or PayPal payouts can be held for 14 days.",
       ]
     : [
-        "Cash out only to your own account.",
+        "Cash out to your own account.",
         ...shared,
-        "Rates can change. Payments can arrive later and in parts.",
+        "Rates can change. Payments can arrive later in parts.",
       ];
 }

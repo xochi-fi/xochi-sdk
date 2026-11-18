@@ -24,6 +24,7 @@ import type { SwapPrefill } from "../trade/SwapPanel.js";
 import {
   chainName,
   checkSendAmount,
+  defaultSendChain,
   defaultSendToken,
   sendChainIds,
   sendTokens,
@@ -42,6 +43,7 @@ const exact = (amount: bigint, decimals: number): string =>
 type StealthOrder = Omit<SwapPrefill, "nonce">;
 
 interface StealthSendProps {
+  initialChain?: number;
   /** Open the Swap card on this order with Stealth selected. */
   onContinue: (order: Omit<SwapPrefill, "nonce">) => void;
   onConnectRequest?: () => void;
@@ -54,6 +56,7 @@ interface StealthSendProps {
 export function StealthSend({
   onContinue,
   onConnectRequest,
+  initialChain: requestedChain,
   recipient: metaInput,
   onRecipient,
   onPaste,
@@ -69,9 +72,7 @@ export function StealthSend({
   const { readBalanceOf } = usePublicBalances();
 
   const chainIds = useMemo(() => sendChainIds(config.chains.map((c) => c.id)), [config.chains]);
-  const [chainId, setChainId] = useState(() =>
-    chainIds.includes(8453) ? 8453 : (chainIds[0] ?? 0),
-  );
+  const [chainId, setChainId] = useState(() => defaultSendChain(chainIds, requestedChain));
   const tokens = sendTokens(chainId);
   const [symbol, setSymbol] = useState(() => defaultSendToken(chainId)?.symbol ?? "");
   const token = tokens.find((t) => t.symbol === symbol) ?? tokens[0];

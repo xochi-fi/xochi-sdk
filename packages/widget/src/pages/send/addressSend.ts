@@ -149,3 +149,8 @@ export function checkAddressSend(
     },
   };
 }
+
+export function defaultSendChain(chainIds: readonly number[], preferred?: number): number {
+  if (preferred !== undefined && chainIds.includes(preferred)) return preferred;
+  return chainIds.includes(8453) ? 8453 : (chainIds[0] ?? 0);
+}

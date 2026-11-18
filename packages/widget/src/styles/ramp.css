@@ -424,5 +424,28 @@ button.ramp-tile {
   position: sticky;
   bottom: 0;
   z-index: 1;
-  background: var(--panel-bg);
+  background: var(--obsidian);
+  padding-block: 4px;
+}
+
+.ramp-tile:has(.ramp-tile__logo--wordmark) {
+  flex-direction: column;
+  justify-content: center;
+  gap: 0;
+  text-align: center;
+}
+
+.ramp-tile__logo img {
+  display: block;
+}
+
+.ramp-unavailable summary {
+  min-height: 32px;
+  align-content: center;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.ramp-unavailable summary span {
+  color: var(--text-secondary);
 }

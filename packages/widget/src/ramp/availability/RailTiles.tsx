@@ -5,10 +5,13 @@ import { formatRampTime, RAIL_NAMES, type RailCard } from "./model.js";
 function RailLogo({ id }: { id: string }) {
   const logo = railLogo(id);
   if (!logo) return null;
+  const wordmarkWidth =
+    id === "monzo" ? Math.ceil((20 * logo.width) / logo.height) : id === "revolut" ? 80 : 24;
+  const height = id === "wise" ? 24 : (wordmarkWidth * logo.height) / logo.width;
   return (
     <span
-      className="ramp-tile__logo"
-      style={{ padding: 24 * logo.clearSpaceRatio }}
+      className={`ramp-tile__logo ${wordmarkWidth > 24 ? "ramp-tile__logo--wordmark" : ""}`}
+      style={{ width: wordmarkWidth, height, padding: height * logo.clearSpaceRatio }}
       aria-hidden="true"
     >
       <img src={logo.light} width={logo.width} height={logo.height} alt="" />
@@ -136,11 +139,12 @@ export function UnavailableRails({ cards, own }: { cards: RailCard[]; own?: bool
         <details key={card.id}>
           <summary>
             <strong>{own ? `Your ${card.name}` : card.name}</strong>
-            <span>{card.status}</span>
             <span>{SHORT_REASONS[card.state]}</span>
             {card.retryAfter && <span>Retry after {formatRampTime(card.retryAfter)}</span>}
           </summary>
-          <p>{card.reason}</p>
+          <p>
+            <strong>{card.status}.</strong> {card.reason}
+          </p>
           {card.next && <p>{card.next}</p>}
         </details>
       ))}

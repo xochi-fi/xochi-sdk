@@ -1,6 +1,8 @@
 import {
   atomic,
   parseRamp,
+  RampMoneySchema,
+  type RampMoney,
   type RampAction,
   type RampErrorCode,
   type RampCommandContext,
@@ -53,6 +55,7 @@ export interface MakerOrderAmounts {
   readonly reserved: string;
   readonly withdrawable: string;
   readonly withdrawn: string;
+  readonly deliveredFiat?: RampMoney;
 }
 export interface MakerReadiness {
   readonly oracleFresh: boolean;
@@ -63,6 +66,7 @@ export interface MakerReadiness {
 }
 /** Fresh, coherent protocol/indexer facts. Amounts include reserved fees in unavailable funds. */
 export interface MakerDepositFacts {
+  readonly deliveredFiat?: RampMoney;
   readonly remaining: string;
   readonly unmatched: string;
   /** Gross USDC debited by verified fills, including protocol fees; never pending fiat. */
@@ -253,6 +257,7 @@ export interface PeerOfframpProvider extends RampProvider {
     phase?: MakerPhase;
     reason?: MakerReason;
     amounts?: MakerOrderAmounts;
+    depositTransaction?: string;
   }>;
 }
 export function createPeerOfframpProvider(options: {
@@ -505,7 +510,16 @@ export function createPeerOfframpProvider(options: {
     const filled = BigInt(facts.filled),
       withdrawn = BigInt(facts.withdrawn),
       remaining = BigInt(facts.remaining);
+    const fiat = RampMoneySchema.safeParse(facts.deliveredFiat);
+    const deliveredFiat =
+      fiat.success &&
+      fiat.data.asset.kind === "fiat" &&
+      fiat.data.asset.currency === e.intent.fiat.currency &&
+      filled > 0n
+        ? fiat.data
+        : undefined;
     e.amounts = {
+      ...(deliveredFiat ? { deliveredFiat } : {}),
       deposited: atomic(e.preview.pay.atomic),
       filled: atomic(facts.filled),
       reserved: atomic(remaining - BigInt(facts.unmatched)),
@@ -967,8 +981,13 @@ export function createPeerOfframpProvider(options: {
       return access(store, async (entries) => {
         const snapshot = await readStatus(entries, id, signal);
         checkPeerAbort(signal);
+        const current = entries.get(id);
+        const depositTransaction = current?.depositId ? current.creationHash : undefined;
         return {
           snapshot,
+          ...(depositTransaction && /^0x[0-9a-fA-F]{64}$/.test(depositTransaction)
+            ? { depositTransaction }
+            : {}),
           ...(snapshot.peer.state !== "in_doubt" && entries.get(id)?.amounts
             ? { amounts: copy(entries.get(id)!.amounts) }
             : {}),

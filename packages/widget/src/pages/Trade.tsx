@@ -1,9 +1,8 @@
 /**
  * Trade -- the widget.
  *
- * The market swap card plus in-frame tabs at the card's width: Trade (Buy |
- * Swap; Swap is the card), Send (to an address, to Stealth, or to a payment
- * app), Activity (holdings strip + transaction and send logs) and Claims
+ * Trade (Buy, Swap and Cash out), Send (wallet or Stealth address),
+ * Activity (holdings and transaction logs) and Claims
  * (private receiving). No site chrome: the widget is served alone, framed by
  * its host (xochi-fi/xochi-widget#20). Most protocol traffic is agents (via the MCP /
  * OpenAPI surface); this is the simple human path: connect a wallet, swap
@@ -74,7 +73,7 @@ import {
 import { getTokenInfoForChain } from "@xochi/client";
 import type { SwapActivityItem } from "../types/activity.js";
 import { hostBridge } from "../lib/hostBridge.js";
-import type { HostConnection, WalletUi } from "@xochi/widget-lib";
+import { parseEmbedParams, type HostConnection, type WalletUi } from "@xochi/widget-lib";
 
 import { APP_VERSION, readWidgetEmbedConfig, type WidgetEmbedConfig } from "../config.js";
 
@@ -269,9 +268,13 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
   const focusSwap = useRef(false);
   const tabsBaseId = useId();
   const modesBaseId = useId();
-  const [{ surfaces, fiatCurrency }] = useState(() => {
+  const [{ surfaces, fiatCurrency, fromChainId }] = useState(() => {
     const config = tabsShown ? (embed ?? readWidgetEmbedConfig()) : {};
-    return { surfaces: widgetSurfaces(config), fiatCurrency: config.fiatCurrency };
+    return {
+      surfaces: widgetSurfaces(config),
+      fiatCurrency: config.fiatCurrency,
+      fromChainId: parseEmbedParams(window.location.search).fromChainId,
+    };
   });
   const tabShown = (tab: WidgetTabId): boolean => !tabsShown || surfaces.tabs.includes(tab);
   const swapShown = !tabsShown || surfaces.modes.includes("swap");
@@ -638,6 +641,7 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
           {tabsShown && tabShown("send") && (
             <div {...panelProps("send")}>
               <SendPanel
+                initialChain={fromChainId}
                 destination={sendDestination}
                 onDestinationChange={setSendDestination}
                 destinations={surfaces.destinations}

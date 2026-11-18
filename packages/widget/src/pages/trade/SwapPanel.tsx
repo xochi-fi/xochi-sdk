@@ -420,9 +420,6 @@ export function SwapPanel({
             {notice === "stealth_needs_wallet" ? (
               <div className="settlement-caption__notice">
                 <span>{STEALTH_NEEDS_WALLET_CAPTION}</span>
-                <button type="button" onClick={connectWallet}>
-                  Connect wallet
-                </button>
               </div>
             ) : !zkMoneyDestination && settlement === "stealth" && stealthFix === "wallet" ? (
               <span>{STEALTH_NEEDS_WALLET_CAPTION}</span>

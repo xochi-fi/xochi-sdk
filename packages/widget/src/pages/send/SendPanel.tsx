@@ -12,6 +12,7 @@ const LABELS: Record<SendDestinationKind, string> = {
 };
 
 interface SendPanelProps {
+  initialChain?: number;
   destination: SendDestinationKind;
   onDestinationChange: (next: SendDestinationKind) => void;
   destinations?: readonly SendDestinationKind[];
@@ -20,6 +21,7 @@ interface SendPanelProps {
 }
 
 export function SendPanel({
+  initialChain,
   destination,
   onDestinationChange,
   destinations = SEND_DESTINATION_KINDS,
@@ -63,6 +65,7 @@ export function SendPanel({
               className="sr-only"
               type="radio"
               aria-label={LABELS[kind]}
+              aria-description={MODE_META[kind === "address" ? "public" : "stealth"]}
               aria-controls={`${id}-${kind}`}
               name={id}
               checked={destination === kind}
@@ -82,6 +85,7 @@ export function SendPanel({
       {destinations.includes("address") && (
         <div id={`${id}-address`} hidden={destination !== "address"} className="send-card__panel">
           <AddressSend
+            initialChain={initialChain}
             onConnectRequest={onConnectRequest}
             recipient={walletAddress}
             onRecipient={setWalletAddress}
@@ -93,6 +97,7 @@ export function SendPanel({
       {destinations.includes("stealth") && (
         <div id={`${id}-stealth`} hidden={destination !== "stealth"} className="send-card__panel">
           <StealthSend
+            initialChain={initialChain}
             onContinue={onStealthContinue}
             onConnectRequest={onConnectRequest}
             recipient={metaAddress}

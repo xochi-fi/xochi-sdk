@@ -3,7 +3,7 @@ import { createLivePeerOfframpProvider } from "./liveProvider.js";
 import type { UnsignedMakerSDK } from "./sdkMaker.js";
 import { describe, expect, it } from "vitest";
 import { atomic, type RampIntent } from "@xochi/client";
-import { getContracts } from "@zkp2p/sdk";
+import { currencyInfo, getContracts } from "@zkp2p/sdk";
 import {
   encodeAbiParameters,
   encodeEventTopics,
@@ -173,6 +173,8 @@ class MemoryPublicIndexer {
     amount: string;
     status: string;
     releasedAmount: string | null;
+    paymentAmount?: string;
+    paymentCurrency?: string;
     orchestratorAddress: string;
   }[] = [];
   templateIds = ["123"];
@@ -368,6 +370,8 @@ describe("default public maker reads", () => {
         amount: "10000000",
         status: "FULFILLED",
         releasedAmount: "10000000",
+        paymentAmount: "992",
+        paymentCurrency: currencyInfo.USD.currencyCodeHash,
         orchestratorAddress: config.orchestrator,
       },
     ];
@@ -375,6 +379,7 @@ describe("default public maker reads", () => {
       remaining: "15000000",
       unmatched: "10000000",
       filled: "10000000",
+      deliveredFiat: { asset: { kind: "fiat", currency: "USD", decimals: 2 }, atomic: "992" },
       withdrawn: "0",
       activeIntents: 1,
       closed: false,
