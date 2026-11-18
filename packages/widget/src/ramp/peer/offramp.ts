@@ -87,6 +87,7 @@ export interface PeerMakerIO {
       rail: string;
       amount: string;
       payeeHash: string;
+      capabilityRevision: string;
     },
     signal?: AbortSignal,
   ): Promise<PreparedTransaction>;
@@ -776,6 +777,7 @@ export function createPeerOfframpProvider(options: {
                   rail: e.offer.rail.id,
                   amount: e.preview.pay.atomic,
                   payeeHash: e.payeeHash,
+                  capabilityRevision: e.preview.capability_revision,
                 },
                 signal,
               ),
