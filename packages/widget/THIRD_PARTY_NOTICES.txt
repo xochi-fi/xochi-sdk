@@ -34,3 +34,10 @@ React and React DOM remain peer dependencies. The production build does
 not bundle their JavaScript. RainbowKit's imported stylesheet is emitted
 with widget CSS and retains its upstream license obligations (MIT;
 Copyright (c) 2024 Rainbow; see licenses/rainbowkit-MIT.txt).
+
+Payment rail logos
+
+Payment rail logos under src/assets/rails are third-party brand artwork.
+The respective owners retain their trademark rights. The logos identify
+payment rails and imply no endorsement. See dist/assets/rails/SOURCES.md
+in the package for official sources and usage conditions.
