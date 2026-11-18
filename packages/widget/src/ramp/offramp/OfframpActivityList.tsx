@@ -2,7 +2,7 @@
  * OfframpActivityList
  *
  * Payment-app cash-outs in Activity: the sanitized local summary only (rail,
- * currency, USDC amount, bounded status). No payee, deposit or transaction
+ * currency, USDC amount, bounded status and terminal totals). No payee, deposit or transaction
  * data is stored for it, so none can be shown. Renders nothing when empty.
  */
 
@@ -15,9 +15,10 @@ import {
   subscribeLocalOfframps,
   type OfframpActivityItem,
 } from "./localOfframps.js";
-import { formatUsdc } from "./model.js";
+import { formatMixedCashOut, formatUsdc } from "./model.js";
 
 const STATUS: Record<OfframpActivityItem["status"], string> = {
+  mixed: "Partly cashed out and returned",
   open: "Open",
   in_doubt: "Checking status",
   delivered: "Paid out",
@@ -51,7 +52,11 @@ export function OfframpActivityList({ items }: { items: readonly OfframpActivity
       <ul className="send-activity__list">
         {items.map((item) => (
           <li key={item.id} className="send-activity__row">
-            <span className="send-activity__amount">{formatUsdc(item.data.amount)}</span>
+            <span className="send-activity__amount">
+              {item.status === "mixed" && item.totals
+                ? formatMixedCashOut(item.totals.filled, item.totals.returned)
+                : formatUsdc(item.data.amount)}
+            </span>
             <span className="send-activity__meta">
               {`to your ${railName({ rail: { id: item.data.rail, label: item.data.rail } })} account in ${item.data.currency} · `}
               {item.status === "open" && item.phase ? PHASE[item.phase] : STATUS[item.status]}

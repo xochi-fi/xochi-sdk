@@ -195,6 +195,15 @@ export const RampLegSnapshotSchema = z.object({
   recoverable: z.boolean(),
   /** Held payouts remain processing until recipient receipt is verified. */
   payout_state: z.enum(["held", "released"]).optional(),
+  /** Terminal maker split: gross Base USDC debited by fills (including fees)
+   * and returned to the wallet. Completed with a return is not a full refund. */
+  partial_result: z
+    .strictObject({
+      settlement: z.literal("base_usdc"),
+      filled_atomic: z.string().regex(/^[1-9][0-9]{0,30}$/),
+      returned_atomic: z.string().regex(/^[1-9][0-9]{0,30}$/),
+    })
+    .optional(),
   transaction_hash: z
     .string()
     .regex(/^0x[0-9a-fA-F]{64}$/)
@@ -278,6 +287,8 @@ export function rampOutcome(snapshot: Pick<RampSnapshot, "peer" | "xochi">): {
     !(snapshot.xochi && isRecoverableFailure(snapshot.xochi));
   if (states.includes("in_doubt")) return { terminal: false, state: "in_doubt" };
   if (!statesEnded) return { terminal: false, state: "pending" };
+  if (snapshot.peer.partial_result && snapshot.peer.state === "completed")
+    return { terminal, state: "partial_success" };
   if (
     snapshot.peer.state === "completed" &&
     states.every((state) => state === "completed" || state === "skipped")
@@ -391,6 +402,12 @@ function previewCoherent(preview: RampPreview): boolean {
 
 function snapshotCoherent(snapshot: RampSnapshot): boolean {
   if (
+    snapshot.xochi?.partial_result !== undefined ||
+    (snapshot.peer.partial_result !== undefined &&
+      (snapshot.direction !== "offramp" ||
+        snapshot.peer.state !== "completed" ||
+        snapshot.peer.recoverable ||
+        snapshot.peer.payout_state !== undefined)) ||
     snapshot.xochi?.payout_state !== undefined ||
     (snapshot.peer.payout_state === "held" &&
       snapshot.peer.state !== "processing" &&

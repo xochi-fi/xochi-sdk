@@ -3338,6 +3338,197 @@
         "terminal": true
       },
       "valid": true
+    },
+    {
+      "id": "terminal_maker_mixed_result",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "offramp",
+        "leg_order": [
+          "peer"
+        ],
+        "peer": {
+          "name": "peer",
+          "state": "completed",
+          "recoverable": false,
+          "partial_result": {
+            "settlement": "base_usdc",
+            "filled_atomic": "60000000",
+            "returned_atomic": "40000000"
+          }
+        },
+        "allowed_actions": [],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": true
+      },
+      "valid": true,
+      "expected_outcome": "partial_success"
+    },
+    {
+      "id": "mixed_result_zero",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "offramp",
+        "leg_order": [
+          "peer"
+        ],
+        "peer": {
+          "name": "peer",
+          "state": "completed",
+          "recoverable": false,
+          "partial_result": {
+            "settlement": "base_usdc",
+            "filled_atomic": "60000000",
+            "returned_atomic": "0"
+          }
+        },
+        "allowed_actions": [],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": true
+      },
+      "valid": false
+    },
+    {
+      "id": "mixed_result_noncanonical",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "offramp",
+        "leg_order": [
+          "peer"
+        ],
+        "peer": {
+          "name": "peer",
+          "state": "completed",
+          "recoverable": false,
+          "partial_result": {
+            "settlement": "base_usdc",
+            "filled_atomic": "60000000",
+            "returned_atomic": "040000000"
+          }
+        },
+        "allowed_actions": [],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": true
+      },
+      "valid": false
+    },
+    {
+      "id": "mixed_result_unbounded",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "offramp",
+        "leg_order": [
+          "peer"
+        ],
+        "peer": {
+          "name": "peer",
+          "state": "completed",
+          "recoverable": false,
+          "partial_result": {
+            "settlement": "base_usdc",
+            "filled_atomic": "60000000",
+            "returned_atomic": "11111111111111111111111111111111"
+          }
+        },
+        "allowed_actions": [],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": true
+      },
+      "valid": false
+    },
+    {
+      "id": "mixed_result_unknown_field",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "offramp",
+        "leg_order": [
+          "peer"
+        ],
+        "peer": {
+          "name": "peer",
+          "state": "completed",
+          "recoverable": false,
+          "partial_result": {
+            "settlement": "base_usdc",
+            "filled_atomic": "60000000",
+            "returned_atomic": "40000000",
+            "unexpected": "discard"
+          }
+        },
+        "allowed_actions": [],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": true
+      },
+      "valid": false
+    },
+    {
+      "id": "mixed_result_onramp",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "onramp",
+        "leg_order": [
+          "peer"
+        ],
+        "peer": {
+          "name": "peer",
+          "state": "completed",
+          "recoverable": false,
+          "partial_result": {
+            "settlement": "base_usdc",
+            "filled_atomic": "60000000",
+            "returned_atomic": "40000000"
+          }
+        },
+        "allowed_actions": [],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": true
+      },
+      "valid": false
+    },
+    {
+      "id": "mixed_result_refunded",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "offramp",
+        "leg_order": [
+          "peer"
+        ],
+        "peer": {
+          "name": "peer",
+          "state": "refunded",
+          "recoverable": false,
+          "partial_result": {
+            "settlement": "base_usdc",
+            "filled_atomic": "60000000",
+            "returned_atomic": "40000000"
+          }
+        },
+        "allowed_actions": [],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": true
+      },
+      "valid": false
     }
   ],
   "atomic_cases": [

@@ -269,6 +269,40 @@ describe("wallet approvals and order progress", () => {
 });
 
 describe("withdrawal", () => {
+  it("keeps the mixed result in Activity after reload", async () => {
+    const port = memoryOfframpPort({ account: TEST_ACCOUNT });
+    await deposited(port);
+    Object.assign(port.maker.facts, {
+      remaining: "10000000",
+      unmatched: "10000000",
+      filled: "15000000",
+    });
+    await check();
+    const form = within(screen.getByRole("form", { name: "Withdraw unmatched USDC" }));
+    fireEvent.change(form.getByLabelText(/^USDC to withdraw/), { target: { value: "10" } });
+    fireEvent.click(form.getByRole("button", { name: "Prepare withdrawal" }));
+    await screen.findByText(/Next wallet step: Withdraw unmatched USDC/, {}, WAIT);
+    await approveInWallet(port, 3);
+    Object.assign(port.maker.facts, {
+      remaining: "0",
+      unmatched: "0",
+      withdrawn: "10000000",
+      closed: true,
+    });
+    await check();
+    const activity = () => screen.getByRole("region", { name: "Cash-outs" });
+    expect(activity().textContent).toContain("15 USDC cashed out; 10 USDC returned");
+    expect(activity().textContent).not.toContain("Returned to wallet");
+    const order = screen.getByRole("region", { name: "Cash-out order" });
+    expect(order.textContent).toContain("15 USDC cashed out; 10 USDC returned");
+    expect(order.textContent).not.toContain("fiat payment for all of your USDC");
+    cleanup();
+    port.reload();
+    await mount(port);
+    expect(activity().textContent).toContain("15 USDC cashed out; 10 USDC returned");
+    expect(port.signed).toHaveLength(3);
+    expect(listLocalOfframps(TEST_ACCOUNT)[0].status).toBe("mixed");
+  });
   it("withdraws only unmatched USDC through a separate wallet approval", async () => {
     const port = memoryOfframpPort({ account: TEST_ACCOUNT });
     await deposited(port);
