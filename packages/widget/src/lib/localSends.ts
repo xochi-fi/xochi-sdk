@@ -134,13 +134,82 @@ export function listLocalSends(address: string | undefined): SendActivityItem[] 
 }
 
 /** Insert a send, or update its status by transaction hash (keeping its time). */
-export function upsertLocalSend(address: string | undefined, item: SendActivityItem): void {
-  if (!address || parseSendRecord(item) === null) return;
+export function upsertLocalSend(address: string | undefined, item: SendActivityItem): boolean {
+  if (!address || parseSendRecord(item) === null) return false;
   const existing = read(address);
   const idx = existing.findIndex((r) => r.id === item.id);
   const next = idx >= 0 ? [...existing] : [item, ...existing];
   if (idx >= 0) next[idx] = { ...item, timestamp: existing[idx].timestamp };
   const capped = next.sort((a, b) => b.timestamp - a.timestamp).slice(0, MAX_RECORDS);
-  if (!write(address, capped)) return;
+  if (!write(address, capped)) return false;
   notify();
+  return true;
+}
+
+/** One unresolved wallet boundary per wallet, separate from confirmed-hash Activity. */
+export interface SendAttempt {
+  wallet: string;
+  timestamp: number;
+  data: Omit<SendActivityItem["data"], "txHash">;
+  hash?: string;
+  candidateHash?: string;
+}
+const attemptKey = (wallet: string) => `${keyFor(wallet)}:attempt`;
+
+export function readSendAttempt(wallet: string): SendAttempt | null {
+  const raw = window.localStorage.getItem(attemptKey(wallet));
+  if (raw === null) return null;
+  const value = JSON.parse(raw) as SendAttempt;
+  const hash = value.hash ?? `0x${"0".repeat(64)}`;
+  const row = parseSendRecord({
+    id: hash,
+    type: "send",
+    timestamp: value.timestamp,
+    status: "pending",
+    data: { ...value.data, txHash: hash },
+  });
+  if (
+    !row ||
+    (value.candidateHash !== undefined &&
+      (typeof value.candidateHash !== "string" || !isHash(value.candidateHash))) ||
+    !Number.isSafeInteger(row.timestamp) ||
+    row.timestamp <= 0 ||
+    value.wallet.toLowerCase() !== wallet.toLowerCase() ||
+    !/^(0|[1-9][0-9]*)$/.test(row.data.amount)
+  )
+    throw new Error("Invalid send checkpoint");
+  const { txHash: _hash, ...data } = row.data;
+  return {
+    wallet: wallet.toLowerCase(),
+    timestamp: row.timestamp,
+    data,
+    ...(value.hash ? { hash: value.hash } : {}),
+    ...(value.candidateHash ? { candidateHash: value.candidateHash } : {}),
+  };
+}
+
+export function saveSendAttempt(attempt: SendAttempt): void {
+  // Project fields explicitly: never persist wallet/provider errors or payloads.
+  const { chainId, token, symbol, decimals, amount, recipient } = attempt.data;
+  const projected = {
+    wallet: attempt.wallet.toLowerCase(),
+    timestamp: attempt.timestamp,
+    data: { chainId, token, symbol, decimals, amount, recipient },
+    ...(attempt.hash ? { hash: attempt.hash } : {}),
+    ...(attempt.candidateHash ? { candidateHash: attempt.candidateHash } : {}),
+  };
+  window.localStorage.setItem(attemptKey(attempt.wallet), JSON.stringify(projected));
+  if (!readSendAttempt(attempt.wallet)) throw new Error("Send checkpoint unavailable");
+}
+
+export function clearSendAttempt(wallet: string): void {
+  window.localStorage.removeItem(attemptKey(wallet));
+}
+
+/** Serialize wallet-boundary and reconciliation writes across same-origin tabs when supported. */
+export async function withSendAttemptLock(wallet: string, run: () => Promise<void>): Promise<void> {
+  if (!navigator.locks) return run();
+  await navigator.locks.request(attemptKey(wallet), { ifAvailable: true }, async (lock) => {
+    if (lock) await run();
+  });
 }

@@ -17,14 +17,32 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAccount, useConfig } from "wagmi";
-import { switchChain, waitForTransactionReceipt, writeContract } from "wagmi/actions";
-import { erc20Abi, type Hex } from "viem";
+import {
+  getBlock,
+  getTransaction,
+  getTransactionReceipt,
+  switchChain,
+  writeContract,
+} from "wagmi/actions";
+import { waitForTransactionReceipt } from "viem/actions";
+import { encodeFunctionData, erc20Abi, isHash, type Hex } from "viem";
 import { isUserRejection } from "../../lib/eip712.js";
-import { upsertLocalSend, type SendActivityItem } from "../../lib/localSends.js";
-import type { AddressSendOrder } from "./addressSend.js";
+import {
+  clearSendAttempt,
+  listLocalSends,
+  readSendAttempt,
+  saveSendAttempt,
+  upsertLocalSend,
+  withSendAttemptLock,
+  type SendAttempt,
+  type SendActivityItem,
+} from "../../lib/localSends.js";
+import { sendTokens, type AddressSendOrder } from "./addressSend.js";
 
 export type AddressSendPhase =
   | { step: "edit" }
+  | { step: "in_doubt"; order: AddressSendOrder; attempt: SendAttempt; notice?: string }
+  | { step: "blocked" }
   | { step: "review"; order: AddressSendOrder; notice?: string }
   | { step: "switching"; order: AddressSendOrder }
   | { step: "approving"; order: AddressSendOrder }
@@ -49,16 +67,50 @@ export interface UseAddressSendReturn {
   reset: () => void;
   /** The wallet is on another chain than the reviewed order's. */
   needsSwitch: boolean;
+  reconcile: (hash: string) => Promise<void>;
 }
 
 const DECLINED = "You declined in your wallet. Nothing was sent.";
-const NOT_SENT = "The wallet did not send the transfer. Nothing left your wallet.";
+const UNKNOWN_SUBMISSION =
+  "Submission status is unknown. Do not send again. Attach the transaction hash to check this transfer.";
 const NOT_SWITCHED = "The wallet did not switch networks.";
+
+function restore(wallet: string): AddressSendPhase | null {
+  try {
+    const attempt = readSendAttempt(wallet);
+    if (!attempt) return null;
+    const { data } = attempt;
+    const token = sendTokens(data.chainId).find(
+      (token) => token.address.toLowerCase() === data.token.toLowerCase(),
+    );
+    if (!token || token.decimals !== data.decimals) return { step: "blocked" };
+    return {
+      step: "in_doubt",
+      attempt,
+      order: {
+        chainId: data.chainId,
+        token,
+        amount: BigInt(data.amount),
+        recipient: data.recipient as Hex,
+      },
+      notice: UNKNOWN_SUBMISSION,
+    };
+  } catch {
+    return { step: "blocked" };
+  }
+}
 
 export function useAddressSend(): UseAddressSendReturn {
   const config = useConfig();
   const { address, chainId, connector } = useAccount();
   const [phase, setPhase] = useState<AddressSendPhase>({ step: "edit" });
+  const busy = useRef(false);
+  useEffect(() => {
+    if (address) {
+      const saved = restore(address);
+      if (saved) setPhase(saved);
+    }
+  }, [address]);
   const sender = useRef<{ address: string } | null>(null);
 
   // The review is bound to the wallet that opened it.
@@ -76,6 +128,11 @@ export function useAddressSend(): UseAddressSendReturn {
   const review = useCallback(
     (order: AddressSendOrder): void => {
       if (!address || !connector || binding === null) return;
+      const saved = restore(address);
+      if (saved) {
+        setPhase(saved);
+        return;
+      }
       reviewedBinding.current = binding;
       sender.current = { address };
       setPhase({ step: "review", order });
@@ -84,10 +141,11 @@ export function useAddressSend(): UseAddressSendReturn {
   );
 
   const edit = useCallback((): void => {
+    if (busy.current || (address && restore(address))) return;
     reviewedBinding.current = null;
     sender.current = null;
     setPhase({ step: "edit" });
-  }, []);
+  }, [address]);
 
   const reset = edit;
 
@@ -110,71 +168,185 @@ export function useAddressSend(): UseAddressSendReturn {
     }
   }, [config, phase]);
 
-  const approve = useCallback(async (): Promise<void> => {
-    if (phase.step !== "review" || needsSwitch) return;
-    const reviewed = phase.order;
+  const approve = async (): Promise<void> => {
+    if (phase.step !== "review" || needsSwitch || busy.current || !address) return;
+    const order = phase.order;
     const from = sender.current;
-    if (!from || !address || from.address.toLowerCase() !== address.toLowerCase()) {
+    if (!from || reviewedBinding.current !== binding) {
       edit();
       return;
     }
-    setPhase({ step: "approving", order: reviewed });
-    let hash: Hex;
+    busy.current = true;
     try {
-      hash = await writeContract(config, {
-        address: reviewed.token.address as Hex,
-        abi: erc20Abi,
-        functionName: "transfer",
-        args: [reviewed.recipient, reviewed.amount],
-        chainId: reviewed.chainId as (typeof config.chains)[number]["id"],
-        account: from.address as Hex,
-      });
-    } catch (err) {
-      setPhase({
-        step: "review",
-        order: reviewed,
-        notice: isUserRejection(err) ? DECLINED : NOT_SENT,
-      });
-      return;
-    }
+      await withSendAttemptLock(from.address, async () => {
+        const saved = restore(from.address);
+        if (saved) {
+          setPhase(saved);
+          return;
+        }
+        const attempt: SendAttempt = {
+          wallet: from.address,
+          timestamp: Date.now(),
+          data: {
+            chainId: order.chainId,
+            token: order.token.address,
+            symbol: order.token.symbol,
+            decimals: order.token.decimals,
+            amount: order.amount.toString(),
+            recipient: order.recipient,
+          },
+        };
+        saveSendAttempt(attempt);
+        setPhase({ step: "approving", order });
 
-    const record = (status: SendActivityItem["status"]): SendActivityItem => ({
-      id: hash,
-      type: "send",
-      timestamp: Date.now(),
-      status,
-      data: {
-        chainId: reviewed.chainId,
-        token: reviewed.token.address,
-        symbol: reviewed.token.symbol,
-        decimals: reviewed.token.decimals,
-        amount: reviewed.amount.toString(),
-        recipient: reviewed.recipient,
-        txHash: hash,
-      },
-    });
-    upsertLocalSend(from.address, record("pending"));
+        let hash: Hex;
+        try {
+          hash = await writeContract(config, {
+            address: order.token.address as Hex,
+            abi: erc20Abi,
+            functionName: "transfer",
+            args: [order.recipient, order.amount],
+            chainId: order.chainId,
+            account: from.address as Hex,
+          });
+        } catch (error) {
+          if (explicitWalletRefusal(error)) {
+            try {
+              clearSendAttempt(from.address);
+              setPhase({ step: "review", order, notice: DECLINED });
+              return;
+            } catch {
+              // The reservation still has to be treated as unresolved.
+            }
+          }
+          setPhase({ step: "in_doubt", order, attempt, notice: UNKNOWN_SUBMISSION });
+          return;
+        }
+
+        try {
+          if (!isHash(hash)) throw new Error("Invalid transaction hash");
+          attempt.hash = hash;
+          saveSendAttempt(attempt);
+          recordSend(attempt, hash, "pending");
+          setPhase({ step: "sent", order, hash, outcome: "pending" });
+          const receipt = await waitForTransactionReceipt(
+            config.getClient({ chainId: order.chainId }),
+            {
+              hash,
+              checkReplacement: false,
+              timeout: 60_000,
+            },
+          );
+          finish(attempt, order, hash, receipt.status === "success");
+        } catch {
+          setPhase({ step: "in_doubt", order, attempt, notice: UNKNOWN_SUBMISSION });
+        }
+      });
+    } catch {
+      setPhase({ step: "blocked" });
+    } finally {
+      busy.current = false;
+    }
+  };
+
+  function finish(attempt: SendAttempt, order: AddressSendOrder, hash: Hex, success: boolean) {
+    if (!recordSend(attempt, hash, success ? "completed" : "failed"))
+      throw new Error("Send activity unavailable");
+    clearSendAttempt(attempt.wallet);
     reviewedBinding.current = null;
     sender.current = null;
-    setPhase({ step: "sent", order: reviewed, hash, outcome: "pending" });
+    setPhase({ step: "sent", order, hash, outcome: success ? "confirmed" : "reverted" });
+  }
 
-    try {
-      const receipt = await waitForTransactionReceipt(config, {
-        hash,
-        chainId: reviewed.chainId as (typeof config.chains)[number]["id"],
-      });
-      const ok = receipt.status === "success";
-      upsertLocalSend(from.address, record(ok ? "completed" : "failed"));
-      setPhase((current) =>
-        current.step === "sent" && current.hash === hash
-          ? { ...current, outcome: ok ? "confirmed" : "reverted" }
-          : current,
-      );
-    } catch {
-      // The receipt read failed, not the send: the row stays pending, with its
-      // public hash to check on the explorer.
+  const reconcile = async (supplied: string): Promise<void> => {
+    if (
+      phase.step !== "in_doubt" ||
+      busy.current ||
+      address?.toLowerCase() !== phase.attempt.wallet.toLowerCase()
+    )
+      return;
+    const { order } = phase;
+    const hash = phase.attempt.hash ?? supplied.trim();
+    if (!isHash(hash)) {
+      setPhase({ ...phase, notice: "Enter a valid transaction hash. Do not send again." });
+      return;
     }
-  }, [address, config, edit, needsSwitch, phase]);
+    busy.current = true;
+    let attempt = phase.attempt;
+    try {
+      await withSendAttemptLock(attempt.wallet, async () => {
+        const saved = readSendAttempt(attempt.wallet);
+        if (!saved || saved.timestamp !== attempt.timestamp) {
+          setPhase(restore(attempt.wallet) ?? { step: "edit" });
+          return;
+        }
+        if (saved.hash && saved.hash.toLowerCase() !== hash.toLowerCase()) {
+          setPhase(restore(attempt.wallet) ?? { step: "blocked" });
+          return;
+        }
+        const chainId = order.chainId;
+        const tx = await getTransaction(config, { hash, chainId });
+        const expected = encodeFunctionData({
+          abi: erc20Abi,
+          functionName: "transfer",
+          args: [order.recipient, order.amount],
+        });
+        if (
+          tx.from.toLowerCase() !== saved.wallet.toLowerCase() ||
+          tx.to?.toLowerCase() !== order.token.address.toLowerCase() ||
+          tx.input.toLowerCase() !== expected.toLowerCase() ||
+          tx.value !== 0n
+        )
+          throw new Error("Transaction does not match");
 
-  return { phase, review, edit, switchNetwork, approve, reset, needsSwitch };
+        if (!saved.hash) {
+          attempt = { ...saved, candidateHash: hash };
+          saveSendAttempt(attempt);
+        }
+        const receipt = await getTransactionReceipt(config, { hash, chainId });
+        if (!saved.hash) {
+          const block = await getBlock(config, { blockHash: receipt.blockHash, chainId });
+          if (
+            block.timestamp < BigInt(Math.floor(saved.timestamp / 1000)) ||
+            listLocalSends(saved.wallet).some((row) => row.id.toLowerCase() === hash.toLowerCase())
+          )
+            throw new Error("Transaction predates this attempt");
+          attempt = { wallet: saved.wallet, timestamp: saved.timestamp, data: saved.data, hash };
+          saveSendAttempt(attempt);
+        }
+        finish(attempt, order, hash, receipt.status === "success");
+      });
+    } catch {
+      setPhase({
+        ...phase,
+        attempt,
+        notice:
+          "Unable to verify this transfer. Do not send again. Check the hash and try checking status later.",
+      });
+    } finally {
+      busy.current = false;
+    }
+  };
+
+  return { phase, review, edit, switchNetwork, approve, reset, needsSwitch, reconcile };
+}
+
+function explicitWalletRefusal(error: unknown): boolean {
+  // EIP-1193 code 4001 explicitly indicates the user refused the request.
+  let cause = error;
+  for (let depth = 0; depth < 8 && cause && typeof cause === "object"; depth++) {
+    if ("code" in cause && cause.code === 4001) return true;
+    cause = "cause" in cause ? cause.cause : null;
+  }
+  return false;
+}
+
+function recordSend(attempt: SendAttempt, hash: Hex, status: SendActivityItem["status"]): boolean {
+  return upsertLocalSend(attempt.wallet, {
+    id: hash,
+    type: "send",
+    timestamp: attempt.timestamp,
+    status,
+    data: { ...attempt.data, txHash: hash },
+  });
 }
