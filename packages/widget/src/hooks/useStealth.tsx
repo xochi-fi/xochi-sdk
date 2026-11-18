@@ -25,6 +25,7 @@
  * fails invisibly.
  */
 
+import { HOST_WALLET_ID, refusesStealth } from "../wagmi.js";
 import {
   useState,
   useCallback,
@@ -154,7 +155,8 @@ function clearCachedMetaAddress(address: string, chainId: number): void {
 // ============================================================
 
 function useStealthState(): UseStealthReturn {
-  const { address } = useAccount();
+  const { address, connector } = useAccount();
+  const stealthRefused = refusesStealth(connector);
   const config = useConfig();
   const chainId = useChainId() as ChainId;
   const publicClient = usePublicClient();
@@ -230,11 +232,12 @@ function useStealthState(): UseStealthReturn {
     const scope = account.address ? `${account.address.toLowerCase()}:${account.chainId}` : null;
     return account.status === "connected" &&
       authorityRef.current.active &&
+      !refusesStealth(account.connector) &&
       scope === authorityRef.current.walletScope
       ? keysRef.current
       : null;
   }, [config]);
-  const currentMetaAddress = keyScope === walletScope ? metaAddress : null;
+  const currentMetaAddress = keyScope === walletScope && !stealthRefused ? metaAddress : null;
 
   // Load cached meta-address on mount/address change
   useEffect(() => {
@@ -244,7 +247,7 @@ function useStealthState(): UseStealthReturn {
     setMetaAddress(null);
     setError(null);
     setIsLoading(false);
-    if (!address) return;
+    if (!address || stealthRefused) return;
 
     const cached = loadCachedMetaAddress(address, chainId);
     // A meta-address an older build derived from a `0x` signature has public
@@ -255,7 +258,7 @@ function useStealthState(): UseStealthReturn {
       setMetaAddress(cached);
       // Keys are not cached (derived on demand from signature)
     }
-  }, [address, chainId, walletScope, revokeKeys]);
+  }, [address, chainId, walletScope, stealthRefused, revokeKeys]);
 
   // Check registration status when meta-address changes
   useEffect(() => {
@@ -323,6 +326,11 @@ function useStealthState(): UseStealthReturn {
       return false;
     }
 
+    if (refusesStealth(account.connector)) {
+      setError("Connect a wallet in the widget to set up Stealth.");
+      return false;
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -347,6 +355,22 @@ function useStealthState(): UseStealthReturn {
         `${currentAccount.address?.toLowerCase()}:${currentAccount.chainId}` !== walletScope
       ) {
         return false;
+      }
+
+      if (currentAccount.connector?.id === HOST_WALLET_ID) {
+        const validSignature =
+          !refusesStealth(currentAccount.connector) &&
+          publicClient !== undefined &&
+          (await publicClient.verifyMessage({
+            address,
+            message: STEALTH_SIGN_MESSAGE,
+            signature,
+            mode: "eoa",
+          }));
+        if (authorityRef.current !== authority || !authority.active) return false;
+        if (!validSignature || refusesStealth(currentAccount.connector)) {
+          throw new Error("The signature is not from an approved wallet connection.");
+        }
       }
 
       // Derive keys from signature
@@ -383,7 +407,16 @@ function useStealthState(): UseStealthReturn {
       if (promptTimer) clearTimeout(promptTimer);
       if (authorityRef.current === authority && authority.active) setIsLoading(false);
     }
-  }, [address, authority, chainId, config, walletScope, signMessageAsync, revokeKeys]);
+  }, [
+    address,
+    authority,
+    chainId,
+    config,
+    walletScope,
+    publicClient,
+    signMessageAsync,
+    revokeKeys,
+  ]);
 
   // Register meta-address on-chain
   const registerMetaAddress = useCallback(async (): Promise<string | null> => {

@@ -1,3 +1,4 @@
+import { firstPartyOrigins } from "./lib/hostOrigin.js";
 import { parseEmbedParams, type EmbedParams } from "@xochi/widget-lib";
 import { SUPPORTED_CHAIN_IDS, type PinnedEscrows, type PinnedPullRecipients } from "@xochi/client";
 
@@ -29,6 +30,8 @@ export interface WidgetSettings {
   siteUrl?: string;
   /** Require this exact parent origin for iframe bridge messages when configured. */
   hostOrigin?: string;
+  /** Space-separated explicit origins allowed to relay Stealth setup. */
+  firstPartyHosts?: string;
   walletConnectProjectId?: string;
   rpcUrls?: Partial<
     Record<
@@ -64,6 +67,7 @@ export let API_URL = "https://api.xochi.fi";
 export let AUTH_API_URL = API_URL;
 export let isDevelopment = false;
 export let APP_VERSION = "dev";
+export let FIRST_PARTY_HOST_ORIGINS: readonly string[] = [];
 export let HOST_ORIGIN: string | undefined;
 export let SITE_URL = "https://xochi.fi";
 export let WALLETCONNECT_PROJECT_ID = "a992784b090fa32d560ea6d4136d431f";
@@ -116,6 +120,7 @@ export function configureWidget(settings: WidgetSettings): void {
   isDevelopment = settings.development ?? false;
   APP_VERSION = settings.appVersion ?? "dev";
   HOST_ORIGIN = settings.hostOrigin;
+  FIRST_PARTY_HOST_ORIGINS = firstPartyOrigins(settings.firstPartyHosts ?? "");
   SITE_URL = settings.siteUrl || "https://xochi.fi";
   WALLETCONNECT_PROJECT_ID = settings.walletConnectProjectId ?? WALLETCONNECT_PROJECT_ID;
   RPC_URLS = Object.freeze({ ...settings.rpcUrls });
