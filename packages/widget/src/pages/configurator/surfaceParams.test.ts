@@ -63,6 +63,14 @@ describe("configurator public surface parameters", () => {
       params,
     );
   });
+  it("uses the offramp facade when Cash out is the only Trade mode", () => {
+    expect(codeFor("ramp", "https://widget.example", { modes: ["offramp"] })).toContain(
+      'direction: "offramp"',
+    );
+    expect(codeFor("ramp", "https://widget.example", { initialTab: "send" })).toContain(
+      'direction: "onramp"',
+    );
+  });
   it("round trips all controls through shared links and snippets", () => {
     const shared = configuratorSearch(FRAME_DEFAULTS, DEFAULT_BACKDROP, "desktop", params);
     expect(readConfiguratorSearch(shared).params).toEqual(params);
