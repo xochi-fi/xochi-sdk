@@ -211,7 +211,7 @@ async function quoteToTag(
   expect(account.target).toBe("_blank");
   expect(account.rel).toBe("noopener noreferrer");
   fireEvent.change(field, { target: { value: `@${TAG.toUpperCase()}` } });
-  fireEvent.change(screen.getByLabelText<HTMLInputElement>("Send"), {
+  fireEvent.change(screen.getByLabelText<HTMLInputElement>("Pay"), {
     target: { value: "1000" },
   });
   return bodies;
@@ -372,10 +372,10 @@ describe("zk.money destination", () => {
         ),
       ).toEqual([]);
       const quotedBodies = bodies.length;
-      fireEvent.change(screen.getByLabelText("Send"), { target: { value: "" } });
+      fireEvent.change(screen.getByLabelText("Pay"), { target: { value: "" } });
       await waitFor(() => expect(document.querySelector(".quote-details")).toBeNull(), WAIT);
       expect(bodies).toHaveLength(quotedBodies);
-      fireEvent.change(screen.getByLabelText("Send"), { target: { value: "1000" } });
+      fireEvent.change(screen.getByLabelText("Pay"), { target: { value: "1000" } });
       await screen.findByText(`@${TAG} receives ≈ 998 DAI`, {}, WAIT);
       sessionStorage.setItem(
         STORAGE_KEYS.walletSession,
@@ -468,7 +468,7 @@ describe("zk.money destination", () => {
     expect(document.querySelector(".quote-details")).toBeNull();
     expect(document.querySelector<HTMLButtonElement>(".submit-btn")?.disabled).toBe(true);
     expect(tagField()?.value).toBe(`@${TAG.toUpperCase()}`);
-    expect(screen.getByLabelText<HTMLInputElement>("Send").value).toBe("1000");
+    expect(screen.getByLabelText<HTMLInputElement>("Pay").value).toBe("1000");
     expect(screen.getByRole("button", { name: "On zk.money - Change network" })).toBeTruthy();
     expect(bodies).toHaveLength(1);
     const errorText = document.querySelector(".error-display")?.textContent ?? "";
@@ -503,7 +503,7 @@ describe("zk.money destination", () => {
     vi.useFakeTimers();
     try {
       fireEvent.change(field, { target: { value: "@invalid.tag" } });
-      fireEvent.change(screen.getByLabelText<HTMLInputElement>("Send"), {
+      fireEvent.change(screen.getByLabelText<HTMLInputElement>("Pay"), {
         target: { value: "1000" },
       });
       await act(() => vi.advanceTimersByTimeAsync(QUOTE_DEBOUNCE_MS * 2));
@@ -609,7 +609,7 @@ describe("zk.money destination", () => {
       );
       fireEvent.click(await offeredZkMoneyShortcut());
       fireEvent.change(screen.getByLabelText("zk.money tag"), { target: { value: TAG } });
-      fireEvent.change(screen.getByLabelText("Send"), { target: { value: "1000" } });
+      fireEvent.change(screen.getByLabelText("Pay"), { target: { value: "1000" } });
       await waitFor(() => expect(document.querySelector(".quote-details")).toBeTruthy(), WAIT);
       const original = parseWidgetCapabilities(CAPABILITIES.body.capabilities);
       const caps = parseWidgetCapabilities({
@@ -648,7 +648,7 @@ describe("zk.money destination", () => {
       expect(tagField()).toBeNull();
       expect(document.querySelector(".zkmoney-privacy")).toBeNull();
       expect(document.querySelector(".quote-details")).toBeNull();
-      expect(screen.getByLabelText<HTMLInputElement>("Send").value).toBe("1000");
+      expect(screen.getByLabelText<HTMLInputElement>("Pay").value).toBe("1000");
       const send = document.getElementById("swap-pay-row")!;
       const receive = document.getElementById("swap-receive-row")!;
       expect(send.querySelector(".token-symbol")?.textContent).toBe("USDC");
@@ -702,7 +702,7 @@ describe("zk.money destination", () => {
     expect(tagField()).toBeNull();
     expect(document.querySelector(".zkmoney-privacy")).toBeNull();
     expect(document.querySelector(".quote-details")).toBeNull();
-    expect(screen.getByLabelText<HTMLInputElement>("Send").value).toBe("1000");
+    expect(screen.getByLabelText<HTMLInputElement>("Pay").value).toBe("1000");
     expect(screen.getByRole("button", { name: "On Base - Change network" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "On Ethereum - Change network" })).toBeTruthy();
     expect(bodies).toHaveLength(taggedQuoteCount);
@@ -741,7 +741,7 @@ describe("zk.money destination", () => {
     await renderTrade(<SwapPanel />, { connected: true, walletChainId: 8453 });
     fireEvent.click(await offeredZkMoneyShortcut());
     fireEvent.change(screen.getByLabelText("zk.money tag"), { target: { value: TAG } });
-    fireEvent.change(screen.getByLabelText("Send"), { target: { value: "1000" } });
+    fireEvent.change(screen.getByLabelText("Pay"), { target: { value: "1000" } });
     await waitFor(() => expect(document.querySelector(".quote-details")).toBeTruthy(), WAIT);
     const taggedQuoteCount = bodies.length;
 
@@ -751,7 +751,7 @@ describe("zk.money destination", () => {
     );
     expect(tagField()).toBeNull();
     expect(document.querySelector(".quote-details")).toBeNull();
-    expect(screen.getByLabelText<HTMLInputElement>("Send").value).toBe("1000");
+    expect(screen.getByLabelText<HTMLInputElement>("Pay").value).toBe("1000");
     expect(screen.getByRole("button", { name: "On Base - Change network" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "On Ethereum - Change network" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "DAI - Change token" })).toBeTruthy();

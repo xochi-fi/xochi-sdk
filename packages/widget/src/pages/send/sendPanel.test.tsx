@@ -242,9 +242,10 @@ describe("send privately", () => {
     fireEvent.click(panel.getByRole("button", { name: "Opens Swap to quote" }));
 
     expect(topTab("Trade").getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Swap" }));
     const card = document.querySelector(".trade-card") as HTMLElement;
     await waitFor(
-      () => expect(within(card).getByLabelText<HTMLInputElement>("Send").value).toBe("5"),
+      () => expect(within(card).getByLabelText<HTMLInputElement>("Pay").value).toBe("5"),
       WAIT,
     );
     expect(
@@ -339,7 +340,7 @@ describe("send privately to someone else", () => {
     expect(topTab("Trade").getAttribute("aria-selected")).toBe("true");
     const card = document.querySelector(".trade-card") as HTMLElement;
     await waitFor(
-      () => expect(within(card).getByLabelText<HTMLInputElement>("Send").value).toBe("5"),
+      () => expect(within(card).getByLabelText<HTMLInputElement>("Pay").value).toBe("5"),
       WAIT,
     );
     const note = within(card).getByRole("region", { name: "Stealth recipient" });

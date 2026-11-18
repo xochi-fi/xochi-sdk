@@ -121,7 +121,7 @@ describe("layout=swap", () => {
     expect(screen.queryByRole("tab")).toBeNull();
     expect(screen.queryByRole("tabpanel")).toBeNull();
     expect(screen.queryByRole("region", { name: "Transaction log" })).toBeNull();
-    expect(screen.getByLabelText("Send")).toBeTruthy();
+    expect(screen.getByLabelText("Pay")).toBeTruthy();
   });
 
   it("hides account chrome when the host owns wallet UI", async () => {

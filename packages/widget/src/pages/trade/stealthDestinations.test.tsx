@@ -90,7 +90,7 @@ async function openFrame(search: string, body: unknown = LIVE_CAPABILITIES) {
 }
 const sendRow = (): HTMLElement => document.getElementById("swap-pay-row") as HTMLElement;
 const receiveRow = (): HTMLElement => document.getElementById("swap-receive-row") as HTMLElement;
-const payAmount = (): HTMLInputElement => screen.getByLabelText<HTMLInputElement>("Send");
+const payAmount = (): HTMLInputElement => screen.getByLabelText<HTMLInputElement>("Pay");
 const unit = (row: HTMLElement): string =>
   `${row.querySelector(".token-symbol")?.textContent} on ${row.querySelector(".chain-badge__name")?.textContent}`;
 const stealthSelected = (): string | null =>

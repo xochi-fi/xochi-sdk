@@ -488,7 +488,7 @@ export function SwapPanel({
             <div className="input-header">
               <span className="input-header__lead">
                 <label className="input-label" htmlFor="swap-pay-amount">
-                  Send
+                  Pay
                 </label>
                 <AmountRevealToggle fit={sendFit} controls="swap-pay-row" />
               </span>

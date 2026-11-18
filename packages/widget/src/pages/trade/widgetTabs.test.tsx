@@ -215,7 +215,9 @@ describe("tablist", () => {
     fireEvent.click(tab("Activity"));
     expect(selectedTab()).toBe("Activity");
     const activity = visiblePanel();
-    expect(within(activity).getByRole("region", { name: "Transaction log" })).toBeTruthy();
+    const activityLog = within(within(activity).getByRole("region", { name: "Transaction log" }));
+    expect(activityLog.getByRole("button", { name: "Connect wallet" })).toBeTruthy();
+    expect(activityLog.queryByRole("button", { expanded: false })).toBeNull();
     // The card is still mounted, only hidden: that is what keeps a swap alive.
     expect(document.querySelector(".trade-card")?.closest("[hidden]")).not.toBeNull();
 

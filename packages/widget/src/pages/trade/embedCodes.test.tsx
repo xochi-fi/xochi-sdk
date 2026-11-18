@@ -53,7 +53,7 @@ async function quoteFrame(search: string): Promise<Record<string, unknown>[]> {
   window.history.replaceState({}, "", `/embed${search}`);
   vi.stubGlobal("fetch", recordingStub(bodies));
   await renderTrade(<SwapPanel />);
-  fireEvent.change(screen.getByLabelText<HTMLInputElement>("Send"), {
+  fireEvent.change(screen.getByLabelText<HTMLInputElement>("Pay"), {
     target: { value: "1000" },
   });
   await waitFor(() => expect(document.querySelector(".quote-details")).toBeTruthy(), WAIT);
