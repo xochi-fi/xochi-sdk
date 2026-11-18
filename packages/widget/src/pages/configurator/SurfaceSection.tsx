@@ -59,6 +59,11 @@ export function SurfaceSection({
                     }
                   />
                   <span className="config-choice__name">{LABELS[value]}</span>
+                  {value === "claims" && (
+                    <span className="config-choice__meta">
+                      Appears once a wallet connects, so the preview here does not show it.
+                    </span>
+                  )}
                 </label>
               ))}
             </div>
