@@ -60,6 +60,8 @@ describe("railCard", () => {
   it.each<RampAvailability>([
     { state: "setup_required", requirement_codes: ["peer_dispute_stake"] },
     { state: "setup_required", requirement_codes: ["some_new_requirement"] },
+    { state: "setup_required", requirement_codes: ["peer_wallet_linked_session"] },
+    { state: "setup_required", requirement_codes: ["maker_account_setup"] },
     { state: "temporarily_unavailable", reason_code: "capability_unavailable" },
     { state: "not_supported", reason_code: "capability_unavailable" },
     { state: "availability_unknown", reason_code: "brand_new_code" },
@@ -71,4 +73,16 @@ describe("railCard", () => {
     expect(card.reason.length).toBeGreaterThan(10);
     expect(card.next?.length).toBeGreaterThan(10);
   });
+
+  it.each(["peer_wallet_linked_session", "maker_account_setup"])(
+    "explains %s in words, never as a bare code or a launch promise",
+    async (code) => {
+      const { intent, offer } = await wiseOffer();
+      const availability: RampAvailability = { state: "setup_required", requirement_codes: [code] };
+      const card = railCard({ ...offer, availability }, intent, settlement, RECORDED_AT);
+      expect(card.status).toBe("Setup required");
+      expect(`${card.reason} ${card.next}`).not.toContain(code);
+      expect(`${card.reason} ${card.next}`).not.toMatch(/coming soon/i);
+    },
+  );
 });

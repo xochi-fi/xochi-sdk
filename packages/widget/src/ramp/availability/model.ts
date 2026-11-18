@@ -112,6 +112,15 @@ const REQUIREMENTS: Readonly<Record<string, { reason: string; next: string }>> =
       "This rail needs Peer stake on your account. Without it, Peer can hold the payout for up to 14 days.",
     next: "Add stake in Peer, then check again.",
   },
+  peer_wallet_linked_session: {
+    reason:
+      "Peer needs an account session linked to this wallet before it will quote a purchase. This widget cannot sign you in to Peer.",
+    next: "Sign in to Peer with this wallet and finish its account setup, then check again.",
+  },
+  maker_account_setup: {
+    reason: "Peer needs your payment-app account set up for this rail before you can cash out.",
+    next: "Set up your account below, then check again.",
+  },
   maker_seller_credential: {
     reason: "Peer has not verified a payment-app account of yours for this rail.",
     next: "Verify your own account in Peer, then check again.",

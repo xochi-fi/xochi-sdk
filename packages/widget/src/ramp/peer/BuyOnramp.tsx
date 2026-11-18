@@ -127,10 +127,14 @@ export function BuyOnramp({
       await task();
     } catch {
       if (current === generation.current) {
-        setSetup(runtime?.setupRequired());
+        const code = runtime?.setupRequired();
+        setSetup(code);
         setAccepted(false);
+        // A named setup step is the whole story; the generic note would contradict it.
         setNote(
-          "Peer could not validate this operation. Check status after a wallet submission; otherwise review a new quote.",
+          code
+            ? ""
+            : "Peer could not validate this operation. Check status after a wallet submission; otherwise review a new quote.",
         );
       }
     } finally {
@@ -283,15 +287,16 @@ export function BuyOnramp({
                         // Persist uncertainty BEFORE the wallet boundary: a reload
                         // mid-approval resumes in doubt and never signals again.
                         const approvedAt = new Date().toISOString();
+                        emitter.current = makeEmitter("onramp");
                         if (summary.current)
                           remember({
                             ...summary.current,
                             submitted: true,
                             state: "in_doubt",
                             approved_at: approvedAt,
+                            ramp_ref: emitter.current.rampRef,
                             updated_at: approvedAt,
                           });
-                        emitter.current = makeEmitter("onramp");
                         const next = await client.approve(
                           preview.operation_id,
                           preview.quote_id,
