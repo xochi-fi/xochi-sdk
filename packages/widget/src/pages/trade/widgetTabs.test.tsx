@@ -223,7 +223,7 @@ describe("tablist", () => {
 
     fireEvent.click(tab("Send"));
     expect(selectedTab()).toBe("Send");
-    expect(within(visiblePanel()).getByRole("group", { name: "Send to" })).toBeTruthy();
+    expect(within(visiblePanel()).getByRole("textbox", { name: "To" })).toBeTruthy();
 
     fireEvent.click(tab("Trade"));
     expect(selectedTab()).toBe("Trade");
@@ -362,11 +362,7 @@ describe("tablist", () => {
         .map((t) => t.textContent),
     ).toEqual(["Swap"]);
     fireEvent.click(tab("Send"));
-    expect(
-      within(screen.getByRole("group", { name: "Send to" }))
-        .getAllByRole("radio")
-        .map((t) => t.getAttribute("aria-label")),
-    ).toEqual(["Wallet address", "Stealth address"]);
+    expect(screen.getByRole("textbox", { name: "To" })).toBeTruthy();
     cleanup();
 
     await renderTrade(

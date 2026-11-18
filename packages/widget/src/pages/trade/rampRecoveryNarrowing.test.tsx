@@ -154,11 +154,7 @@ describe("a host that drops Peer", () => {
       { connected: true },
     );
     fireEvent.click(tab("Send"));
-    expect(
-      within(screen.getByRole("group", { name: "Send to" }))
-        .getAllByRole("radio")
-        .map((t) => t.getAttribute("aria-label")),
-    ).toEqual(["Wallet address", "Stealth address"]);
+    expect(screen.getByRole("textbox", { name: "To" })).toBeTruthy();
     fireEvent.click(tab("Activity"));
     const recovery = await screen.findByRole("region", { name: "Cash-out to recover" }, WAIT);
     await within(recovery).findByText("Awaiting a buyer", { selector: "strong" }, WAIT);

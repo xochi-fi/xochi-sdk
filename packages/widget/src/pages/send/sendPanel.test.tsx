@@ -20,7 +20,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { decodeFunctionData, erc20Abi, getAddress } from "viem";
+import { decodeFunctionData, erc20Abi, getAddress, isAddress } from "viem";
 import { apiStub, harnessReceipts, renderTrade, TEST_ACCOUNT } from "../trade/harness.js";
 import { Trade } from "../Trade.js";
 import { FULL_LOOK } from "../trade/embedParams.js";
@@ -34,6 +34,38 @@ import { memoryOfframpPort } from "../../test/offrampPort.js";
 
 import { quoteWire } from "../../test/intentHarness.js";
 import vectors from "../../lib/reverse-stealth-vectors.json";
+
+vi.mock("../../lib/recipient/index.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../../lib/recipient/index.js")>();
+  return {
+    ...original,
+    resolveRecipient: async (...args: Parameters<typeof original.resolveRecipient>) => {
+      const [input] = args;
+      if (input === "published.gwei") {
+        const fixture = vectors[0];
+        return {
+          status: "resolved",
+          recipient: {
+            kind: "gns",
+            input,
+            name: input,
+            address: RECIPIENT,
+            stealthMetaAddress: `st:eth:0x${fixture.spending_pub.slice(2)}${fixture.viewing_pub.slice(2)}`,
+          },
+        };
+      }
+      if (original.classifyRecipientInput(input) === "address") {
+        const address =
+          isAddress(input) && !/^0x0{40}$/.test(input) ? getAddress(input) : undefined;
+        return address
+          ? { status: "resolved", recipient: { kind: "address", address, input } }
+          : { status: "invalid", reason: "Check this address" };
+      }
+      return original.resolveRecipient(...args);
+    },
+    readStealthRegistration: async () => "not_published",
+  };
+});
 
 vi.setConfig({ testTimeout: testBudget({ renders: 1, waits: 4 }) });
 
@@ -79,22 +111,20 @@ const topTab = (name: string): HTMLElement =>
   within(screen.getByRole("tablist", { name: "Widget sections" })).getByRole("tab", {
     name: new RegExp(`^${name}`),
   });
-const kindTab = (name: string): HTMLElement =>
-  within(screen.getByRole("group", { name: "Send to" })).getByRole("radio", {
-    name: name === "Address" ? "Wallet address" : "Stealth address",
-  });
-const kindPanel = (name: string): HTMLElement =>
-  document.getElementById(kindTab(name).getAttribute("aria-controls") ?? "") as HTMLElement;
+const sendForm = () => within(screen.getByRole("form", { name: "Send" }));
 
-async function openSend(options: { tokenBalance?: bigint; hostWallet?: boolean } = {}) {
+async function openSend(
+  options: { tokenBalance?: bigint; hostWallet?: boolean; walletChainId?: number } = {},
+) {
   await renderTrade(<Trade look={FULL_LOOK} />, { connected: true, ...options });
   fireEvent.click(topTab("Send"));
 }
 
-function fillAddressForm(amount: string, recipient: string) {
-  const form = within(kindPanel("Address"));
+async function fillAddressForm(amount: string, recipient: string) {
+  const form = sendForm();
   fireEvent.change(form.getByLabelText("Amount"), { target: { value: amount } });
-  fireEvent.change(form.getByLabelText("Recipient address"), { target: { value: recipient } });
+  fireEvent.change(form.getByLabelText("To"), { target: { value: recipient } });
+  await waitFor(() => expect(form.queryByText("Looking up…")).toBeNull(), WAIT);
 }
 
 beforeEach(() => {
@@ -114,20 +144,18 @@ describe("send to an address", () => {
   it("keeps an address invalid for the chain out of review, asking the wallet nothing", async () => {
     const calls = stubWallet();
     await openSend({ tokenBalance: 10_000_000n });
-    const panel = within(kindPanel("Address"));
+    const panel = sendForm();
     expect(panel.getByLabelText<HTMLSelectElement>("Network").value).toBe("8453");
 
     // A mixed-case address whose EIP-55 checksum is wrong.
-    fillAddressForm("1", "0xaBcdef0123456789abcdef0123456789abcdef01");
-    fireEvent.click(panel.getByRole("button", { name: "Review send" }));
-    expect(panel.getByLabelText("Recipient address").getAttribute("aria-invalid")).toBe("true");
+    await fillAddressForm("1", "0xaBcdef0123456789abcdef0123456789abcdef01");
+    fireEvent.click(panel.getByRole("button", { name: "Send" }));
+    expect(panel.getByLabelText("To").getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("region", { name: "Review send" })).toBeNull();
 
-    fireEvent.change(panel.getByLabelText("Recipient address"), {
-      target: { value: "0x0000000000000000000000000000000000000000" },
-    });
-    fireEvent.click(panel.getByRole("button", { name: "Review send" }));
-    expect(panel.getByLabelText("Recipient address").getAttribute("aria-invalid")).toBe("true");
+    await fillAddressForm("1", "0x0000000000000000000000000000000000000000");
+    fireEvent.click(panel.getByRole("button", { name: "Send" }));
+    expect(panel.getByLabelText("To").getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("region", { name: "Review send" })).toBeNull();
     expect(prompts(calls)).toEqual([]);
   });
@@ -135,10 +163,10 @@ describe("send to an address", () => {
   it("refuses more than the wallet holds", async () => {
     stubWallet();
     await openSend({ tokenBalance: 1_000_000n });
-    const panel = within(kindPanel("Address"));
-    await waitFor(() => expect(panel.getByText(/^Balance: 1 USDC$/)).toBeTruthy(), WAIT);
-    fillAddressForm("1.000001", RECIPIENT);
-    fireEvent.click(panel.getByRole("button", { name: "Review send" }));
+    const panel = sendForm();
+    await waitFor(() => expect(panel.getByText(/^Balance 1 USDC$/)).toBeTruthy(), WAIT);
+    await fillAddressForm("1.000001", RECIPIENT);
+    fireEvent.click(panel.getByRole("button", { name: "Send" }));
     expect(panel.getByLabelText("Amount").getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("region", { name: "Review send" })).toBeNull();
   });
@@ -147,21 +175,20 @@ describe("send to an address", () => {
     const calls = stubWallet({ eth_sendTransaction: TX_HASH });
     harnessReceipts.set(TX_HASH, "success");
     await openSend({ tokenBalance: 10_000_000n });
-    fireEvent.change(within(kindPanel("Address")).getByLabelText("Network"), {
+    fireEvent.change(sendForm().getByLabelText("Network"), {
       target: { value: "1" },
     });
-    fillAddressForm("1.234567", RECIPIENT);
-    fireEvent.click(within(kindPanel("Address")).getByRole("button", { name: "Review send" }));
+    await fillAddressForm("1.234567", RECIPIENT);
+    fireEvent.click(sendForm().getByRole("button", { name: "Send" }));
 
     const review = screen.getByRole("region", { name: "Review send" });
     expect(within(review).getByText("1.234567 USDC")).toBeTruthy();
     expect(within(review).getByText("Ethereum")).toBeTruthy();
     expect(within(review).getByText(getAddress(RECIPIENT))).toBeTruthy();
-    expect(within(review).getByText(USDC_L1.address)).toBeTruthy();
     // Reviewing is not approving: the wallet has been asked for nothing.
     expect(prompts(calls)).toEqual([]);
 
-    fireEvent.click(within(review).getByRole("button", { name: "Approve in wallet" }));
+    fireEvent.click(within(review).getByRole("button", { name: "Confirm in wallet" }));
 
     const sent = await screen.findByRole("region", { name: "Send submitted" }, WAIT);
     expect(within(sent).getByText(TX_HASH)).toBeTruthy();
@@ -190,13 +217,13 @@ describe("send to an address", () => {
     const calls = stubWallet({ eth_sendTransaction: TX_HASH });
     harnessReceipts.set(TX_HASH, "success");
     await openSend({ tokenBalance: 10_000_000n, hostWallet: true });
-    fireEvent.change(within(kindPanel("Address")).getByLabelText("Network"), {
+    fireEvent.change(sendForm().getByLabelText("Network"), {
       target: { value: "1" },
     });
-    fillAddressForm("1", RECIPIENT);
-    fireEvent.click(within(kindPanel("Address")).getByRole("button", { name: "Review send" }));
+    await fillAddressForm("1", RECIPIENT);
+    fireEvent.click(sendForm().getByRole("button", { name: "Send" }));
     expect(prompts(calls)).toEqual([]);
-    fireEvent.click(screen.getByRole("button", { name: "Approve in wallet" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm in wallet" }));
     await screen.findByRole("region", { name: "Send submitted" }, WAIT);
     expect(calls.filter((c) => c.method === "eth_sendTransaction")).toHaveLength(1);
   });
@@ -204,69 +231,41 @@ describe("send to an address", () => {
   it("blocks retry when the wallet response is unknown", async () => {
     const calls = stubWallet();
     await openSend({ tokenBalance: 10_000_000n });
-    fireEvent.change(within(kindPanel("Address")).getByLabelText("Network"), {
+    fireEvent.change(sendForm().getByLabelText("Network"), {
       target: { value: "1" },
     });
-    fillAddressForm("2", RECIPIENT);
-    fireEvent.click(within(kindPanel("Address")).getByRole("button", { name: "Review send" }));
-    fireEvent.click(screen.getByRole("button", { name: "Approve in wallet" }));
+    await fillAddressForm("2", RECIPIENT);
+    fireEvent.click(sendForm().getByRole("button", { name: "Send" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm in wallet" }));
     const recovery = await screen.findByRole("region", { name: "Send status unknown" }, WAIT);
     expect(within(recovery).getByRole("alert").textContent).toMatch(/Do not send again/);
-    expect(screen.queryByRole("button", { name: "Approve in wallet" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Confirm in wallet" })).toBeNull();
     expect(calls.filter((c) => c.method === "eth_sendTransaction")).toHaveLength(1);
     expect(listLocalSends(TEST_ACCOUNT)).toEqual([]);
   });
 });
 
-describe("send privately", () => {
-  it("signs nothing on open, sets up keys on request, then hands off to a Stealth swap", async () => {
+describe("Receive", () => {
+  it("opens without wallet prompts and initializes keys on request", async () => {
     const calls = stubWallet();
     await openSend({ tokenBalance: 10_000_000n });
-    fireEvent.click(kindTab("Stealth"));
-    const panel = within(kindPanel("Stealth"));
+    fireEvent.click(sendForm().getByRole("button", { name: "Receive" }));
+    const receive = screen.getByRole("region", { name: "Receive" });
+    expect(within(receive).getByRole("img", { name: "Wallet address QR code" })).toBeTruthy();
     expect(prompts(calls)).toEqual([]);
-
-    fireEvent.click(panel.getByLabelText("My stealth keys"));
-    // From Base, so the served Stealth route to Ethereum applies.
-    fireEvent.change(panel.getByLabelText("From network"), { target: { value: "8453" } });
-    const arrives = await panel.findByLabelText<HTMLSelectElement>("Arrives on", {}, WAIT);
-    expect(arrives.value).toBe("1");
-    expect(prompts(calls)).toEqual([]);
-
-    fireEvent.click(panel.getByRole("button", { name: "Set up Stealth keys" }));
-    await panel.findByRole("button", { name: "Opens Swap to quote" }, WAIT);
-    // One signature: the key ceremony (the mock wallet forwards it as `eth_sign`).
+    const setup = within(receive).getByRole<HTMLButtonElement>("button", {
+      name: "Set up stealth address",
+    });
+    await waitFor(() => expect(setup.disabled).toBe(false), WAIT);
+    fireEvent.click(setup);
+    await within(receive).findByRole("img", { name: "Stealth address QR code" }, WAIT);
     expect(prompts(calls)).toHaveLength(1);
-
-    fireEvent.change(panel.getByLabelText("Amount"), { target: { value: "5" } });
-    fireEvent.click(panel.getByRole("button", { name: "Opens Swap to quote" }));
-
-    expect(topTab("Trade").getAttribute("aria-selected")).toBe("true");
-    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Swap" }));
-    const card = document.querySelector(".trade-card") as HTMLElement;
-    await waitFor(
-      () => expect(within(card).getByLabelText<HTMLInputElement>("Pay").value).toBe("5"),
-      WAIT,
-    );
+    fireEvent.click(within(receive).getByRole("button", { name: "Let people find me privately" }));
     expect(
-      within(card)
-        .getByRole("button", { name: /^Stealth/ })
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
-    // The handoff itself asked the wallet for nothing more.
+      within(receive).getByText("Your stealth address becomes public and linked to this wallet."),
+    ).toBeTruthy();
+    expect(within(receive).getByRole("button", { name: "Confirm in wallet" })).toBeTruthy();
     expect(prompts(calls)).toHaveLength(1);
-  });
-
-  it("offers nothing to continue where Stealth does not settle the asset", async () => {
-    stubWallet();
-    await openSend();
-    fireEvent.click(kindTab("Stealth"));
-    const panel = within(kindPanel("Stealth"));
-    fireEvent.change(panel.getByLabelText("From network"), { target: { value: "1" } });
-    // Ethereum is only ever a Stealth destination in the served routes.
-    expect(panel.getByLabelText<HTMLSelectElement>("From network").value).toBe("1");
-    await waitFor(() => expect(panel.getByRole("status").textContent).toMatch(/USDC/), WAIT);
-    expect(panel.queryByLabelText("Arrives on")).toBeNull();
   });
 });
 
@@ -292,53 +291,37 @@ describe("send privately to someone else", () => {
       },
     );
     await openSend({ tokenBalance: 10_000_000n });
-    fireEvent.click(kindTab("Stealth"));
-    const panel = within(kindPanel("Stealth"));
-    fireEvent.change(panel.getByLabelText("From network"), { target: { value: "8453" } });
-    await panel.findByLabelText("Arrives on", {}, WAIT);
-    fireEvent.click(panel.getByLabelText("Someone else"));
+    const panel = sendForm();
     return { bodies, calls, panel };
   }
 
   it("refuses a malformed meta-address with its reason and reviews nothing", async () => {
     const { calls, panel } = await openOther();
-    fireEvent.change(panel.getByLabelText("Amount"), { target: { value: "5" } });
-    const field = panel.getByLabelText("Recipient stealth meta-address");
-    fireEvent.change(field, { target: { value: META.slice(0, -2) } });
-    fireEvent.click(panel.getByRole("button", { name: "Review Stealth send" }));
+    await fillAddressForm("5", META.slice(0, -2));
+    const field = panel.getByLabelText("To");
     expect(field.getAttribute("aria-invalid")).toBe("true");
-    expect(panel.getByText(/it must be 132/)).toBeTruthy();
-    expect(screen.queryByRole("region", { name: "Review Stealth send" })).toBeNull();
-
-    fireEvent.change(field, { target: { value: `0x${"22".repeat(20)}` } });
-    expect(panel.getByText(/starts with st:eth:0x/)).toBeTruthy();
+    expect(panel.getByText("Check this stealth address")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Review send" })).toBeNull();
     expect(prompts(calls)).toEqual([]);
   });
 
   it("reviews the meta-address, then quotes Stealth to those keys with no key setup", async () => {
     const { bodies, calls, panel } = await openOther();
-    fireEvent.change(panel.getByLabelText("Amount"), { target: { value: "5" } });
-    fireEvent.change(panel.getByLabelText("Recipient stealth meta-address"), {
-      target: { value: META },
-    });
-    // No key ceremony is offered or needed for someone else's keys.
-    expect(panel.queryByRole("button", { name: "Set up Stealth keys" })).toBeNull();
-    fireEvent.click(panel.getByRole("button", { name: "Review Stealth send" }));
-
-    const review = screen.getByRole("region", { name: "Review Stealth send" });
+    await fillAddressForm("5", META);
+    expect(panel.getByText("Private")).toBeTruthy();
+    fireEvent.click(panel.getByRole("button", { name: "Send" }));
+    const review = screen.getByRole("region", { name: "Review send" });
     expect(within(review).getByText("5 USDC")).toBeTruthy();
-    expect(within(review).getByText("Base")).toBeTruthy();
-    expect(within(review).getByText("Ethereum")).toBeTruthy();
-    const shown = within(review).getByTitle(META);
-    expect(shown.textContent).toBe(`st:eth:0x${META.slice(9, 15)}...${META.slice(-6)}`);
+    expect(within(review).getByText("Base → Ethereum")).toBeTruthy();
+    expect(within(review).getByText(META)).toBeTruthy();
     expect(review.textContent).toMatch(/does not hide your funding transaction/);
     // The venue derives the one-time address, so it learns the meta-address; say so.
     expect(review.textContent).toMatch(/Xochi sees the recipient's meta-address/);
     expect(prompts(calls)).toEqual([]);
 
-    fireEvent.click(within(review).getByRole("button", { name: "Opens Swap to quote" }));
-    expect(topTab("Trade").getAttribute("aria-selected")).toBe("true");
-    const card = document.querySelector(".trade-card") as HTMLElement;
+    fireEvent.click(within(review).getByRole("button", { name: "Continue to quote" }));
+    expect(topTab("Send").getAttribute("aria-selected")).toBe("true");
+    const card = screen.getByRole("region", { name: "Send quote" });
     await waitFor(
       () => expect(within(card).getByLabelText<HTMLInputElement>("Pay").value).toBe("5"),
       WAIT,
@@ -364,13 +347,10 @@ describe("send privately to someone else", () => {
 
   it("drops the recipient and says so when the order leaves Stealth", async () => {
     const { panel } = await openOther();
-    fireEvent.change(panel.getByLabelText("Amount"), { target: { value: "5" } });
-    fireEvent.change(panel.getByLabelText("Recipient stealth meta-address"), {
-      target: { value: META },
-    });
-    fireEvent.click(panel.getByRole("button", { name: "Review Stealth send" }));
-    fireEvent.click(screen.getByRole("button", { name: "Opens Swap to quote" }));
-    const card = document.querySelector(".trade-card") as HTMLElement;
+    await fillAddressForm("5", META);
+    fireEvent.click(panel.getByRole("button", { name: "Send" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue to quote" }));
+    const card = screen.getByRole("region", { name: "Send quote" });
     await within(card).findByRole("region", { name: "Stealth recipient" }, WAIT);
 
     fireEvent.click(within(card).getByRole("button", { name: /^Public/ }));
@@ -415,18 +395,30 @@ describe("send to a payment app", () => {
   });
 });
 
-describe("destination kinds", () => {
-  it("switches tiles based on what was pasted and keeps the draft", async () => {
+describe("recipient input", () => {
+  it("requires an explicit tap to use Public for a name with a published private address", async () => {
+    const calls = stubWallet();
+    await openSend({ tokenBalance: 10_000_000n });
+    await fillAddressForm("3", "published.gwei");
+    const panel = sendForm();
+    const privacy = panel.getByRole("button", { name: "Privacy: Private. Switch to Public" });
+    expect(privacy).toBeTruthy();
+    fireEvent.click(privacy);
+    expect(panel.getByRole("button", { name: "Privacy: Public. Switch to Private" })).toBeTruthy();
+    fireEvent.click(panel.getByRole("button", { name: "Send" }));
+    const review = within(screen.getByRole("region", { name: "Review send" }));
+    expect(review.getByText("Public")).toBeTruthy();
+    expect(review.getByText(RECIPIENT)).toBeTruthy();
+    expect(prompts(calls)).toEqual([]);
+  });
+
+  it("keeps the amount when the recipient is replaced by paste", async () => {
     stubWallet();
     await openSend();
-    fillAddressForm("3", RECIPIENT);
-    const address = within(kindPanel("Address")).getByLabelText("Recipient address");
-    fireEvent.paste(address, { clipboardData: { getData: () => "st:eth:0x1234" } });
-    expect(kindTab("Stealth")).toHaveProperty("checked", true);
-    const meta = within(kindPanel("Stealth")).getByLabelText("Recipient stealth meta-address");
-    expect(meta).toHaveProperty("value", "st:eth:0x1234");
-    fireEvent.paste(meta, { clipboardData: { getData: () => RECIPIENT } });
-    expect(kindTab("Address")).toHaveProperty("checked", true);
-    expect(within(kindPanel("Address")).getByLabelText("Amount")).toHaveProperty("value", "3");
+    await fillAddressForm("3", RECIPIENT);
+    const to = sendForm().getByLabelText("To");
+    fireEvent.paste(to, { clipboardData: { getData: () => "st:eth:0x1234" } });
+    expect(to).toHaveProperty("value", "st:eth:0x1234");
+    expect(sendForm().getByLabelText("Amount")).toHaveProperty("value", "3");
   });
 });

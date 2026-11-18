@@ -13,7 +13,8 @@
  * claims on the full widget in a tab of its own, opened on Claims.
  */
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useAccount, useConfig } from "wagmi";
 import { watchAccount } from "wagmi/actions";
@@ -47,7 +48,6 @@ import { SendPanel } from "./send/SendPanel.js";
 import {
   WidgetTabs,
   widgetTabIds,
-  type SendDestinationKind,
   type TradeMode,
   type WidgetTab,
   type WidgetTabId,
@@ -264,8 +264,6 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
   // the full layout has them, so a tabless frame stays the Swap card.
   const { openConnectModal } = useConnectModal();
   const rampGate = useRampHostGate();
-  const swapHeading = useRef<HTMLHeadingElement>(null);
-  const focusSwap = useRef(false);
   const tabsBaseId = useId();
   const modesBaseId = useId();
   const [{ surfaces, fiatCurrency, fromChainId }] = useState(() => {
@@ -286,15 +284,6 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
   if (selectedTab === "claims" && !claimsAvailable && fallbackTab !== undefined)
     setSelectedTab(fallbackTab);
   const [tradeMode, setTradeMode] = useState<TradeMode>(surfaces.initialMode ?? "swap");
-  useEffect(() => {
-    if (focusSwap.current && selectedTab === "trade" && tradeMode === "swap") {
-      focusSwap.current = false;
-      swapHeading.current?.focus();
-    }
-  }, [selectedTab, tradeMode]);
-  const [sendDestination, setSendDestination] = useState<SendDestinationKind>(
-    surfaces.initialDestination ?? "address",
-  );
   // Opened from a tabless frame's claim link (`#claims`), or by a host's
   // `initialTab=claims`: land on Claims as soon as it exists, which is after
   // the wallet reconnects. Any tab the user picks first wins.
@@ -353,6 +342,22 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
   // distinct so re-clicking the same row re-applies (SwapPanel keys off it).
   const [retryPrefill, setRetryPrefill] = useState<SwapPrefill | null>(null);
   const retryNonce = useRef(0);
+  const [showSendQuote, setShowSendQuote] = useState(false);
+  const tradeSwapMount = useRef<HTMLDivElement>(null);
+  const sendSwapMount = useRef<HTMLDivElement>(null);
+  const [swapSurface] = useState(() => {
+    const element = document.createElement("div");
+    element.className = "send-swap-mount";
+    return element;
+  });
+  // Move one mounted Swap surface between tabs so the quote, confirmations
+  // and any in-progress settlement keep the same lifetime and DOM IDs.
+  useLayoutEffect(() => {
+    const target =
+      selectedTab === "send" && showSendQuote ? sendSwapMount.current : tradeSwapMount.current;
+    if (target) target.append(swapSurface);
+    else swapSurface.remove();
+  }, [selectedTab, showSendQuote, swapShown, swapSurface]);
 
   // A stealth swap settles to a one-time private address the user must claim. When
   // one settles in the full widget, auto-scan so the payment appears in the receive
@@ -475,24 +480,18 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
         recipientTag: item.data.recipientTag,
         refundAddress: item.data.deposit?.attested.refund_address ?? undefined,
       });
+      setShowSendQuote(false);
       setTradeMode("swap");
       selectTab("trade");
     },
     [selectTab],
   );
 
-  // A Stealth send is a Stealth swap: hand the order to the Swap card through
-  // the same prefill a retry uses, so its gating, quote and confirm decide it.
-  const handleStealthSend = useCallback(
-    (order: Omit<SwapPrefill, "nonce">): void => {
-      retryNonce.current += 1;
-      setRetryPrefill({ nonce: retryNonce.current, ...order });
-      focusSwap.current = true;
-      setTradeMode("swap");
-      selectTab("trade");
-    },
-    [selectTab],
-  );
+  const handleSendQuote = (order: Omit<SwapPrefill, "nonce">) => {
+    retryNonce.current += 1;
+    setRetryPrefill({ ...order, nonce: retryNonce.current });
+    setShowSendQuote(true);
+  };
 
   // Report: assemble a failure reference from the history row and fire the same
   // best-effort POST /api/report the live modal uses. It never throws (the
@@ -585,16 +584,8 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
 
               {swapShown && (
                 <div {...modePanelProps("swap")}>
-                  <h2 className="sr-only" tabIndex={-1} ref={swapHeading}>
-                    Swap
-                  </h2>
-                  <SwapPanel
-                    prefill={retryPrefill}
-                    onStealthSettled={handleStealthSettled}
-                    onGoToClaims={tabsShown || claimInXochiApp ? undefined : openClaims}
-                    howItWorks={look.howItWorks}
-                    onConnectRequest={hostOwnsWalletUi ? requestHostConnect : undefined}
-                  />
+                  <h2 className="sr-only">Swap</h2>
+                  <div className="send-swap-mount" ref={tradeSwapMount} />
 
                   <MobileSigningBanner />
 
@@ -641,15 +632,29 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
           {tabsShown && tabShown("send") && (
             <div {...panelProps("send")}>
               <SendPanel
+                active={selectedTab === "send"}
                 initialChain={fromChainId}
-                destination={sendDestination}
-                onDestinationChange={setSendDestination}
                 destinations={surfaces.destinations}
-                onStealthContinue={handleStealthSend}
+                showQuote={showSendQuote}
+                quoteMount={sendSwapMount}
+                onStealthContinue={handleSendQuote}
+                onCloseQuote={() => setShowSendQuote(false)}
                 onConnectRequest={hostOwnsWalletUi ? requestHostConnect : undefined}
               />
             </div>
           )}
+
+          {(swapShown || retryPrefill) &&
+            createPortal(
+              <SwapPanel
+                prefill={retryPrefill}
+                onStealthSettled={handleStealthSettled}
+                onGoToClaims={tabsShown || claimInXochiApp ? undefined : openClaims}
+                howItWorks={look.howItWorks && !(selectedTab === "send" && showSendQuote)}
+                onConnectRequest={hostOwnsWalletUi ? requestHostConnect : undefined}
+              />,
+              swapSurface,
+            )}
 
           {tabsShown && tabShown("activity") && (
             <div {...panelProps("activity")}>

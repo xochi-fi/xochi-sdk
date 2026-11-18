@@ -441,3 +441,131 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.5rem;
 }
+
+.send-toolbar,
+.send-recipient-row,
+.send-invite {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.send-toolbar {
+  justify-content: space-between;
+}
+
+.send-input {
+  display: flex;
+  position: relative;
+  border: 1px solid var(--line-subtle);
+  border-radius: 0.75rem;
+  padding: 0.25rem;
+}
+
+.send-input > input.send-field__control {
+  border-color: transparent;
+  background: transparent;
+  flex: 1;
+  width: 0;
+  min-width: 0;
+}
+
+.send-chip {
+  width: auto;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.send-recipient {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+.send-recipient strong,
+.send-recipient small {
+  display: block;
+}
+
+.send-identicon {
+  flex: 0 0 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+}
+
+.send-receive__value {
+  display: grid;
+  justify-items: start;
+  gap: 0.5rem;
+}
+
+.send-scan {
+  position: absolute;
+  inset: 100% 0 auto;
+  z-index: 1;
+}
+
+.send-scan video {
+  display: block;
+  width: 100%;
+}
+
+.send-form--recipient .send-field__label {
+  color: var(--text-secondary);
+  font: inherit;
+  letter-spacing: normal;
+  padding: 0;
+  text-transform: none;
+}
+
+.send-input--recipient > input.send-field__control {
+  font-family: var(--font-body, sans-serif);
+  padding-inline: 0.55rem;
+}
+
+.send-input:focus-within {
+  border-color: var(--line-strong);
+}
+
+.send-recipient-row > .send-chip {
+  font-size: 0.8rem;
+  padding: 0.4rem 0.55rem;
+}
+
+.send-recipient-row > span.send-chip {
+  border: 1px solid var(--line-subtle);
+}
+
+.send-receive__value {
+  grid-template-columns: minmax(0, 1fr) 110px;
+  align-items: start;
+  padding-bottom: 0.5rem;
+}
+
+.send-receive__value > strong {
+  grid-column: 1 / -1;
+}
+
+.send-receive__value > svg {
+  grid-column: 2;
+  grid-row: 2 / span 3;
+}
+
+.send-card[hidden],
+.send-quote[hidden] {
+  display: none;
+}
+
+.send-quote {
+  width: 100%;
+  display: grid;
+  justify-items: start;
+  gap: 0.75rem;
+}
+
+.send-swap-mount {
+  display: contents;
+}

@@ -42,6 +42,7 @@ import { getRampSummary, listRampSummaries, markRampOperationLive } from "./reco
 import { RampDiscoveryContext } from "./availability/useRampDiscovery.js";
 import { recordedPort, RECORDED_AT } from "../test/rampPort.js";
 import vectors from "../lib/reverse-stealth-vectors.json";
+import * as recipientResolver from "../lib/recipient/index.js";
 
 vi.setConfig({ testTimeout: testBudget({ renders: 2, waits: 16 }) });
 
@@ -373,26 +374,34 @@ describe("Send privately to someone else", () => {
         name: /^Send/,
       }),
     );
-    const tile = within(screen.getByRole("group", { name: "Send to" })).getByRole("radio", {
-      name: "Stealth address",
+    const name = "resolver-input-sentinel.gwei";
+    const resolvedName = "resolver-output-sentinel.gwei";
+    const resolve = vi.spyOn(recipientResolver, "resolveRecipient").mockResolvedValue({
+      status: "resolved",
+      recipient: {
+        kind: "gns",
+        input: name,
+        name: resolvedName,
+        address: TEST_ACCOUNT,
+        stealthMetaAddress: META,
+      },
     });
-    fireEvent.click(tile);
-    const panel = within(document.getElementById(tile.getAttribute("aria-controls")!)!);
-    fireEvent.change(panel.getByLabelText("From network"), { target: { value: "8453" } });
-    await panel.findByLabelText("Arrives on", {}, WAIT);
-    fireEvent.click(panel.getByLabelText("Someone else"));
+    const panel = within(screen.getByRole("form", { name: "Send" }));
     fireEvent.change(panel.getByLabelText("Amount"), { target: { value: "5" } });
-    fireEvent.change(panel.getByLabelText("Recipient stealth meta-address"), {
-      target: { value: META },
-    });
-    fireEvent.click(panel.getByRole("button", { name: "Review Stealth send" }));
-    const review = screen.getByRole("region", { name: "Review Stealth send" });
+    fireEvent.change(panel.getByLabelText("To"), { target: { value: name } });
+    await panel.findByText(resolvedName, {}, WAIT);
+    expect(resolve).toHaveBeenCalledWith(name, expect.anything(), expect.anything());
+    expect(panel.getByRole("button", { name: /Privacy: Private/ })).toBeTruthy();
+    fireEvent.click(panel.getByRole("button", { name: "Send" }));
+    const review = screen.getByRole("region", { name: "Review send" });
     expect(review.textContent).toMatch(/Xochi sees the recipient's meta-address/);
-    fireEvent.click(within(review).getByRole("button", { name: "Opens Swap to quote" }));
-    const card = document.querySelector(".trade-card") as HTMLElement;
+    fireEvent.click(within(review).getByRole("button", { name: "Continue to quote" }));
+    const card = screen.getByRole("region", { name: "Send quote" });
     await within(card).findByRole("region", { name: "Stealth recipient" }, WAIT);
 
     expectClean([
+      name,
+      resolvedName,
       META,
       recipient.spending_pub.slice(2),
       recipient.viewing_pub.slice(2),
