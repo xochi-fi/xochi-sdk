@@ -5,7 +5,7 @@ describe("widgetSurfaces", () => {
   it("offers everything, on Trade/Swap, without narrowing", () => {
     expect(widgetSurfaces()).toEqual({
       tabs: ["trade", "send", "activity", "claims"],
-      modes: ["onramp", "swap", "offramp"],
+      modes: ["swap", "onramp", "offramp"],
       destinations: ["address", "stealth"],
       initialTab: "trade",
       initialMode: "swap",

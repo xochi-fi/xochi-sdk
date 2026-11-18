@@ -13,7 +13,8 @@
  */
 
 import { useClaimInXochiApp } from "../../components/widgetTabsContext.js";
-import { Chevron } from "../../components/Chevron.js";
+import { useId } from "react";
+import { InfoButton } from "../../components/InfoButton.js";
 import { STATUS_GLYPH } from "../../lib/glyphs.js";
 import { truncateServedReason } from "../../lib/declineGuidance.js";
 import { formatTokenAmount } from "../../utils/format.js";
@@ -293,6 +294,8 @@ export function SwapPanel({
   const cantonRefusal =
     cantonDestination && intent.error ? cantonDecline(quoteErrorCategory) : null;
 
+  const explainerId = useId();
+
   return (
     <div className="trade-card">
       <div className={`trade-card__body ${showReceipt ? "trade-card__body--split" : ""}`}>
@@ -367,11 +370,19 @@ export function SwapPanel({
                   id={!zkMoneyOffered ? "zk-money-blocked-reason" : undefined}
                   className={`type-btn__meta${!zkMoneyOffered ? " type-btn__meta--fix" : ""}`}
                 >
-                  {zkMoneyOffered ? "Send to zk.money" : (zkMoneyBlockedReason ?? "Unavailable")}
+                  {zkMoneyOffered ? "zk.money" : (zkMoneyBlockedReason ?? "Unavailable")}
                 </span>
               </button>
             </div>
             <div className="header-actions">
+              {howItWorks && (
+                <InfoButton
+                  label="How it works"
+                  expanded={showExplainer}
+                  controls={explainerId}
+                  onClick={() => setShowExplainer((open) => !open)}
+                />
+              )}
               <button
                 className={`settings-btn ${showSettings ? "active" : ""}`}
                 onClick={() => setShowSettings(!showSettings)}
@@ -397,7 +408,7 @@ export function SwapPanel({
           before Stealth is chosen. Guidance only: eligibility stays with the
           exact live routes. The open picker's own guidance replaces this line. */}
           {stealthHintChainNames && (
-            <div id="stealth-destinations" className="settlement-caption">
+            <div id="stealth-destinations" className="sr-only">
               Stealth destinations: <strong>{stealthHintChainNames} only.</strong>
             </div>
           )}
@@ -1012,9 +1023,6 @@ export function SwapPanel({
                 <span className="error-icon">{STATUS_GLYPH.liquidity}</span>
                 <div className="error-text">
                   <span className="error-title">Loading routes</span>
-                  <span className="error-suggestion">
-                    Checking supported chains, tokens and privacy options before requesting a quote.
-                  </span>
                 </div>
               </div>
             </div>
@@ -1295,103 +1303,20 @@ export function SwapPanel({
               : cta.label}
           </button>
 
-          {!isConnected && intent.quote?.preview && intent.quote.canSolve && (
-            <div className="preview-disclosure" role="note">
-              <p>
-                Quotes are free to explore. Priced at the standard tier
-                {features.trustEconomicsLive ? "; higher trust tiers pay less." : "."}
-              </p>
-              <p>The quote stays on screen while the wallet connects.</p>
-            </div>
-          )}
-
-          {/* How it works (collapsed by default; a host may drop it) */}
           {howItWorks && (
-            <div className="trade-explainer">
-              <button
-                type="button"
-                className="trade-explainer__toggle"
-                onClick={() => setShowExplainer((v) => !v)}
-                aria-expanded={showExplainer}
-                aria-controls="trade-explainer-steps"
-              >
-                <span className="trade-explainer__title">How it works</span>
-                <Chevron open={showExplainer} className="trade-explainer__chevron" />
-              </button>
+            <div id={explainerId} className="trade-explainer" hidden={!showExplainer}>
               {showExplainer && (
-                <div id="trade-explainer-steps">
-                  <div className="trade-explainer__steps">
-                    <div className="trade-explainer__step">
-                      <span className="trade-explainer__icon">1</span>
-                      <div>
-                        <span className="trade-explainer__label">Sign an intent</span>
-                        <span className="trade-explainer__desc">
-                          The order skips the public mempool
-                        </span>
-                      </div>
-                    </div>
-                    <div className="trade-explainer__step">
-                      <span className="trade-explainer__icon">2</span>
-                      <div>
-                        <span className="trade-explainer__label">One solver fills it</span>
-                        <span className="trade-explainer__desc">At the quoted price</span>
-                      </div>
-                    </div>
-                    <div className="trade-explainer__step">
-                      <span className="trade-explainer__icon">3</span>
-                      <div>
-                        <span className="trade-explainer__label">Get paid</span>
-                        <span className="trade-explainer__desc">
-                          Public wallet or a stealth address
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  {/* Custody + routing (fable pass-1, 3.1). Lived under the action
-                    as a standing one-liner; moved in here so the CTA is the only
-                    thing under the form asking to be read. It claims only what is
-                    true today: self-custody via the user's own wallet signature,
-                    and the ORDER routing privately to the solver. Scoped to the
-                    order on purpose: the solver's pull and settlement
-                    transactions land on public chains and the activity feed links
-                    their hashes, so an absolute "never publicly visible" claim
-                    would be false. The mempool clause is dropped rather than
-                    moved, because step 1 above already states it. Custody copy
-                    upgrades when escrow ships (register R18). Hidden on a
-                    deposit-route origin (Tron): that flow IS a deposit to a
-                    per-intent address with no wallet signature, so every clause
-                    here is false on it, and TRON_ORIGIN_LIVE is only an env flag
-                    away from making that live. */}
-                  {!isNonEvmOrigin && (
-                    <p className="trade-explainer__note">
-                      No deposits, no account. Sign from a self-custody wallet; the order goes
-                      privately to the solver.
-                    </p>
-                  )}
-                  <p className="trade-explainer__note">
-                    Privacy is part of the trading fee, never an extra charge.
-                    {features.trustEconomicsLive &&
-                      " Deeper privacy unlocks as the trust score grows."}
-                  </p>
-                  {/* Who the fee pays, moved out of the quote drawer: the drawer
-                      shows the split, this says what each party is. */}
-                  <p className="trade-explainer__note">
-                    The fee pays the solver that fills the order, Xochi for running the protocol,
-                    and the app or agent that routed it.
-                  </p>
-                </div>
+                <ul className="trade-explainer__note">
+                  <li>The order skips the public mempool.</li>
+                  <li>A solver fills it at the quoted price.</li>
+                  {!isNonEvmOrigin && <li>No deposits, no account. Sign from your own wallet.</li>}
+                  <li>Privacy is part of the trading fee, never an extra charge.</li>
+                  <li>
+                    The fee pays the solver, Xochi and the app or agent that routed the order.
+                  </li>
+                </ul>
               )}
             </div>
-          )}
-          {/* Without the explainer the card still says, in one line, who holds
-              the funds and what privacy costs (decided 2026-10-31): a host may
-              drop the disclosure, not the facts. */}
-          {!howItWorks && (
-            <p className="trade-explainer__note">
-              {isNonEvmOrigin
-                ? "Privacy is part of the trading fee, never an extra charge."
-                : "Self-custody: you sign from your own wallet. Privacy is part of the trading fee, never an extra charge."}
-            </p>
           )}
         </div>
         {/* /trade-card__actions */}

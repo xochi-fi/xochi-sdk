@@ -40,4 +40,5 @@ Payment rail logos
 Payment rail logos under src/assets/rails are third-party brand artwork.
 The respective owners retain their trademark rights. The logos identify
 payment rails and imply no endorsement. See dist/assets/rails/SOURCES.md
-in the package for official sources and usage conditions.
+in the package for provenance and usage conditions. SVG data from Simple Icons
+16.38.0 is CC0-1.0.

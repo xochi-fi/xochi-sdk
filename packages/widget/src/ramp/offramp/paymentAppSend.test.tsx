@@ -133,7 +133,7 @@ describe("estimate and review", () => {
     fireEvent.change(screen.getByLabelText("Cash out from"), { target: { value: "base_usdc" } });
     fireEvent.change(screen.getByLabelText("USDC to cash out"), { target: { value: "25" } });
     await screen.findByRole("radio", { name: /Wise/ }, WAIT);
-    const group = screen.getByRole("group", { name: "Cash out to your own account" });
+    const group = screen.getByRole("group", { name: "Your account" });
     expect(within(group).getAllByRole("radio")).toHaveLength(1);
     expect(group.textContent).toMatch(/about 24\.75 USD/);
     expect(screen.getByRole("button", { name: "Get estimate" })).toHaveProperty("disabled", true);
@@ -147,11 +147,16 @@ describe("estimate and review", () => {
     const review = screen.getByRole("region", { name: "Review cash-out" });
     const text = review.textContent ?? "";
     expect(text).toMatch(/PlatformWise/);
-    expect(text).toMatch(/CurrencyUSD/);
     expect(text).toMatch(/You deposit25(\.0+)? USDC/);
-    expect(text).toMatch(/about 24\.75 USD, not a locked rate/);
-    expect(text).toMatch(/Public Base transaction/);
-    expect(text).toMatch(/amount and your wallet address are public/);
+    expect(text).toMatch(/about 24\.75 USD/);
+    expect(text).toMatch(/Deposit destination/);
+    const facts = within(review).getByRole("list");
+    expect(within(facts).getAllByRole("listitem")).toHaveLength(5);
+    expect(screen.getByRole("button", { name: "Confirm cash-out" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(text).toMatch(/amounts and wallet addresses are public/);
     expect(text).toContain(port.escrow()!);
     expect(text).toMatch(/belongs to me/);
 

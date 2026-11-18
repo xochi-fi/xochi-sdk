@@ -442,12 +442,6 @@ export function QuoteDetails({
           requested but this route can only settle public. */}
       {settlementState !== "public" && (
         <div className={`quote-settlement quote-settlement--${settlementState}`}>
-          <div className="quote-settlement__head">
-            <span className="quote-settlement__label">Settlement</span>
-            <span className="quote-settlement__badge">
-              {privateConfirmed ? "Private" : "! Public"}
-            </span>
-          </div>
           <p className="quote-settlement__desc">{settlementDesc}</p>
         </div>
       )}

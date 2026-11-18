@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { railLogo } from "../../assets/rails/index.js";
 import { formatRampTime, RAIL_NAMES, type RailCard } from "./model.js";
 
@@ -6,20 +6,16 @@ function RailLogo({ id }: { id: string }) {
   const logo = railLogo(id);
   if (!logo) return null;
   return (
-    <span className={`ramp-tile__logo-row ramp-tile__logo-row--${id}`} aria-hidden="true">
-      <span className="ramp-tile__logo">
-        <img src={logo.light} width={logo.width} height={logo.height} alt="" />
-        {logo.dark && (
-          <img
-            className="ramp-tile__logo-dark"
-            src={logo.dark}
-            width={logo.width}
-            height={logo.height}
-            alt=""
-          />
-        )}
-      </span>
-    </span>
+    <span
+      className="ramp-tile__logo"
+      style={
+        {
+          "--rail-logo": `url("${logo.light}")`,
+          "--rail-brand": logo.brandColor,
+        } as CSSProperties
+      }
+      aria-hidden="true"
+    />
   );
 }
 
@@ -41,21 +37,23 @@ export function RailTileContent({
         <strong className="ramp-tile__name">{name}</strong>
         <span className="ramp-tile__status">
           <small>{status}</small>
-          {selected && <span aria-hidden="true">✓</span>}
         </span>
       </span>
+      {selected && (
+        <span className="ramp-tile__check" aria-hidden="true">
+          ✓
+        </span>
+      )}
     </>
   );
 }
 
 export function RailTiles({
   title,
-  own,
   untested,
   children,
 }: {
   title: string;
-  own?: boolean;
   untested: boolean;
   children: ReactNode;
 }) {
@@ -66,11 +64,7 @@ export function RailTiles({
         {untested &&
           Object.entries(RAIL_NAMES).map(([id, name]) => (
             <div key={id} className="ramp-tile" aria-disabled="true">
-              <RailTileContent
-                id={id}
-                name={own ? `Your ${name}` : name}
-                status="Not checked yet"
-              />
+              <RailTileContent id={id} name={name} status="Not checked" />
             </div>
           ))}
         {children}
@@ -121,21 +115,22 @@ export function RailChoice({
 
 const SHORT_REASONS: Record<RailCard["state"], string> = {
   available: "",
-  setup_required: "Complete setup in Peer",
-  temporarily_unavailable: "No offer for this request",
-  not_supported: "Try another app or amount",
-  availability_unknown: "Peer could not confirm availability",
-  expired: "Check again for a new offer",
+  setup_required: "Set up in Peer",
+  temporarily_unavailable: "No offer",
+  not_supported: "Unsupported",
+  availability_unknown: "Unconfirmed",
+  expired: "Expired",
 };
 
-export function UnavailableRails({ cards, own }: { cards: RailCard[]; own?: boolean }) {
+export function UnavailableRails({ cards }: { cards: RailCard[] }) {
   if (!cards.length) return null;
   return (
     <section className="ramp-unavailable" aria-label="Unavailable payment apps">
       {cards.map((card) => (
         <details key={card.id}>
           <summary>
-            <strong>{own ? `Your ${card.name}` : card.name}</strong>
+            <RailLogo id={card.id} />
+            <strong>{card.name}</strong>
             <span>{SHORT_REASONS[card.state]}</span>
             {card.retryAfter && <span>Retry after {formatRampTime(card.retryAfter)}</span>}
           </summary>

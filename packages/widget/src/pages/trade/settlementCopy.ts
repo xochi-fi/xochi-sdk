@@ -49,7 +49,7 @@ export const SHIELDED_UNAVAILABLE_CAPTION =
 
 /** The one fix an unavailable mode shows, in place of its meta line. */
 export const SETTLEMENT_FIX_LINE: Record<SettlementFix, string> = {
-  wallet: "Uses your wallet’s Stealth keys",
+  wallet: "Uses wallet keys",
   setup: "Set up Stealth",
   quote: "Updating quote",
   destination: "Choose a Stealth chain",

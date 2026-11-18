@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type {
   RampIntent,
   RampOffer,
@@ -9,6 +9,7 @@ import type {
 import { formatUnits } from "viem";
 import type { PublicClient, WalletClient } from "viem";
 import { createRampEmitter, emitSnapshot } from "../../lib/rampLifecycle.js";
+import { RampFacts } from "../availability/RampDisclosure.js";
 import { formatRampTime, railName } from "../availability/model.js";
 import type { PeerOnrampRuntime, PeerSetupCode } from "./onramp.js";
 import { OnrampSteps } from "./OnrampSteps.js";
@@ -69,6 +70,7 @@ export function BuyOnramp({
   onReset,
   makeEmitter = createRampEmitter,
 }: BuyOnrampProps) {
+  const factsId = useId();
   const { runtime, pin } = usePeerOnrampRuntime({ supplied, wallet, publicClient });
   const [ownedStore] = useState(() => store ?? browserRampStore());
   const client = useRampClient(runtime, ownedStore);
@@ -258,24 +260,14 @@ export function BuyOnramp({
                   Buyer TEE evidence in the Peer extension, then approve fulfillment in your wallet.
                 </dd>
               </dl>
-              <p>
-                Fiat sent for an expired or unverifiable intent is not refundable by the protocol.
-                Check the active intent before paying.
-              </p>
-              <p>
-                Base settlement is public. The payment counterparty and Peer see required identity
-                and payment data. Completion depends on Peer, its TEE and Base.
-              </p>
-              <p>
-                Venmo and PayPal can hold payouts for 14 days without sufficient stake. Held funds
-                are not confirmed Base USDC and cannot start routing.
-              </p>
+              <RampFacts direction="onramp" id={factsId} />
               {!submitted && (
                 <>
                   <label>
                     <input
                       type="checkbox"
                       checked={accepted}
+                      aria-describedby={factsId}
                       disabled={expired || busy}
                       onChange={(event) => setAccepted(event.target.checked)}
                     />

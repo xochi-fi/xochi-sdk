@@ -203,8 +203,8 @@ Custom TypeScript exhaustive event switches must add the new union members.
 Use `@xochi/widget-lib@0.6.0` with a hosted shell serving
 `@xochi/widget@0.1.0` or later compatible widget at `/embed`. Deploy that shell
 first. A standalone or legacy Swap embed can continue using `layout=swap`.
-For the full layout, use `initialTab: "trade"` with `initialMode: "swap"` to
-retain a Swap landing view. Set `initialTab: "trade"` and
+With the full layout, the widget opens on Trade > Swap by default.
+Set `initialTab: "trade"` and
 `initialMode: "offramp"` to land on Cash out, or use
 `createXochiRampWidget(container, { direction: "offramp" })`. The original
 Trade/Swap events remain on the same bridge.

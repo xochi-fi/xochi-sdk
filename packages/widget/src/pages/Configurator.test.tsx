@@ -649,7 +649,7 @@ describe("get code and shared configuration", () => {
     const modes = within(screen.getByRole("group", { name: "Trade modes" }));
     expect(
       modes.getAllByRole("checkbox").map((checkbox) => checkbox.parentElement?.textContent),
-    ).toEqual(["Buy", "Swap", "Cash out"]);
+    ).toEqual(["Swap", "Buy", "Cash out"]);
     const destinations = within(screen.getByRole("group", { name: "Send destinations" }));
     expect(
       destinations.getAllByRole("checkbox").map((checkbox) => checkbox.parentElement?.textContent),

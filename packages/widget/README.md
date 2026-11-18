@@ -187,7 +187,7 @@ restriction.
 
 The full layout (`layout=full`) reads it once on mount and narrows what it
 renders (`src/pages/trade/embedNarrowing.ts`): a tab, mode or destination the
-host leaves out is hidden. Trade offers Buy, Swap and Cash out. Send offers Wallet
+host leaves out is hidden. Trade opens on Swap by default and offers Swap, Buy and Cash out. Send offers Wallet
 address and Stealth. Narrowing `rampProviders` to exclude `peer` hides Buy and
 Cash out. Stealth send depends on Swap for settlement. Trade and Send are hidden
 when their respective lists have no supported options. `initialTab` and

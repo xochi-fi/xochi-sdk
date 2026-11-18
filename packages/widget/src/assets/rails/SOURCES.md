@@ -1,19 +1,31 @@
-# Payment rail logo sources
+# Payment rail artwork
 
-All pages and artwork listed here were checked on 2026-11-18. Xochi founder
-and legal approved use of official brand-kit artwork to identify payment rails
-in Buy and Cash out. The respective owners retain their trademark rights.
-Display the visible rail name next to the artwork and avoid implying sponsorship,
-partnership, or endorsement. Keep the supplied proportions, colors, and canvas.
-The PNGs retain the largest suitable transparent digital variants supplied in
-the kits. Lossless re-encoding preserves their pixels and color profiles.
+The widget uses brand SVGs from [Simple Icons 16.38.0](https://github.com/simple-icons/simple-icons/tree/16.38.0)
+under CC0-1.0 for the SVG data. The npm version is pinned exactly. The founder
+accepted the brand-terms risk on 2026-11-18 and approved using public brand SVGs,
+monochrome by default and in the supplied brand colour when selected. Trademark
+rights remain with the respective owners.
 
-`width` and `height` describe the light image canvas. `clearSpaceRatio` is
-the required or conservative clearance from the artwork to adjacent content
-divided by the light canvas height. Keep any transparent space already
-in the image and account for it when laying out the tile.
+| Widget rail  | Simple Icons slug |
+| ------------ | ----------------- |
+| Alipay       | `alipay`          |
+| Cash App     | `cashapp`         |
+| Mercado Pago | `mercadopago`     |
+| Monzo        | `monzo`           |
+| N26          | `n26`             |
+| PayPal       | `paypal`          |
+| Revolut      | `revolut`         |
+| Venmo        | `venmo`           |
+| Wise         | `wise`            |
+| X Money      | `x`               |
+| Zelle        | `zelle`           |
 
-## Included artwork
+Chime, UPI and monobank have no icon in this release and no bundled official
+fallback, so their tiles show the name and status. The Monzo, Revolut and Wise
+SVGs take precedence over the previously bundled official wordmarks. Their
+sources and the previous brand-terms audit are retained below.
+
+## Previously bundled official artwork
 
 | Rail      | Official source and guidelines                                                                                                                                                                                                                                 | Tile usage                                                                                                                                                                                                                                                                                                                                                      |
 | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -21,7 +33,7 @@ in the image and account for it when laying out the tile.
 | `revolut` | [Revolut newsroom](https://www.revolut.com/news/), [press kit logo folder](https://drive.google.com/drive/folders/1gCOTfNVGfzQVm49-asTC3LBEpC0zH_5O), [official logo guidelines](https://developer.revolut.com/assets/oba/Revolut-Open-Banking-guidelines.pdf) | Use the black and white transparent primary wordmarks on contrasting backgrounds. Minimum digital width is 80px. Leave at least one R-width on each side. The manifest rounds the clearance up to 1.1 canvas heights.                                                                                                                                           |
 | `wise`    | [Wise press page](https://wise.com/us/press), [official North American Logos media kit](https://newsroom.wise.com/en-NAM/assets/228784/), [official brand overview](https://wise.com/gb/blog/a-brand-for-everywhere-wise-unveils-bold-new-look)                | Use the dark green transparent wordmark (Frame 39263, asset 470455) on light backgrounds and the bright green transparent wordmark (Frame, asset 470456) on dark backgrounds. The public sources did not specify a numerical minimum or clearance. Keep the wordmark legible and allow at least half its visible height to adjacent content as a local default. |
 
-## Text-only rails
+## Previous brand-terms audit
 
 | Rail          | Official source or guidelines                                                                                                                                                                                                           | Reason for exclusion                                                                                                                                                                                       |
 | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

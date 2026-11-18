@@ -2,6 +2,11 @@
    the card's width, 44px targets, and state carried by text: the status
    colour only repeats what the status label already says. */
 
+.ramp-rails .send-field__label {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 .ramp-rails {
   display: flex;
   flex-direction: column;
@@ -9,21 +14,21 @@
   min-width: 0;
 }
 
-.ramp-facts {
-  padding: 0.75rem;
-  background: var(--inset-bg);
-  border: 1px solid var(--line-subtle);
-  border-radius: var(--radius-card);
+.ramp-facts__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.125rem;
+  margin-inline-end: -0.875rem;
+  font:
+    0.75rem/1.4 system-ui,
+    sans-serif;
+  letter-spacing: normal;
+  color: var(--text-secondary);
 }
 
-.ramp-facts__title {
-  margin: 0 0 0.4rem;
-  padding: 0;
-  font-family: var(--font-mono);
-  font-size: 0.65rem;
-  font-weight: 500;
-  letter-spacing: 0.1em;
-  color: var(--text-faint);
+.ramp-facts__list[hidden] {
+  display: none;
 }
 
 .ramp-facts__list {
@@ -114,7 +119,6 @@
   font-family: var(--font-mono);
   font-size: 0.7rem;
   letter-spacing: 0.05em;
-  text-transform: uppercase;
   color: var(--text-secondary);
 }
 
@@ -362,7 +366,8 @@
   align-items: flex-start;
   justify-content: center;
   box-sizing: border-box;
-  block-size: 5rem;
+  min-block-size: 3.75rem;
+  gap: 2px;
   min-width: 0;
   padding: 2px 6px;
   container-type: inline-size;
@@ -391,76 +396,47 @@ button.ramp-tile {
   line-height: 1.1;
 }
 
-.ramp-tile__name {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-}
-
-.ramp-tile__status {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-  margin-block-start: 2px;
-}
-
+.ramp-tile__name,
 .ramp-tile__status small {
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.ramp-tile__logo-row {
-  display: flex;
-  align-items: center;
-  block-size: 24px;
+.ramp-tile__status {
+  display: block;
+  margin-block-start: 2px;
+}
+
+.ramp-tile__check {
+  position: absolute;
+  inset-block-start: 4px;
+  inset-inline-end: 6px;
+}
+
+.ramp-tile__logo {
+  display: block;
+  width: 20px;
+  height: 20px;
   flex: none;
-  margin-block-end: 14px;
+  background: currentColor;
+  mask: var(--rail-logo) center / contain no-repeat;
 }
 
-/* Monzo's required M-width clearance below the mark exceeds the compact tile height. */
-.ramp-tile__logo-row--monzo {
-  display: none;
+.ramp-tile:has(:checked) .ramp-tile__logo {
+  background: var(--rail-brand, currentColor);
 }
 
-/* Scale the visible artwork to 24px while keeping the original transparent canvas. */
-.ramp-tile__logo-row--wise .ramp-tile__logo {
-  inline-size: calc(24px * 250 / 57);
-}
-
-/* Revolut needs the wordmark plus 1.1 canvas heights of clearance on each side. */
-.ramp-tile__logo-row--revolut {
-  align-self: stretch;
-  margin-inline: -6px;
-}
-
-.ramp-tile__logo-row--revolut .ramp-tile__logo {
-  inline-size: calc(24px * 3623 / 800);
-  padding-inline: calc(24px * 1.1);
-  box-sizing: content-box;
-}
-
-@container (width < 150px) {
-  .ramp-tile__logo-row--revolut {
-    display: none;
+@media (forced-colors: active) {
+  .ramp-tile__logo {
+    forced-color-adjust: none;
+    background: CanvasText;
   }
-}
 
-.ramp-tile__logo img {
-  display: block;
-  inline-size: 100%;
-  block-size: auto;
-}
-
-.ramp-tile__logo img.ramp-tile__logo-dark,
-:root:not([data-theme="light"]) .ramp-tile__logo:has(.ramp-tile__logo-dark) img:first-child {
-  display: none;
-}
-
-:root:not([data-theme="light"]) .ramp-tile__logo img.ramp-tile__logo-dark,
-[data-theme="light"] .ramp-tile__logo img:first-child {
-  display: block;
+  .ramp-tile:has(:checked) .ramp-tile__logo {
+    background: CanvasText;
+  }
 }
 
 .ramp-tile-setup {
@@ -480,7 +456,7 @@ button.ramp-tile {
   margin-inline-end: 8px;
 }
 
-.ramp-bottom-action {
+.launch-screen--fixed .ramp-bottom-action {
   position: sticky;
   bottom: 0;
   z-index: 1;
@@ -502,20 +478,10 @@ button.ramp-tile {
   line-height: 1.4;
 }
 
-.launch-screen:has(
+.launch-screen--fixed:has(
   .widget-panel:not([hidden]) > .widget-panel:not([hidden]) .ramp-bottom-action .send-cta
 ) {
   padding-block-end: var(--ramp-action-space);
-  scroll-padding-block-end: var(--ramp-action-space);
-}
-
-html:has(
-  .launch-screen:not(.launch-screen--fixed)
-    .widget-panel:not([hidden])
-    > .widget-panel:not([hidden])
-    .ramp-bottom-action
-    .send-cta
-) {
   scroll-padding-block-end: var(--ramp-action-space);
 }
 
@@ -524,6 +490,11 @@ html:has(
   align-content: center;
   font-size: 0.75rem;
   line-height: 1.35;
+}
+
+.ramp-unavailable summary .ramp-tile__logo {
+  display: inline-block;
+  vertical-align: middle;
 }
 
 .ramp-unavailable summary span {
