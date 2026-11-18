@@ -323,6 +323,8 @@ describe("send privately to someone else", () => {
     const shown = within(review).getByTitle(META);
     expect(shown.textContent).toBe(`st:eth:0x${META.slice(9, 15)}...${META.slice(-6)}`);
     expect(review.textContent).toMatch(/does not hide your funding transaction/);
+    // The venue derives the one-time address, so it learns the meta-address; say so.
+    expect(review.textContent).toMatch(/Xochi sees the recipient's meta-address/);
     expect(prompts(calls)).toEqual([]);
 
     fireEvent.click(within(review).getByRole("button", { name: "Continue to Stealth swap" }));

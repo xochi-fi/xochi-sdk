@@ -35,9 +35,14 @@ export const STEALTH_NEEDS_WALLET_CAPTION =
  * unavailable). No launch promise: "coming soon" was dropped with the spec's
  * "launch-pending".
  */
-/** What Stealth does and does not hide, stated wherever someone else is paid. */
+/**
+ * What Stealth does and does not hide, stated wherever someone else is paid.
+ * The venue derives the one-time address from the meta-address in the quote
+ * request, so it learns the meta-address: the copy must not claim the venue
+ * cannot link sender and recipient.
+ */
 export const STEALTH_PRIVACY_LIMITS =
-  "Stealth hides the link between this payment and the recipient's address. It does not hide your funding transaction, the amount or when you send it.";
+  "Stealth hides the link between this payment and the recipient's address from public view. Xochi sees the recipient's meta-address, because it derives the one-time address from it, so Xochi can link this payment to them. It does not hide your funding transaction, the amount or when you send it.";
 
 export const SHIELDED_UNAVAILABLE_CAPTION =
   "Shielded is unavailable. It hides the recipient; the amount, token, solver and timing stay public.";
