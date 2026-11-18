@@ -297,13 +297,9 @@ describe("Send to a payment app through a current host", () => {
       </OfframpPortContext>,
       { connected: true },
     );
-    const catalog = await screen.findByRole(
-      "group",
-      { name: "Cash out to your own account" },
-      WAIT,
-    );
+    const catalog = await screen.findByRole("group", { name: "Your account" }, WAIT);
     expect(within(catalog).queryAllByRole("radio")).toHaveLength(0);
-    expect(within(catalog).getByText("Your Venmo").closest("[aria-disabled=true]")).toBeTruthy();
+    expect(within(catalog).getByText("Venmo").closest("[aria-disabled=true]")).toBeTruthy();
     expect(rampEvents(channels.frame)).toEqual([]);
     fireEvent.change(await screen.findByLabelText("USDC to cash out", {}, WAIT), {
       target: { value: "25" },

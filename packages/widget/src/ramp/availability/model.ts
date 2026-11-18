@@ -287,18 +287,18 @@ export function nextExpiry(offers: readonly RampOffer[], now: number): number | 
   return next;
 }
 
-/** Critical facts, shown before any rail can be chosen. Plain text, no hover. */
+/** Full facts, expandable before rail choice and always visible at review before consent. */
 export function rampFacts(direction: RampDirection): string[] {
   const shared = [
-    "Base transfers and wallet addresses are public.",
+    "Base transfers, amounts and wallet addresses are public.",
     "The other person sees your payment details and name.",
-    "Peer’s access checks and secure verifier must be online.",
+    "Peer handles required payment data. Its access checks and secure verifier must be online.",
   ];
   return direction === "onramp"
     ? [
         ...shared,
-        "Expired or unverifiable purchases have no protocol refund.",
-        "Without Peer stake, Venmo or PayPal payouts can be held for 14 days.",
+        "Expired or unverifiable purchases have no protocol refund. Check the active intent before paying.",
+        "Without Peer stake, Venmo or PayPal payouts can be held for 14 days. Held funds cannot start a swap.",
       ]
     : [
         "Cash out to your own account.",

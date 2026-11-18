@@ -310,12 +310,7 @@ describe("howItWorks and height", () => {
     stubApi();
     await renderTrade(<Trade look={look("howItWorks=0")} />);
     expect(screen.queryByRole("button", { name: /How it works/ })).toBeNull();
-    // The custody and fee facts stay, in one line.
-    expect(
-      screen.getByText(
-        "Self-custody: you sign from your own wallet. Privacy is part of the trading fee, never an extra charge.",
-      ),
-    ).toBeTruthy();
+    expect(screen.queryByText(/Privacy is part of the trading fee/)).toBeNull();
     cleanup();
 
     await renderTrade(<Trade look={look("howItWorks=1")} />);

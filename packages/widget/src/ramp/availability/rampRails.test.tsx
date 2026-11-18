@@ -53,6 +53,15 @@ describe("Buy rails", () => {
     const port = recordedPort({ account: ACCOUNT, clock });
     renderRails(port, <RampRails direction="onramp" account={ACCOUNT} active />);
     const facts = screen.getByRole("region", { name: "Before you choose" });
+    expect(
+      within(facts).getByText("Public on Base. The seller sees your payment name."),
+    ).toBeTruthy();
+    const info = within(facts).getByRole("button", { name: "Buy disclosures" });
+    expect(info.getAttribute("aria-expanded")).toBe("false");
+    expect(within(facts).queryByRole("list")).toBeNull();
+    fireEvent.click(info);
+    expect(info.getAttribute("aria-expanded")).toBe("true");
+    expect(within(facts).getAllByRole("listitem")).toHaveLength(5);
     expect(facts.textContent).toMatch(/wallet addresses are public/);
     expect(facts.textContent).toMatch(/sees your payment details and name/);
     expect(facts.textContent).toMatch(/secure verifier/);
@@ -75,7 +84,7 @@ describe("Buy rails", () => {
     }
   });
 
-  it("shows a text-only catalog tile with no selection authority", () => {
+  it("shows branded and text-only catalog rails with no selection authority", () => {
     const port = recordedPort({ account: ACCOUNT, clock: { t: RECORDED_AT } });
     const connect = vi.fn();
     renderRails(
@@ -83,11 +92,12 @@ describe("Buy rails", () => {
       <RampRails direction="onramp" account={undefined} active onConnectRequest={connect} />,
     );
     const venue = screen.getByText("Venmo").closest("[aria-disabled=true]")!;
-    expect(within(venue as HTMLElement).getByText("Not checked yet")).toBeTruthy();
-    expect(venue.querySelector("img, input, button")).toBeNull();
+    expect(within(venue as HTMLElement).getByText("Not checked")).toBeTruthy();
+    expect(venue.querySelector("input, button")).toBeNull();
+    expect(venue.querySelector(".ramp-tile__logo")).toBeTruthy();
     expect(
-      screen.getByText("Wise").closest("[aria-disabled=true]")?.querySelector("img"),
-    ).toBeTruthy();
+      screen.getByText("Chime").closest(".ramp-tile")?.querySelector(".ramp-tile__logo"),
+    ).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Connect wallet" }));
     expect(connect).toHaveBeenCalledOnce();
     expect(port.calls).toEqual([]);
@@ -139,7 +149,7 @@ describe("Buy rails", () => {
     expect(radios()).toHaveLength(0);
     expect(blockedCard("Wise").textContent).toMatch(/Offer expired/);
     expect(blockedCard("Wise").textContent).toMatch(/Check again/);
-    expect(screen.getByRole("status").textContent).toMatch(/no longer available; choose again/);
+    expect(screen.getByRole("status").textContent).toMatch(/unavailable\. Choose again/);
     expect(port.calls).toHaveLength(1);
   });
 
@@ -261,7 +271,7 @@ describe("Buy rails", () => {
     renderRails(port, <RampRails direction="onramp" account={ACCOUNT} active />);
     typeAmount("25");
     await act(async () => {});
-    expect(screen.getByRole("status").textContent).toMatch(/limits each purchase to 5(\.0+)? USDC/);
+    expect(screen.getByRole("status").textContent).toMatch(/Purchase limit: 5(\.0+)? USDC/);
     expect(radios()).toHaveLength(0);
     expect(port.calls).toEqual([]);
     typeAmount("5");

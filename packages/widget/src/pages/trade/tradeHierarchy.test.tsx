@@ -228,7 +228,7 @@ describe("assurance copy lives in How it works", () => {
   it("states the mempool claim once, in the steps", async () => {
     const { container } = await renderTrade(<SwapPanel />);
     fireEvent.click(explainerToggle());
-    const steps = document.getElementById("trade-explainer-steps");
+    const steps = document.getElementById(explainerToggle().getAttribute("aria-controls")!);
     expect(steps).not.toBeNull();
     expect(steps!.textContent).toContain("skips the public mempool");
     // Step 1 already carries the clause, so the moved sentence dropped it: one

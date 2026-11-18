@@ -21,6 +21,7 @@ import { useContext, useEffect, useId, useMemo, useState, type FormEvent } from 
 import { useAccount, useConfig } from "wagmi";
 import { formatTokenAmount } from "../../utils/format.js";
 import { usePublicBalances } from "../../hooks/usePublicBalances.js";
+import { RampDisclosure, RampFacts } from "../availability/RampDisclosure.js";
 import {
   RailChoice,
   RailTileContent,
@@ -34,7 +35,6 @@ import {
   overallCard,
   parseRampAmount,
   railCard,
-  rampFacts,
   type RailCard,
 } from "../availability/model.js";
 import {
@@ -102,7 +102,6 @@ function WalletPaymentAppSend({
   address?: string;
   port: ReturnType<typeof useOfframpPort>;
 }) {
-  const id = useId();
   const checkpoint = address ? inspectOfframpPrerequisite(address) : undefined;
   const [route, setRoute] = useState<OfframpPrerequisite>();
   const [routeAmount, setRouteAmount] = useState<string>();
@@ -120,10 +119,7 @@ function WalletPaymentAppSend({
   const [editCurrency, setEditCurrency] = useState(fiatCurrency);
 
   return (
-    <section className="ramp-rails" aria-labelledby={`${id}-title`}>
-      <h3 id={`${id}-title`} className="send-review__title">
-        Cash out
-      </h3>
+    <section className="ramp-rails" aria-label="Cash out">
       {checkpoint && !route && flow.view.kind !== "edit" && (
         <OfframpRoute
           key={address}
@@ -273,19 +269,14 @@ function EditStep({
   const estimateFor = (offer: RampOffer) =>
     state.status === "done" ? state.estimates.find((e) => e.offerId === offer.offer_id) : undefined;
 
-  let status: string;
-  if (!settlement)
-    status = "Peer's Base USDC configuration did not validate, so no rail can be used.";
-  else if (!account) status = "Connect a wallet and enter an amount to check availability.";
-  else if (flow.runtimeFailed) status = "The cash-out runtime could not start for this wallet.";
-  else if (amount === undefined) status = "Enter an amount to check availability.";
+  let status: string | undefined;
+  if (!settlement) status = "Peer’s Base USDC configuration is unavailable.";
+  else if (lost) status = "That app is unavailable. Choose again.";
+  else if (flow.runtimeFailed) status = "Cash out is unavailable for this wallet.";
+  else if (account && amount === undefined && !amountInvalid)
+    status = "Enter an amount to check payment apps.";
   else if (overCap) status = overCap;
-  else if (state.status !== "done") status = "Checking payment apps...";
-  else
-    status =
-      selectable.length === 0
-        ? "No rail can be chosen right now."
-        : `${selectable.length} of ${cards.length} ${cards.length === 1 ? "rail" : "rails"} can be chosen.`;
+  else if (state.status === "loading") status = "Checking payment apps…";
 
   const sourcePicker = (
     <label className="send-field">
@@ -373,34 +364,26 @@ function EditStep({
             )}
           </div>
           {sourcePicker}
-          <section className="ramp-facts" aria-labelledby={`${id}-facts`}>
-            <h4 id={`${id}-facts`} className="ramp-facts__title">
-              Before you choose
-            </h4>
-            <ul className="ramp-facts__list">
-              {rampFacts("offramp").map((fact) => (
-                <li key={fact}>{fact}</li>
-              ))}
-            </ul>
-          </section>
+          <RampDisclosure direction="offramp" />
 
-          <p className="send-note" role="status" aria-live="polite">
-            {status}
-            {lost && " The rail you chose is no longer available; choose again."}
-          </p>
+          {status && (
+            <p className="send-note" role="status">
+              {status}
+            </p>
+          )}
 
           {state.status === "done" && cards.length === 0 && (
             <OverallCard {...overallCard(state.availability, "offramp")} />
           )}
 
-          <RailTiles title="Cash out to your own account" own untested={state.status !== "done"}>
+          <RailTiles title="Your account" untested={state.status !== "done"}>
             {selectable.map(({ card, offer }) => {
               const est = estimateFor(offer);
               return (
                 <RailChoice
                   key={card.id}
                   card={card}
-                  name={`Your ${card.name}`}
+                  name={card.name}
                   group={`${id}-rail`}
                   selected={chosen?.card.id === card.id}
                   status={
@@ -435,7 +418,6 @@ function EditStep({
               ))}
           </RailTiles>
           <UnavailableRails
-            own
             cards={blocked
               .filter(
                 ({ offer }) =>
@@ -548,7 +530,7 @@ function AccountSetup({
   if (!open)
     return (
       <button type="button" className="ramp-tile" onClick={() => setOpen(true)}>
-        <RailTileContent id={rail} name={`Your ${name}`} status="Set up first" />
+        <RailTileContent id={rail} name={name} status="Set up first" />
       </button>
     );
   return (
@@ -642,10 +624,6 @@ function ReviewStep({
           <dd>{quote.railName}</dd>
         </div>
         <div>
-          <dt className="send-field__label">Currency</dt>
-          <dd>{quote.intent.fiat.currency}</dd>
-        </div>
-        <div>
           <dt className="send-field__label">You deposit</dt>
           <dd className="send-review__amount">{formatUsdc(preview.pay.atomic)}</dd>
         </div>
@@ -653,7 +631,7 @@ function ReviewStep({
           <dt className="send-field__label">Estimated payout</dt>
           <dd>
             {fiat.kind === "fiat"
-              ? `${formatEstimate(preview.receive.atomic, fiat.currency, fiat.decimals)}, not a locked rate`
+              ? formatEstimate(preview.receive.atomic, fiat.currency, fiat.decimals)
               : "Unknown"}
           </dd>
         </div>
@@ -674,8 +652,8 @@ function ReviewStep({
           <dt className="send-field__label">Estimate</dt>
           <dd role="status">
             {stale
-              ? "Expired. It can no longer be used; get a new estimate."
-              : `Usable until ${formatRampTime(preview.expires_at)}. Payments can arrive later and in parts.`}
+              ? "Expired. Get a new estimate."
+              : `Valid until ${formatRampTime(preview.expires_at)}`}
           </dd>
         </div>
         <div>
@@ -683,11 +661,8 @@ function ReviewStep({
           <dd className="send-review__mono">{confirmedMask ?? "Not entered yet"}</dd>
         </div>
         <div>
-          <dt className="send-field__label">Public Base transaction</dt>
-          <dd>
-            {formatUsdc(preview.pay.atomic)} deposited into Peer's holding contract on Base. The
-            amount and your wallet address are public.
-          </dd>
+          <dt className="send-field__label">Deposit destination</dt>
+          <dd>Peer’s holding contract on Base</dd>
         </div>
         {escrow && (
           <div>
@@ -745,10 +720,7 @@ function ReviewStep({
         )
       )}
 
-      <p id={consentId} className="send-note">
-        The rate can change and payments can arrive later or in parts. The buyer sees your payment
-        details and the deposit is public on Base.
-      </p>
+      <RampFacts direction="offramp" id={consentId} />
       <label className="send-check">
         <input
           type="checkbox"
@@ -758,7 +730,6 @@ function ReviewStep({
         />
         <span>I accept the cash-out terms.</span>
       </label>
-      <p className="send-note">Each wallet step needs your approval before funds move.</p>
 
       <div className="send-review__actions">
         <button

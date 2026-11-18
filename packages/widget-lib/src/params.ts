@@ -35,7 +35,7 @@ export const EMBED_PARAM = {
 
 export const WIDGET_TABS = ["trade", "send", "activity", "claims"] as const;
 export type WidgetTab = (typeof WIDGET_TABS)[number];
-export const TRADE_MODES = ["onramp", "swap", "offramp"] as const;
+export const TRADE_MODES = ["swap", "onramp", "offramp"] as const;
 export type TradeMode = (typeof TRADE_MODES)[number];
 export const SEND_DESTINATIONS = ["address", "stealth"] as const;
 export type SendDestinationKind = (typeof SEND_DESTINATIONS)[number];

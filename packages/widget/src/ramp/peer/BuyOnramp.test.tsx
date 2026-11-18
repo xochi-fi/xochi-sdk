@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { BuyOnramp } from "./BuyOnramp.js";
 import { buyerHarness } from "../../test/buyerPort.js";
 import type { PeerOnrampRuntime } from "./onramp.js";
@@ -21,7 +21,11 @@ it("reviews exact economics, names wallet actions and waits for receipt confirma
   expect(document.querySelector(`time[datetime="${h.preview.expires_at}"]`)).toBeTruthy();
   expect(screen.getByText(/Peer fee: /)).toBeTruthy();
   expect(screen.getByText(h.intent.recipient)).toBeTruthy();
-  expect(screen.getByText(/expired or unverifiable intent is not refundable/)).toBeTruthy();
+  const facts = screen.getByRole("list");
+  expect(within(facts).getAllByRole("listitem")).toHaveLength(5);
+  expect(
+    within(facts).getByText(/Expired or unverifiable purchases have no protocol refund/),
+  ).toBeTruthy();
   const approve = screen.getByRole<HTMLButtonElement>("button", {
     name: "Approve wallet: signal Peer purchase on Base",
   });

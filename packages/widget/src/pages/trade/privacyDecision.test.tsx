@@ -393,7 +393,7 @@ describe("stealth blockers are triaged, not collapsed", () => {
     await waitFor(
       () =>
         expect(mode("Stealth").querySelector(".type-btn__meta--fix")?.textContent).toBe(
-          "Uses your wallet’s Stealth keys",
+          "Uses wallet keys",
         ),
       WAIT,
     );
@@ -539,10 +539,10 @@ describe("education never blocks the form", () => {
     await renderTrade(<SwapPanel />);
     const toggle = screen.getByRole("button", { name: /How it works/ });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByText("Sign an intent")).toBeNull();
+    expect(screen.queryByText("The order skips the public mempool.")).toBeNull();
 
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByText("Sign an intent")).toBeTruthy();
+    expect(screen.getByText("The order skips the public mempool.")).toBeTruthy();
   });
 });

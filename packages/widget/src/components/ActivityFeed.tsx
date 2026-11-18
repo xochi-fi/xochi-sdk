@@ -556,15 +556,9 @@ function SignInPrompt({
 }) {
   return (
     <div className={compact ? "activity-signin activity-signin--compact" : "activity-signin"}>
-      <p className="activity-signin__text">
-        {compact
-          ? "Sign in with the wallet to load the full history."
-          : "Sign in with the wallet to see past swaps."}
-      </p>
       <button className="btn btn--ghost btn--sm" onClick={onSignIn} disabled={isSigningIn}>
-        {isSigningIn ? "Check wallet..." : "Sign in"}
+        {isSigningIn ? "Check wallet…" : "Sign in to load history"}
       </button>
-      {!compact && <p className="activity-signin__note">One quick signature, no gas.</p>}
     </div>
   );
 }

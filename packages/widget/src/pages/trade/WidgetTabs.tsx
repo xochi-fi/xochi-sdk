@@ -7,8 +7,8 @@
  * to the ends. Trade owns the selection and renders the matching tabpanels
  * under the ids from `widgetTabIds`.
  *
- * The same component renders the nested choices inside a tab (Trade's Buy |
- * Swap mode, Send's destination kind), so every level of the widget's
+ * The same component renders the nested choices inside a tab (Trade’s Swap |
+ * Buy | Cash out modes, Send's destination kind), so every level of the widget's
  * navigation moves by the same keys.
  *
  * The id vocabularies are the embed contract's (peer-send-tab addendum), so

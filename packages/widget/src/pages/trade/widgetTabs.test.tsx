@@ -296,7 +296,7 @@ describe("tablist", () => {
     expect(selectedMode()).toBe("Swap");
 
     modeTab("Swap").focus();
-    fireEvent.keyDown(modeTab("Swap"), { key: "ArrowLeft" });
+    fireEvent.keyDown(modeTab("Swap"), { key: "ArrowRight" });
     expect(selectedMode()).toBe("Buy");
     expect(document.activeElement).toBe(modeTab("Buy"));
     // The top row did not move: the mode is Trade's own selection.
@@ -304,13 +304,13 @@ describe("tablist", () => {
 
     fireEvent.keyDown(modeTab("Buy"), { key: "End" });
     expect(selectedMode()).toBe("Cash out");
-    fireEvent.keyDown(modeTab("Cash out"), { key: "ArrowLeft" });
+    fireEvent.keyDown(modeTab("Cash out"), { key: "ArrowRight" });
     expect(selectedMode()).toBe("Swap");
     expect(
       within(screen.getByRole("tablist", { name: "Trade mode" }))
         .getAllByRole("tab")
         .map((t) => t.tabIndex),
-    ).toEqual([-1, 0, -1]);
+    ).toEqual([0, -1, -1]);
   });
 
   it("shows Buy's critical facts before any rail and reads Peer only for an amount", async () => {

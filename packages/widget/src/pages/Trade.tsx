@@ -676,9 +676,6 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
               <section className="launch-txlog" aria-label="Transaction log">
                 {!isConnected ? (
                   <div className="send-card">
-                    <p className="send-note">
-                      Your swaps, sends, purchases and cash outs appear here.
-                    </p>
                     <button
                       className="submit-btn send-cta"
                       type="button"

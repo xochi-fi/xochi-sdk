@@ -2,25 +2,19 @@
  * RampRails
  *
  * Live Peer rail availability for Trade/Buy (`onramp`) and Trade/Cash out
- * (`offramp`). The critical facts come first, before any rail can be chosen.
+ * (`offramp`). A short disclosure and expandable facts precede the rail choice.
  * Fresh `available` offers form a native radio group (arrow keys move, one
  * tab stop); every other rail stays readable in a list with its state, reason
  * and next step in text. Nothing here starts a purchase or a cash-out: the
  * selection is held for the execution flow that follows (W2/W4).
  */
 
+import { RampDisclosure } from "./RampDisclosure.js";
 import { RailTiles, RailChoice, UnavailableRails } from "./RailTiles.js";
 import { isPeerMobileWeb } from "../peer/environment.js";
 import { useId, useState, type ReactNode } from "react";
 import type { RampDirection, RampIntent, RampOffer } from "@xochi/client";
-import {
-  formatRampTime,
-  overallCard,
-  parseRampAmount,
-  railCard,
-  rampFacts,
-  type RailCard,
-} from "./model.js";
+import { formatRampTime, overallCard, parseRampAmount, railCard, type RailCard } from "./model.js";
 import { useRampDiscovery } from "./useRampDiscovery.js";
 import { formatUsdc } from "../offramp/model.js";
 
@@ -29,13 +23,13 @@ const COPY: Record<
   { title: string; amountLabel: string; currencyLabel: string; selected: string }
 > = {
   onramp: {
-    title: "Buy USDC on Base with a payment app",
+    title: "Buy USDC on Base",
     amountLabel: "USDC to receive",
     currencyLabel: "Pay in",
     selected: "This view cannot start a purchase; nothing will be charged.",
   },
   offramp: {
-    title: "Cash out to your own payment app",
+    title: "Cash out",
     amountLabel: "USDC to cash out",
     currencyLabel: "Receive in",
     selected: "This view cannot start a cash-out; nothing will be sent.",
@@ -100,26 +94,17 @@ export function RampRails({
   const lost = selected !== undefined && chosen === undefined && state.status === "done";
   const currencies = [...new Set([fiatCurrency, "USD"])];
 
-  let status: string;
-  if (!settlement)
-    status = "Peer's Base USDC configuration did not validate, so no rail can be used.";
-  else if (!account) status = "Connect a wallet and enter an amount to check availability.";
-  else if (amount === undefined) status = "Enter an amount to check availability.";
-  else if (cap !== undefined)
-    status = `This deployment limits each purchase to ${formatUsdc(cap)} for now. Enter ${formatUsdc(cap)} or less.`;
-  else if (state.status !== "done") status = "Checking payment apps...";
-  else
-    status =
-      selectable.length === 0
-        ? "No rail can be chosen right now."
-        : `${selectable.length} of ${cards.length} ${cards.length === 1 ? "rail" : "rails"} can be chosen.`;
+  let status: string | undefined;
+  if (!settlement) status = "Peer’s Base USDC configuration is unavailable.";
+  else if (!account && !onConnectRequest) status = "Connect a wallet to check payment apps.";
+  else if (lost) status = "That app is unavailable. Choose again.";
+  else if (account && amount === undefined && !amountInvalid)
+    status = "Enter an amount to check payment apps.";
+  else if (cap !== undefined) status = `Purchase limit: ${formatUsdc(cap)}.`;
+  else if (state.status === "loading") status = "Checking payment apps…";
 
   return (
-    <section className="ramp-rails" aria-labelledby={`${id}-title`}>
-      <h3 id={`${id}-title`} className="send-review__title">
-        {copy.title}
-      </h3>
-
+    <section className="ramp-rails" aria-label={copy.title}>
       {mobile && (
         <p className="send-note" role="status">
           Buy in desktop Chrome or Brave with the Peer extension, or use the Peer app.
@@ -171,21 +156,11 @@ export function RampRails({
           )}
         </div>
       )}
-      <section className="ramp-facts" aria-labelledby={`${id}-facts`}>
-        <h4 id={`${id}-facts`} className="ramp-facts__title">
-          Before you choose
-        </h4>
-        <ul className="ramp-facts__list">
-          {rampFacts(direction).map((fact) => (
-            <li key={fact}>{fact}</li>
-          ))}
-        </ul>
-      </section>
+      <RampDisclosure direction={direction} />
 
-      {!mobile && (
-        <p className="send-note" role="status" aria-live="polite">
+      {!mobile && status && (
+        <p className="send-note" role="status">
           {status}
-          {lost && " The rail you chose is no longer available; choose again."}
         </p>
       )}
 
