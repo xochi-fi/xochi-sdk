@@ -8,7 +8,9 @@
  * A purchase that no live runtime owns (after a reload, or a return from Peer
  * into a fresh view) is resumed first, from its sanitized local summary. While
  * this wallet has a submitted purchase that has not settled, no rail can be
- * chosen: another transfer must not start beside it.
+ * chosen: another transfer must not start beside it. Inside an iframe, no rail
+ * is offered until a current host has pinned the origin (lib/rampHostGate);
+ * the resume view above stays regardless.
  */
 
 import { useEffect, useState } from "react";
@@ -18,6 +20,7 @@ import { RampRails } from "../../ramp/availability/RampRails.js";
 import { ResumeOnramp } from "../../ramp/recovery/ResumeOnramp.js";
 import { rampOperationLive, summaryResolved } from "../../ramp/recovery/summaries.js";
 import { useRampSummaries } from "../../hooks/useRampSummaries.js";
+import { RAMP_HOST_GATE_COPY, useRampHostGate } from "../../lib/rampHostGate.js";
 
 interface BuyPanelProps {
   /** Whether Buy is the visible mode; a hidden panel reads nothing from Peer. */
@@ -33,6 +36,7 @@ export function BuyPanel({ active, fiatCurrency }: BuyPanelProps) {
   const summaries = useRampSummaries();
   const me = address?.toLowerCase();
   const [pinned, setPinned] = useState<string>();
+  const gate = useRampHostGate();
   const waiting = summaries.filter(
     (row) => !summaryResolved(row) && !rampOperationLive(row.operation_id),
   );
@@ -69,6 +73,10 @@ export function BuyPanel({ active, fiatCurrency }: BuyPanelProps) {
       {blocked ? (
         <p className="ramp-resume__blocked">
           Resolve the purchase above before starting another. Do not start another transfer for it.
+        </p>
+      ) : gate !== "ready" ? (
+        <p className="ramp-resume__blocked" role="status">
+          {RAMP_HOST_GATE_COPY[gate]}
         </p>
       ) : (
         <RampRails

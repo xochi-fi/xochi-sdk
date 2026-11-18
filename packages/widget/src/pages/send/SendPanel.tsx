@@ -10,12 +10,15 @@
  *   - `payment_app`: cashing out Base USDC to the user's own payment-app
  *     account through a Peer maker deposit (ramp/offramp/PaymentAppSend).
  *
- * Neither `address` nor `stealth` touches Peer. Each destination stays mounted
+ * Neither `address` nor `stealth` touches Peer. Inside an iframe, `payment_app`
+ * waits for a current host (lib/rampHostGate); Activity keeps any cash-out
+ * already submitted. Each destination stays mounted
  * while hidden, so switching kinds keeps what was typed.
  */
 
 import { useId } from "react";
 import { PaymentAppSend } from "../../ramp/offramp/PaymentAppSend.js";
+import { RAMP_HOST_GATE_COPY, useRampHostGate } from "../../lib/rampHostGate.js";
 import type { SwapPrefill } from "../trade/SwapPanel.js";
 import {
   WidgetTabs,
@@ -55,6 +58,7 @@ export function SendPanel({
   fiatCurrency,
 }: SendPanelProps) {
   const baseId = useId();
+  const gate = useRampHostGate();
   const tabs: WidgetTab<SendDestinationKind>[] = destinations.map((kind) => ({
     id: kind,
     label: LABELS[kind],
@@ -93,10 +97,16 @@ export function SendPanel({
       )}
       {destinations.includes("payment_app") && (
         <div {...panel("payment_app")}>
-          <PaymentAppSend
-            fiatCurrency={fiatCurrency}
-            active={active && destination === "payment_app"}
-          />
+          {gate === "ready" ? (
+            <PaymentAppSend
+              fiatCurrency={fiatCurrency}
+              active={active && destination === "payment_app"}
+            />
+          ) : (
+            <p className="ramp-resume__blocked" role="status">
+              {RAMP_HOST_GATE_COPY[gate]}
+            </p>
+          )}
         </div>
       )}
     </div>
