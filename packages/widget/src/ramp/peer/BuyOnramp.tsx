@@ -9,6 +9,7 @@ import type {
 import { formatUnits } from "viem";
 import type { PublicClient, WalletClient } from "viem";
 import { createRampEmitter, emitSnapshot } from "../../lib/rampLifecycle.js";
+import { formatRampTime, railName } from "../availability/model.js";
 import type { PeerOnrampRuntime, PeerSetupCode } from "./onramp.js";
 import { OnrampSteps } from "./OnrampSteps.js";
 import { OnrampRoute } from "../route/OnrampRoute.js";
@@ -21,6 +22,12 @@ import {
   upsertRampSummary,
   type RampOperationSummary,
 } from "../recovery/summaries.js";
+
+/** Fee codes Peer's preview carries, in words. */
+const FEE_LABELS: Readonly<Record<string, string>> = {
+  peer_fee: "Peer fee",
+  maker_fee: "Seller fee",
+};
 
 export const setupCopy: Record<PeerSetupCode, string> = {
   peer_desktop_extension_or_app:
@@ -226,20 +233,23 @@ export function BuyOnramp({
           )}
           {preview && (
             <>
-              <dl>
+              <dl className="send-review__facts">
                 <dt>Provider / payment app</dt>
-                <dd>Peer / {offer.rail.label}</dd>
+                <dd>Peer / {railName(offer)}</dd>
                 <dt>Pay exactly</dt>
                 <dd>{money(preview.pay)}</dd>
                 <dt>Receive</dt>
                 <dd>{money(preview.receive)} on Base</dd>
                 <dt>Fees</dt>
                 <dd>
-                  {preview.fees.map((fee) => `${fee.code}: ${money(fee.money)}`).join("; ") ||
-                    "None"}
+                  {preview.fees
+                    .map((fee) => `${FEE_LABELS[fee.code] ?? fee.code}: ${money(fee.money)}`)
+                    .join("; ") || "None"}
                 </dd>
                 <dt>Quote expires</dt>
-                <dd>{preview.expires_at}</dd>
+                <dd>
+                  <time dateTime={preview.expires_at}>{formatRampTime(preview.expires_at)}</time>
+                </dd>
                 <dt>Recipient wallet</dt>
                 <dd>{intent.recipient}</dd>
                 <dt>Required interaction</dt>

@@ -18,7 +18,8 @@ it("reviews exact economics, names wallet actions and waits for receipt confirma
   expect(h.extension.opens).toBe(0);
   fireEvent.click(screen.getByRole("button", { name: "Review exact Peer quote" }));
   await screen.findByText("Pay exactly");
-  expect(screen.getByText(h.preview.expires_at)).toBeTruthy();
+  expect(document.querySelector(`time[datetime="${h.preview.expires_at}"]`)).toBeTruthy();
+  expect(screen.getByText(/Peer fee: /)).toBeTruthy();
   expect(screen.getByText(h.intent.recipient)).toBeTruthy();
   expect(screen.getByText(/expired or unverifiable intent is not refundable/)).toBeTruthy();
   const approve = screen.getByRole<HTMLButtonElement>("button", {
