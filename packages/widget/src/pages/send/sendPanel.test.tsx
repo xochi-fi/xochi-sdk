@@ -193,22 +193,17 @@ describe("send to an address", () => {
     expect(calls.filter((c) => c.method === "eth_sendTransaction")).toHaveLength(1);
   });
 
-  it("stays on review and logs nothing when the wallet does not send", async () => {
+  it("blocks retry when the wallet response is unknown", async () => {
     const calls = stubWallet();
     await openSend({ tokenBalance: 10_000_000n });
     fillAddressForm("2", RECIPIENT);
     fireEvent.click(within(kindPanel("Address")).getByRole("button", { name: "Review send" }));
-    const review = screen.getByRole("region", { name: "Review send" });
-    fireEvent.click(within(review).getByRole("button", { name: "Approve in wallet" }));
-
-    await within(review).findByRole("alert", {}, WAIT);
-    expect(screen.getByRole("region", { name: "Review send" })).toBe(review);
+    fireEvent.click(screen.getByRole("button", { name: "Approve in wallet" }));
+    const recovery = await screen.findByRole("region", { name: "Send status unknown" }, WAIT);
+    expect(within(recovery).getByRole("alert").textContent).toMatch(/Do not send again/);
+    expect(screen.queryByRole("button", { name: "Approve in wallet" })).toBeNull();
     expect(calls.filter((c) => c.method === "eth_sendTransaction")).toHaveLength(1);
     expect(listLocalSends(TEST_ACCOUNT)).toEqual([]);
-
-    // Back keeps what was typed.
-    fireEvent.click(within(review).getByRole("button", { name: "Back" }));
-    expect(within(kindPanel("Address")).getByLabelText<HTMLInputElement>("Amount").value).toBe("2");
   });
 });
 

@@ -33,8 +33,14 @@ interface AddressSendProps {
 const exact = (amount: bigint, decimals: number): string =>
   formatTokenAmount(amount, decimals, decimals);
 
-export function AddressSend({ onConnectRequest }: AddressSendProps) {
+export function AddressSend(props: AddressSendProps) {
+  const { address } = useAccount();
+  return <WalletAddressSend key={address?.toLowerCase()} {...props} />;
+}
+
+function WalletAddressSend({ onConnectRequest }: AddressSendProps) {
   const id = useId();
+  const [recoveryHash, setRecoveryHash] = useState<string | null>(null);
   const config = useConfig();
   const { isConnected, address, chainId: walletChainId } = useAccount();
   const { openConnectModal } = useConnectModal();
@@ -187,6 +193,14 @@ export function AddressSend({ onConnectRequest }: AddressSendProps) {
     );
   }
 
+  if (phase.step === "blocked")
+    return (
+      <p role="alert">
+        Send checkpoint unavailable. Restore browser storage before sending. An earlier transfer may
+        be unresolved.
+      </p>
+    );
+
   const { order } = phase;
   const amountText = `${exact(order.amount, order.token.decimals)} ${order.token.symbol}`;
   const summary = (
@@ -216,6 +230,28 @@ export function AddressSend({ onConnectRequest }: AddressSendProps) {
     </dl>
   );
 
+  if (phase.step === "in_doubt") {
+    const hash = phase.attempt.hash ?? recoveryHash ?? phase.attempt.candidateHash ?? "";
+    return (
+      <section className="send-review" aria-label="Send status unknown">
+        <h3>Transfer status unknown</h3>
+        {summary}
+        <p role="alert">{phase.notice}</p>
+        <label>
+          Transaction hash
+          <input
+            value={hash}
+            readOnly={!!phase.attempt.hash}
+            onChange={(e) => setRecoveryHash(e.target.value)}
+          />
+        </label>
+        <button type="button" onClick={() => void send.reconcile(hash)}>
+          Check existing transfer
+        </button>
+      </section>
+    );
+  }
+
   if (phase.step === "sent") {
     const explorer = getExplorerTxUrl(order.chainId as SelectableChainId, phase.hash);
     return (
@@ -238,9 +274,11 @@ export function AddressSend({ onConnectRequest }: AddressSendProps) {
           )}
         </div>
         <p className="send-note">It also appears in Activity.</p>
-        <button type="button" className="submit-btn send-cta" onClick={send.reset}>
-          New send
-        </button>
+        {phase.outcome !== "pending" && (
+          <button type="button" className="submit-btn send-cta" onClick={send.reset}>
+            New send
+          </button>
+        )}
       </section>
     );
   }
