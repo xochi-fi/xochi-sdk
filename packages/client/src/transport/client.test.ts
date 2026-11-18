@@ -1095,6 +1095,20 @@ describe("getQuote cache", () => {
     expect(calls).toHaveLength(3);
   });
 
+  // A decline (can_solve:false, e.g. insufficient_liquidity) is a 200 with
+  // success:true. Served from the cache, Retry replays the same decline for
+  // the whole TTL without asking the solver again.
+  it("refetches a decline instead of serving it from the cache", async () => {
+    const { c, calls } = client((call) =>
+      call === 1
+        ? okQuote({ can_solve: false, error: "No route", error_category: "no_liquidity" })
+        : okQuote(),
+    );
+    expect(await c.getQuote(req)).toMatchObject({ canSolve: false });
+    expect(await c.getQuote(req)).toMatchObject({ canSolve: true });
+    expect(calls).toHaveLength(2);
+  });
+
   it("deduplicates a request already in flight", async () => {
     const { c, calls } = client(() => okQuote());
     const [a, b] = await Promise.all([c.getQuote(req), c.getQuote(req)]);
