@@ -213,6 +213,7 @@
 
 .send-review__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.75rem;
   align-items: stretch;
 }

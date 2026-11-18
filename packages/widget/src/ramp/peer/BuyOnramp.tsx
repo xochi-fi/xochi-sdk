@@ -154,7 +154,7 @@ export function BuyOnramp({
   const expired =
     preview !== undefined && Date.parse(preview.expires_at) <= Math.max(clock, Date.now());
   return (
-    <section aria-label="Peer purchase review">
+    <section className="onramp-review" aria-label="Peer purchase review">
       {!runtime || !client ? (
         <p role="status">Connect your wallet on Base to review and approve a Peer purchase.</p>
       ) : (

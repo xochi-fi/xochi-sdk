@@ -136,6 +136,20 @@
   }
 }
 
+/* High contrast: the chosen rail and the status lines keep a system-colour
+   edge, since forced colours drop the box-shadow that marks the choice. */
+@media (forced-colors: active) {
+  .ramp-rail--selectable:has(input:checked) {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+  .ramp-order__headline,
+  .ramp-facts,
+  .ramp-rail {
+    border-color: CanvasText;
+  }
+}
+
 /* Resumed and in-progress Peer purchases (W3). The step heading takes focus
    on resume and on return from Peer, so it carries a visible focus ring. */
 
@@ -165,9 +179,61 @@
   outline-offset: 2px;
 }
 
-.onramp-resume button,
-.onramp-steps button {
+/* Buy's own buttons (review, wallet steps, resume) carry no class of their
+   own: one secondary look, 44px, full width at the card's single column. */
+.onramp-review button:not([class]),
+.onramp-resume button:not([class]),
+.onramp-steps button:not([class]),
+.send-card > button:not([class]) {
+  display: block;
+  width: 100%;
   min-height: 44px;
+  margin-block: 0.5rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--line-subtle);
+  border-radius: 8px;
+  background: var(--panel-bg);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+.onramp-review button:not([class]):disabled,
+.onramp-resume button:not([class]):disabled,
+.onramp-steps button:not([class]):disabled,
+.send-card > button:not([class]):disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.onramp-review button:focus-visible,
+.onramp-resume button:focus-visible,
+.onramp-steps button:focus-visible,
+.onramp-review input:focus-visible,
+.send-card > button:focus-visible {
+  outline: 2px solid var(--muted-gold);
+  outline-offset: 2px;
+}
+.onramp-review {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.onramp-review label {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  min-height: 44px;
+  cursor: pointer;
+}
+.onramp-review input[type="checkbox"] {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0.1rem 0 0;
 }
 
 .ramp-resume__blocked {
@@ -206,7 +272,8 @@
   min-height: 44px;
   max-width: 100%;
 }
-.ramp-route button {
+/* The shared primary button keeps its own look inside a route card. */
+.ramp-route button:not(.submit-btn) {
   display: block;
   width: 100%;
   margin-block: 0.5rem;
@@ -219,7 +286,7 @@
   text-align: center;
   cursor: pointer;
 }
-.ramp-route button:disabled {
+.ramp-route button:not(.submit-btn):disabled {
   opacity: 0.55;
   cursor: default;
 }
