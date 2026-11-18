@@ -822,7 +822,7 @@ function OrderStep({ flow, order }: { flow: Flow; order: OfframpOrder }) {
           {formatEstimate(payout.atomic, payout.asset.currency, payout.asset.decimals)}
         </p>
       )}
-      {order.payeeMask && (
+      {order.payeeMask && !receivedPayment && (
         <p className="send-note">{`Payout account ${order.payeeMask} (your own).`}</p>
       )}
       <div className={`ramp-order__headline ramp-order__headline--${headline.tone}`} role="status">
@@ -831,7 +831,7 @@ function OrderStep({ flow, order }: { flow: Flow; order: OfframpOrder }) {
       </div>
 
       {receivedPayment && (
-        <section className="send-review" aria-label="Payment receipt">
+        <section className="send-review ramp-receipt" aria-label="Payment receipt">
           <h4>Payment receipt</h4>
           {delivered?.asset.kind === "fiat" && (
             <p>

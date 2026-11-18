@@ -342,6 +342,12 @@
   gap: 8px;
 }
 
+@container (max-width: 255px) {
+  .ramp-tile-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @container (min-width: 365px) {
   .ramp-tile-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -83,3 +83,8 @@
 .send-review__title {
   text-wrap: balance;
 }
+
+.ramp-receipt a {
+  color: var(--text-emphasis);
+  text-underline-offset: 0.15em;
+}
