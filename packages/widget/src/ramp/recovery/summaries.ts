@@ -23,6 +23,7 @@ import {
   type RampMoney,
   type RampSnapshot,
 } from "@xochi/client";
+import { RAMP_REF_PATTERN } from "@xochi/widget-lib";
 import { z } from "zod";
 import { STORAGE_KEYS } from "../../constants.js";
 
@@ -51,6 +52,7 @@ const SummarySchema = z
     quote_expires_at: iso,
     submitted: z.boolean(),
     approved_at: iso.optional(),
+    ramp_ref: z.string().regex(RAMP_REF_PATTERN).optional(),
     state: RampLegStateSchema,
     terminal: z.boolean(),
     payout_state: z.enum(["held", "released"]).optional(),
@@ -75,6 +77,12 @@ export interface RampOperationSummary {
   readonly submitted: boolean;
   /** When the wallet approval started; bounds the read-only intent lookup on resume. */
   readonly approved_at?: string;
+  /**
+   * The frame-minted reference its `ramp:started` carried (opaque,
+   * non-authorizing), so a resumed view continues that lifecycle instead of
+   * announcing another operation.
+   */
+  readonly ramp_ref?: string;
   readonly state: RampLegState;
   /** The S4 snapshot's derived `terminal`; nothing further can happen. */
   readonly terminal: boolean;
@@ -117,6 +125,7 @@ export function parseRampSummary(value: unknown): RampOperationSummary | null {
     quote_expires_at: v.quote_expires_at,
     submitted: v.submitted,
     ...(v.approved_at ? { approved_at: v.approved_at } : {}),
+    ...(v.ramp_ref ? { ramp_ref: v.ramp_ref } : {}),
     state: v.state,
     terminal: v.terminal,
     ...(v.payout_state ? { payout_state: v.payout_state } : {}),
