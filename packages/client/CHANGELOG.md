@@ -4,6 +4,8 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+## [0.1.17] - 2026-11-18
+
 ### Fixed
 
 - `getQuote` no longer caches a decline (`can_solve: false`, e.g. `insufficient_liquidity`). It answered every retry within the 15s TTL with the cached refusal, so the widget's Retry did nothing.
