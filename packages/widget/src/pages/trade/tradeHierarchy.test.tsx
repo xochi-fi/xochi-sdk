@@ -68,7 +68,7 @@ const LANDMARKS = [
   { name: "trade card", selector: ".trade-card" },
   { name: "holdings strip", selector: ".assets-strip" },
   { name: "activity feed", selector: ".launch-txlog" },
-  { name: "trust/claims", selector: '[aria-label="Private receiving"]' },
+  { name: "trust/claims", selector: '[aria-label="Stealth receiving"]' },
 ] as const;
 
 const LANDMARK_QUERY = LANDMARKS.map((l) => l.selector).join(", ");
@@ -112,7 +112,7 @@ describe("widget-first page order", () => {
     // comes first in the document" even if a landmark is re-parented into a
     // wrapper, where a shared-parent index comparison would not.
     const activity = container.querySelector(".launch-txlog");
-    const trust = container.querySelector('[aria-label="Private receiving"]');
+    const trust = container.querySelector('[aria-label="Stealth receiving"]');
     expect(
       activity!.compareDocumentPosition(trust!) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();

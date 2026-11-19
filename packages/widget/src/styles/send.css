@@ -174,9 +174,7 @@
 
 .send-review__facts dt {
   font-family: var(--font-mono);
-  font-size: 0.65rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-size: 0.75rem;
   color: var(--text-faint);
 }
 
@@ -473,7 +471,7 @@
 
 .send-chip {
   width: auto;
-  border-radius: 999px;
+  border-radius: var(--radius-control);
   white-space: nowrap;
 }
 
@@ -522,8 +520,59 @@
 }
 
 .send-input--recipient > input.send-field__control {
-  font-family: var(--font-body, sans-serif);
+  font-family: inherit;
   padding-inline: 0.55rem;
+}
+
+.send-icon-button {
+  flex: 0 0 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+}
+
+.send-mode {
+  display: grid;
+  justify-items: start;
+  gap: 0.25rem;
+}
+
+.send-mode strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.send-mode__action {
+  padding-inline: 0;
+  border-color: transparent;
+  text-align: start;
+  text-decoration: underline;
+}
+
+.send-asset {
+  position: relative;
+}
+
+.send-asset > .token-icon {
+  position: absolute;
+  inset-inline-start: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.send-asset > select {
+  padding-inline-start: 2rem;
+}
+
+.send-input--amount {
+  flex-wrap: wrap;
+}
+
+.send-input--amount > input.send-field__control {
+  flex-basis: 6rem;
 }
 
 .send-input:focus-within {
@@ -566,6 +615,51 @@
   gap: 0.75rem;
 }
 
+.send-quote .trade-card {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .send-swap-mount {
   display: contents;
+}
+
+@media (max-width: 280px) {
+  .send-form--recipient .send-input--recipient {
+    flex-wrap: wrap;
+  }
+
+  .send-form--recipient .send-input--recipient > input.send-field__control {
+    flex-basis: 100%;
+    width: 100%;
+  }
+
+  .send-input--amount {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.25rem;
+  }
+
+  .send-input--amount > input.send-field__control {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .send-input--amount > .send-secondary {
+    padding-inline: 0.45rem;
+  }
+
+  .send-asset > select {
+    width: 100%;
+    padding-inline-end: 0.4rem;
+  }
+
+  .send-receive__value {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .send-receive__value > svg {
+    grid-column: auto;
+    grid-row: auto;
+  }
 }

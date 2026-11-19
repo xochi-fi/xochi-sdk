@@ -115,6 +115,8 @@ interface QuoteDetailsProps {
    * the amount as approximate, because zk.money takes its fee on arrival.
    */
   recipientTag?: string;
+  /** The Send payee and route are already displayed above the receipt. */
+  sendMode?: "Stealth" | "Shielded";
 }
 
 // ============================================================
@@ -137,6 +139,7 @@ export function QuoteDetails({
   trustEconomicsLive = false,
   quoteExpiresIn,
   recipientTag,
+  sendMode,
 }: QuoteDetailsProps) {
   const { prices, livePrices } = usePrices();
   // Live prints only: graded against a static fallback (months-stale ETH 3200)
@@ -183,7 +186,7 @@ export function QuoteDetails({
   const settlementDesc = privateConfirmed
     ? "Settles to a one-time stealth address only the connected wallet controls."
     : privateBlocked
-      ? `${stealthOption?.reason ?? "Private settlement unavailable"}. This order settles to the connected wallet.`
+      ? `${stealthOption?.reason ?? "Stealth settlement unavailable"}. This order settles to the connected wallet.`
       : "Goes to the connected wallet, visible onchain.";
 
   // Every cost figure on this panel (fee anatomy, its denomination, the served
@@ -440,16 +443,23 @@ export function QuoteDetails({
       {/* Settlement confirmation: only when it adds something the toggle does not
           already say -- the quote confirms private settlement, or stealth was
           requested but this route can only settle public. */}
-      {settlementState !== "public" && (
-        <div className={`quote-settlement quote-settlement--${settlementState}`}>
-          <p className="quote-settlement__desc">{settlementDesc}</p>
-        </div>
+      {sendMode === "Shielded" ? (
+        <p className="quote-meta">Shielded</p>
+      ) : sendMode === "Stealth" ? (
+        privateConfirmed && <p className="quote-meta">Goes to the recipient's stealth address.</p>
+      ) : (
+        <>
+          {settlementState !== "public" && (
+            <div className={`quote-settlement quote-settlement--${settlementState}`}>
+              <p className="quote-settlement__desc">{settlementDesc}</p>
+            </div>
+          )}
+          <p className={`quote-meta quote-route ${sameAsset && rateFlagged ? "warning" : ""}`}>
+            {sameAsset && rateFlagged && "! "}
+            <span>{routeLabel}</span> <span>{privacyLabel}</span>
+          </p>
+        </>
       )}
-
-      <p className={`quote-meta quote-route ${sameAsset && rateFlagged ? "warning" : ""}`}>
-        {sameAsset && rateFlagged && "! "}
-        <span>{routeLabel}</span> <span>{privacyLabel}</span>
-      </p>
 
       {/* Gas state and what the wallet will ask for, per payment method. */}
       <p
@@ -489,8 +499,10 @@ export function QuoteDetails({
       {rateFlagged && (
         <p className="quote-rate-flag">
           The payout is about {stableShortfall?.toFixed(1)}% less than the amount sent on a
-          stablecoin pair. On small orders this is mostly network settlement cost. Increase the
-          amount so more is received{settlementState === "private" ? ", or switch to Public" : ""}.
+          stablecoin pair. On small orders this is mostly network settlement cost.{" "}
+          {sendMode
+            ? `Back to Send to increase the amount${sendMode === "Stealth" ? " or choose Send publicly instead if offered" : ""}.`
+            : `Increase the amount so more is received${settlementState === "private" ? ", or switch to Public" : ""}.`}
         </p>
       )}
 

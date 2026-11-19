@@ -277,7 +277,7 @@ export function useSettlementGating({
   );
   const stealthDestinationSupported =
     routeAdvertisesStealth && stealthChains.some((chainId) => chainId === toChainId);
-  const stealthEligible = STEALTH_SETTLEMENT_LIVE && stealthDestinationSupported;
+  const stealthEligible = isConnected && STEALTH_SETTLEMENT_LIVE && stealthDestinationSupported;
   const settlement: SettlementType = privateRailsOff
     ? "public"
     : (defaultSettlementSelection(selectedSettlement, stealthEligible) ?? "public");

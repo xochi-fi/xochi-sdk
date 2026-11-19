@@ -20,8 +20,15 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { connect } from "@wagmi/core";
 import { decodeFunctionData, erc20Abi, getAddress, isAddress } from "viem";
-import { apiStub, harnessReceipts, renderTrade, TEST_ACCOUNT } from "../trade/harness.js";
+import {
+  apiStub,
+  harnessReceipts,
+  L1_STEALTH_CAPABILITIES,
+  renderTrade,
+  TEST_ACCOUNT,
+} from "../trade/harness.js";
 import { Trade } from "../Trade.js";
 import { FULL_LOOK } from "../trade/embedParams.js";
 import { findTokenBySymbol } from "../trade/config.js";
@@ -52,6 +59,12 @@ vi.mock("../../lib/recipient/index.js", async (importOriginal) => {
             address: RECIPIENT,
             stealthMetaAddress: `st:eth:0x${fixture.spending_pub.slice(2)}${fixture.viewing_pub.slice(2)}`,
           },
+        };
+      }
+      if (input === "mira.zk.money") {
+        return {
+          status: "resolved",
+          recipient: { kind: "zkmoney", input: "mira", name: input, shieldedAlias: "mira" },
         };
       }
       if (original.classifyRecipientInput(input) === "address") {
@@ -145,7 +158,7 @@ describe("send to an address", () => {
     const calls = stubWallet();
     await openSend({ tokenBalance: 10_000_000n });
     const panel = sendForm();
-    expect(panel.getByLabelText<HTMLSelectElement>("Network").value).toBe("8453");
+    expect(panel.queryByLabelText("Network")).toBeNull();
 
     // A mixed-case address whose EIP-55 checksum is wrong.
     await fillAddressForm("1", "0xaBcdef0123456789abcdef0123456789abcdef01");
@@ -175,10 +188,11 @@ describe("send to an address", () => {
     const calls = stubWallet({ eth_sendTransaction: TX_HASH });
     harnessReceipts.set(TX_HASH, "success");
     await openSend({ tokenBalance: 10_000_000n });
-    fireEvent.change(sendForm().getByLabelText("Network"), {
+    await fillAddressForm("1.234567", RECIPIENT);
+    fireEvent.change(await sendForm().findByLabelText("Network", {}, WAIT), {
       target: { value: "1" },
     });
-    await fillAddressForm("1.234567", RECIPIENT);
+    await sendForm().findByText("Public", {}, WAIT);
     fireEvent.click(sendForm().getByRole("button", { name: "Send" }));
 
     const review = screen.getByRole("region", { name: "Review send" });
@@ -217,10 +231,11 @@ describe("send to an address", () => {
     const calls = stubWallet({ eth_sendTransaction: TX_HASH });
     harnessReceipts.set(TX_HASH, "success");
     await openSend({ tokenBalance: 10_000_000n, hostWallet: true });
-    fireEvent.change(sendForm().getByLabelText("Network"), {
+    await fillAddressForm("1", RECIPIENT);
+    fireEvent.change(await sendForm().findByLabelText("Network", {}, WAIT), {
       target: { value: "1" },
     });
-    await fillAddressForm("1", RECIPIENT);
+    await sendForm().findByText("Public", {}, WAIT);
     fireEvent.click(sendForm().getByRole("button", { name: "Send" }));
     expect(prompts(calls)).toEqual([]);
     fireEvent.click(screen.getByRole("button", { name: "Confirm in wallet" }));
@@ -231,10 +246,11 @@ describe("send to an address", () => {
   it("blocks retry when the wallet response is unknown", async () => {
     const calls = stubWallet();
     await openSend({ tokenBalance: 10_000_000n });
-    fireEvent.change(sendForm().getByLabelText("Network"), {
+    await fillAddressForm("2", RECIPIENT);
+    fireEvent.change(await sendForm().findByLabelText("Network", {}, WAIT), {
       target: { value: "1" },
     });
-    await fillAddressForm("2", RECIPIENT);
+    await sendForm().findByText("Public", {}, WAIT);
     fireEvent.click(sendForm().getByRole("button", { name: "Send" }));
     fireEvent.click(screen.getByRole("button", { name: "Confirm in wallet" }));
     const recovery = await screen.findByRole("region", { name: "Send status unknown" }, WAIT);
@@ -246,6 +262,17 @@ describe("send to an address", () => {
 });
 
 describe("Receive", () => {
+  it("keeps Receive open as the guest connects a wallet", async () => {
+    stubWallet();
+    const { config } = await renderTrade(<Trade look={FULL_LOOK} />);
+    fireEvent.click(topTab("Send"));
+    fireEvent.click(sendForm().getByRole("button", { name: "Receive" }));
+    expect(screen.getByText("Share your wallet or stealth address to receive funds.")).toBeTruthy();
+
+    await connect(config, { connector: config.connectors[0], chainId: 8453 });
+    await screen.findByRole("img", { name: "Wallet address QR code" }, WAIT);
+  });
+
   it("opens without wallet prompts and initializes keys on request", async () => {
     const calls = stubWallet();
     await openSend({ tokenBalance: 10_000_000n });
@@ -260,7 +287,7 @@ describe("Receive", () => {
     fireEvent.click(setup);
     await within(receive).findByRole("img", { name: "Stealth address QR code" }, WAIT);
     expect(prompts(calls)).toHaveLength(1);
-    fireEvent.click(within(receive).getByRole("button", { name: "Let people find me privately" }));
+    fireEvent.click(within(receive).getByRole("button", { name: "Publish stealth address" }));
     expect(
       within(receive).getByText("Your stealth address becomes public and linked to this wallet."),
     ).toBeTruthy();
@@ -269,15 +296,52 @@ describe("Receive", () => {
   });
 });
 
-describe("send privately to someone else", () => {
+describe("send with Stealth to someone else", () => {
   const recipient = vectors[0];
   const META = `st:eth:0x${recipient.spending_pub.slice(2)}${recipient.viewing_pub.slice(2)}`;
 
-  async function openOther() {
+  function wethCapabilities() {
+    const body = L1_STEALTH_CAPABILITIES.body as {
+      capabilities: { tokens: unknown[]; routes: unknown[] };
+    };
+    return {
+      body: {
+        ...body,
+        capabilities: {
+          ...body.capabilities,
+          tokens: [
+            ...body.capabilities.tokens,
+            {
+              symbol: "WETH",
+              roles: ["origin", "destination"],
+              decimals: 18,
+              addresses: Object.fromEntries(
+                ([1, 8453] as const).map((chainId) => [
+                  chainId,
+                  findTokenBySymbol(chainId, "WETH")!.address,
+                ]),
+              ),
+            },
+          ],
+          routes: [
+            ...body.capabilities.routes,
+            {
+              origin: { chain_id: 8453, token: "WETH" },
+              destination: { kind: "chain", chain_id: 1, token: "WETH" },
+              privacy_modes: ["stealth"],
+            },
+          ],
+        },
+      },
+    };
+  }
+
+  async function openOther(asset: "USDC" | "WETH" = "USDC") {
     const bodies: Record<string, unknown>[] = [];
     const calls = stubWallet(
       {},
       {
+        ...(asset === "WETH" ? { "/api/capabilities": wethCapabilities() } : {}),
         "/api/intent/quote": {
           answer: (request) => {
             bodies.push(request as Record<string, unknown>);
@@ -290,7 +354,7 @@ describe("send privately to someone else", () => {
         },
       },
     );
-    await openSend({ tokenBalance: 10_000_000n });
+    await openSend({ tokenBalance: asset === "WETH" ? 10n ** 19n : 10_000_000n });
     const panel = sendForm();
     return { bodies, calls, panel };
   }
@@ -305,29 +369,29 @@ describe("send privately to someone else", () => {
     expect(prompts(calls)).toEqual([]);
   });
 
-  it("reviews the meta-address, then quotes Stealth to those keys with no key setup", async () => {
-    const { bodies, calls, panel } = await openOther();
-    await fillAddressForm("5", META);
-    expect(panel.getByText("Private")).toBeTruthy();
+  it.each([
+    ["USDC", "5.123456", "5123456"],
+    ["WETH", "0.123456789012345678", "123456789012345678"],
+  ] as const)("quotes Stealth directly with the exact %s amount", async (asset, amount, atomic) => {
+    const { bodies, calls, panel } = await openOther(asset);
+    fireEvent.change(panel.getByLabelText("Asset"), {
+      target: { value: findTokenBySymbol(8453, asset)!.address },
+    });
+    await fillAddressForm(amount, META);
+    expect(panel.getByText("Stealth")).toBeTruthy();
     fireEvent.click(panel.getByRole("button", { name: "Send" }));
-    const review = screen.getByRole("region", { name: "Review send" });
-    expect(within(review).getByText("5 USDC")).toBeTruthy();
-    expect(within(review).getByText("Base → Ethereum")).toBeTruthy();
-    expect(within(review).getByText(META)).toBeTruthy();
-    expect(review.textContent).toMatch(/does not hide your funding transaction/);
-    // The venue derives the one-time address, so it learns the meta-address; say so.
-    expect(review.textContent).toMatch(/Xochi sees the recipient's meta-address/);
-    expect(prompts(calls)).toEqual([]);
-
-    fireEvent.click(within(review).getByRole("button", { name: "Continue to quote" }));
+    expect(screen.queryByRole("region", { name: "Review send" })).toBeNull();
     expect(topTab("Send").getAttribute("aria-selected")).toBe("true");
     const card = screen.getByRole("region", { name: "Send quote" });
     await waitFor(
-      () => expect(within(card).getByLabelText<HTMLInputElement>("Pay").value).toBe("5"),
+      () => expect(within(card).getByLabelText<HTMLOutputElement>("Pay").value).toBe(amount),
       WAIT,
     );
     const note = within(card).getByRole("region", { name: "Stealth recipient" });
     expect(within(note).getByTitle(META)).toBeTruthy();
+    expect(within(note).getByText("From Base to Ethereum")).toBeTruthy();
+    expect(within(note).getByText(/Xochi sees the recipient's meta-address/)).toBeTruthy();
+    expect(within(card).getAllByText(/does not hide your funding transaction/)).toHaveLength(1);
 
     await waitFor(
       () => expect(bodies.some((b) => b.settlement_preference === "stealth")).toBe(true),
@@ -335,6 +399,7 @@ describe("send privately to someone else", () => {
     );
     for (const body of bodies) {
       expect(body.settlement_preference).toBe("stealth");
+      expect(body.from_amount).toBe(atomic);
       expect(body.stealth_meta_address).toEqual({
         spending_pub_key: recipient.spending_pub,
         viewing_pub_key: recipient.viewing_pub,
@@ -345,20 +410,38 @@ describe("send privately to someone else", () => {
     expect(prompts(calls)).toEqual([]);
   });
 
-  it("drops the recipient and says so when the order leaves Stealth", async () => {
+  it("locks settlement and the payee in the quote and preserves the Send draft", async () => {
     const { panel } = await openOther();
     await fillAddressForm("5", META);
     fireEvent.click(panel.getByRole("button", { name: "Send" }));
-    fireEvent.click(screen.getByRole("button", { name: "Continue to quote" }));
     const card = screen.getByRole("region", { name: "Send quote" });
     await within(card).findByRole("region", { name: "Stealth recipient" }, WAIT);
+    expect(within(card).queryByRole("group", { name: "Settlement privacy" })).toBeNull();
+    expect(within(card).queryByRole("button", { name: "Pay my own keys instead" })).toBeNull();
+    expect(within(card).queryByRole("button", { name: /change network|change token/i })).toBeNull();
 
-    fireEvent.click(within(card).getByRole("button", { name: /^Public/ }));
-    await waitFor(
-      () => expect(within(card).queryByRole("region", { name: "Stealth recipient" })).toBeNull(),
-      WAIT,
-    );
-    expect(screen.getByText(/Removed the stealth recipient/)).toBeTruthy();
+    fireEvent.click(within(card).getByRole("button", { name: "Back to Send" }));
+    expect(panel.getByLabelText<HTMLInputElement>("To").value).toBe(META);
+    expect(panel.getByLabelText<HTMLInputElement>("Amount").value).toBe("5");
+    expect(panel.getByText("Stealth")).toBeTruthy();
+  });
+
+  it("hands a Shielded payout to the quote with the zk.money tag locked", async () => {
+    const { bodies, panel } = await openOther();
+    await fillAddressForm("5", "mira.zk.money");
+    expect(panel.getByText("Shielded")).toBeTruthy();
+    fireEvent.click(panel.getByRole("button", { name: "Send" }));
+
+    const card = screen.getByRole("region", { name: "Send quote" });
+    const payee = within(card).getByRole("region", { name: "Shielded recipient" });
+    await within(payee).findByText("From Base to Ethereum", {}, WAIT);
+    expect(within(card).queryByLabelText("zk.money tag")).toBeNull();
+    expect(within(card).queryByRole("group", { name: "Settlement privacy" })).toBeNull();
+    await waitFor(() => expect(bodies.length).toBeGreaterThan(0), WAIT);
+    for (const body of bodies) {
+      expect(body.recipient_tag).toBe("mira");
+      expect(body).not.toHaveProperty("stealth_meta_address");
+    }
   });
 });
 
@@ -401,10 +484,10 @@ describe("recipient input", () => {
     await openSend({ tokenBalance: 10_000_000n });
     await fillAddressForm("3", "published.gwei");
     const panel = sendForm();
-    const privacy = panel.getByRole("button", { name: "Privacy: Private. Switch to Public" });
+    const privacy = panel.getByRole("button", { name: "Send publicly instead" });
     expect(privacy).toBeTruthy();
     fireEvent.click(privacy);
-    expect(panel.getByRole("button", { name: "Privacy: Public. Switch to Private" })).toBeTruthy();
+    expect(panel.getByRole("button", { name: "Send with Stealth" })).toBeTruthy();
     fireEvent.click(panel.getByRole("button", { name: "Send" }));
     const review = within(screen.getByRole("region", { name: "Review send" }));
     expect(review.getByText("Public")).toBeTruthy();
