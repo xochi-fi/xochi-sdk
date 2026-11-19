@@ -55,12 +55,17 @@ export function RailTileContent({
 export function RailTiles({
   title,
   untested,
+  guest,
   children,
 }: {
   title: string;
   untested: boolean;
+  guest: boolean;
   children: ReactNode;
 }) {
+  if (guest)
+    return <p className="ramp-guest-apps">{Object.keys(RAIL_NAMES).length} payment apps</p>;
+
   return (
     <fieldset className="ramp-tile-group">
       <legend>{title}</legend>

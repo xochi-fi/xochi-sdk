@@ -84,7 +84,7 @@ it("reviews exact route economics, expiry and recipient before separate wallet a
   expect(screen.getByText("Receive exactly the quoted amount, or a full refund.")).toBeTruthy();
   expect(screen.getByText("2026-11-16T12:00:30.000Z")).toBeTruthy();
   expect(h.driver.executions).toBe(0);
-  await click("Approve wallet: route Base USDC with Xochi");
+  await click("Route to Base");
   expect(screen.getByText(/Xochi route completed/)).toBeTruthy();
   expect(screen.getByText(/Route receipt:/)).toBeTruthy();
   expect(h.driver.executions).toBe(1);
@@ -106,7 +106,7 @@ it("shows the confirmed Base USDC location on failure and retries only Xochi", a
   expect(h.driver.quotes).toBe(2);
   expect(h.peer.calls).toBe(0);
   expect(h.driver.executions).toBe(0);
-  await click("Approve wallet: route Base USDC with Xochi");
+  await click("Route to Base");
   expect(h.driver.executions).toBe(1);
 });
 it("skip leaves Peer completed and Base USDC at the receiving wallet", async () => {
@@ -130,7 +130,7 @@ it("expiry disables route approval, keeps Peer complete, and offers a fresh revi
   });
   expect(
     screen.getByRole<HTMLButtonElement>("button", {
-      name: "Approve wallet: route Base USDC with Xochi",
+      name: "Route to Base",
     }).disabled,
   ).toBe(true);
   expect(screen.getByText(/Route quote expired/)).toBeTruthy();
@@ -150,7 +150,7 @@ it("an in-doubt route offers status only and never claims funds remain on Base",
   };
   render(<Route h={h} />);
   await click("Review fresh Xochi quote");
-  await click("Approve wallet: route Base USDC with Xochi");
+  await click("Route to Base");
   expect(screen.getByRole("status").textContent).toContain("Funds may have moved");
   expect(screen.queryByRole("button", { name: /Retry|Skip|Review/ })).toBeNull();
   await click("Check Xochi route status");

@@ -137,7 +137,7 @@ export function RampRouteSteps({
               disabled={!can("execute_route") || quoteDisabled || !preview || !!expired}
               onClick={() => onAction("execute_route")}
             >
-              Approve wallet: route Base USDC with Xochi
+              Route to Base
             </button>
           )}
           {state === "failed" && route?.recoverable && (

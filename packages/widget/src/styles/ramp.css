@@ -328,6 +328,12 @@
   font: inherit;
 }
 
+.ramp-guest-apps {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
 .ramp-tile-group {
   min-inline-size: 0;
   margin: 0;

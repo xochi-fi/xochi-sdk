@@ -6,24 +6,21 @@
  * The frame renders these, and the configurator's "What users see" panel
  * (xochi-fi/xochi-widget#40) imports the same constants, so the panel cannot
  * describe a mode in words the frame does not use.
- *
- * Shielded says the amount stays visible. The accepted design
- * (docs/planning/shielded-execution.md D1, X-DOC-07) is recipient-private with
- * a public amount and token, so no string here may claim the amount is hidden.
  */
 
 import type { SettlementType } from "../../types/index.js";
 import type { SettlementFix } from "../../lib/settlementAvailability.js";
+import { ZKMONEY_PRIVACY_COPY } from "./zkMoney.js";
 import { CANTON_PUBLIC_ONLY_LINE } from "./canton.js";
 
 /**
- * The one description of each mode: the line under its button. Nothing else in
+ * The one description of each mode: the line under the segment. Nothing else in
  * the frame restates it.
  */
 export const MODE_META: Record<SettlementType, string> = {
   public: "Recipient and amount visible",
   stealth: "Recipient hidden, amount visible",
-  shielded: "Recipient hidden on Aztec, amount visible",
+  shielded: ZKMONEY_PRIVACY_COPY,
 };
 
 /**
@@ -35,8 +32,7 @@ export const MODE_META: Record<SettlementType, string> = {
 export const STEALTH_PRIVACY_LIMITS =
   "Stealth hides the recipient from public view. Xochi sees the recipient's meta-address and uses it to derive the one-time address, so it can link the payment to them. Stealth does not hide your funding transaction, amount or timing.";
 
-export const SHIELDED_UNAVAILABLE_CAPTION =
-  "Shielded is unavailable. It hides the recipient; the amount, token, solver and timing stay public.";
+export const SHIELDED_UNAVAILABLE_CAPTION = `Shielded is unavailable. ${ZKMONEY_PRIVACY_COPY}`;
 
 /** The one fix an unavailable mode shows, in place of its meta line. */
 export const SETTLEMENT_FIX_LINE: Record<SettlementFix, string> = {

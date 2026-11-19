@@ -169,7 +169,7 @@ export function RampRails({
         <OverallCard {...overallCard(state.result.availability, direction)} />
       )}
 
-      <RailTiles title="Payment apps" untested={mobile || state.status !== "done"}>
+      <RailTiles title="Payment apps" guest={!account} untested={mobile || state.status !== "done"}>
         {selectable.map((card) => (
           <RailChoice
             key={card.id}

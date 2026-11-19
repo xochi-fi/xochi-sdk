@@ -171,8 +171,8 @@ export function OnrampSteps({
           )}
           {expiresAt !== undefined && (
             <p>
-              Intent expires: {formatRampTime(expiresAt)}. Fiat for an expired or unverifiable
-              intent is not refundable.
+              Pay by {formatRampTime(expiresAt)}. Payments made after this deadline or that cannot
+              be verified are not refundable.
             </p>
           )}
           {recipient && (

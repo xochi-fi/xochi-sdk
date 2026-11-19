@@ -323,7 +323,7 @@ function ConnectedOnrampRoute({
       </RampRouteSteps>
       {intent.awaitingPull && (
         <button type="button" disabled={intent.isSigningPull} onClick={intent.signPull}>
-          Approve wallet: sign Base USDC authorization
+          Authorize
         </button>
       )}
       {note && <p role="status">{note}</p>}
