@@ -1,10 +1,7 @@
 /**
  * ActivityFeed Component
  *
- * Compact, collapsible swap-activity strip for the trade screen. Collapsed to a
- * single summary line by default (latest swap + status), it expands in place to
- * a dense list of the wallet's swaps plus any claimable settlements. Rows expand
- * for detail and offer Retry / Report on failed swaps.
+ * Wallet activity with expandable swap details and recovery actions.
  */
 
 import { useState, useCallback, useEffect, useMemo } from "react";
@@ -16,9 +13,15 @@ import {
   isReportableSwapStatus,
   isRetryableSwapStatus,
 } from "../types/activity.js";
-import { formatTimeAgo, formatRawAmount, truncateAddress } from "../utils/format.js";
+import {
+  formatTimeAgo,
+  formatRawAmount,
+  formatTokenAmount,
+  truncateAddress,
+} from "../utils/format.js";
 import {
   EXTENDED_CHAIN_NAMES,
+  getExplorerTxUrl,
   CHAIN_SHORT_NAMES,
   settlementDisclosure,
   getTokenInfoForChain,
@@ -44,6 +47,12 @@ import { AuthorizedAgents } from "./AuthorizedAgents.js";
 import { CHAIN_ICONS, AZTEC_ICON } from "../assets/chains/index.js";
 import { normalizeZkMoneyTag, zkMoneyTagValid } from "../pages/trade/zkMoney.js";
 import { isCantonDestinationChainId, isTronChainId, verifyStoredDeposit } from "@xochi/client";
+import type { SendActivityItem } from "../lib/localSends.js";
+import { chainName } from "../pages/send/addressSend.js";
+import { formatRampTime, railName } from "../ramp/availability/model.js";
+import type { OfframpActivityItem } from "../ramp/offramp/localOfframps.js";
+import { formatMixedCashOut, formatUsdc } from "../ramp/offramp/model.js";
+import { heldReleaseEstimate, type RampOperationSummary } from "../ramp/recovery/summaries.js";
 import { DEPOSIT_ATTESTATION_PIN } from "../config.js";
 
 /** USD helper: null when the swapped token is outside the priced set (avoids a
@@ -280,7 +289,7 @@ function SwapRow({
   const inUsd = fromToken ? usd(data.fromAmount, fromToken.decimals, fromToken.symbol) : null;
   const outUsd =
     data.toAmount && toToken ? usd(data.toAmount, toToken.decimals, toToken.symbol) : null;
-  const feeUsd = estimatedFeeUsd(inUsd, data.feeRate);
+  const feeUsd = estimatedFeeUsd(inUsd, Number.isFinite(data.feeRate) ? data.feeRate : 0);
 
   // One report per row: latch on first click so rapid clicks can't fire N POSTs
   // and N toasts. The button switches to a static "Reported" acknowledgement.
@@ -352,8 +361,9 @@ function SwapRow({
           {live && <PhaseLine status={intentStatus} />}
           <div className="activity-meta">
             <span className={`activity-status-badge ${badge.className}`}>{badge.label}</span>
-            <span className="activity-dot">.</span>
-            <span className="activity-time">{formatTimeAgo(timestamp)}</span>
+            <time className="activity-time" dateTime={new Date(timestamp).toISOString()}>
+              {formatTimeAgo(timestamp)}
+            </time>
           </div>
         </div>
         <Chevron open={isExpanded} className="activity-chevron" />
@@ -515,8 +525,125 @@ function SummaryPreview({ item }: { item: SwapActivityItem }) {
 // Main Component
 // ============================================================
 
+interface LocalHistory {
+  sends: readonly SendActivityItem[];
+  purchases: readonly RampOperationSummary[];
+  cashOuts: readonly OfframpActivityItem[];
+}
+
+interface LocalRow {
+  key: string;
+  timestamp: number;
+  amount: string;
+  detail: string;
+  status: string;
+  transaction?: { href: string; hash: string };
+}
+
+const SEND_STATUS = { pending: "Submitted", completed: "Sent", failed: "Failed" };
+const CASH_OUT_STATUS = {
+  mixed: "Partly cashed out and returned",
+  open: "Open",
+  in_doubt: "Checking status",
+  delivered: "Paid out",
+  returned: "Returned to wallet",
+  not_started: "Not started, nothing deposited",
+};
+const CASH_OUT_PHASE = {
+  awaiting_buyer: "Awaiting a buyer",
+  matched: "Matched with a buyer",
+  delivering: "Partly paid out",
+  delivered: "Paid out",
+  returned: "Returned",
+};
+
+function purchaseStatus(purchase: RampOperationSummary): string {
+  if (purchase.abandoned) return "Abandoned, no transfer submitted";
+  if (purchase.payout_state === "held") {
+    const release = heldReleaseEstimate(purchase);
+    return release
+      ? `Payout held, estimated release ${formatRampTime(release, true)} (not guaranteed)`
+      : "Payout held";
+  }
+  switch (purchase.state) {
+    case "completed":
+      return "Received";
+    case "in_doubt":
+      return "Status uncertain, check before any new transfer";
+    case "failed":
+      return purchase.submitted ? "Did not complete" : "Did not start, no transfer submitted";
+    case "quoted":
+      return Date.parse(purchase.quote_expires_at) <= Date.now()
+        ? "Quote expired, no transfer submitted"
+        : "Quote not submitted";
+    case "action_required":
+      return "Waiting for you";
+    default:
+      return "In progress";
+  }
+}
+
+function localRows(history: LocalHistory, wallet?: string): LocalRow[] {
+  const owner = wallet?.toLowerCase();
+  return [
+    ...history.sends.map(({ id, timestamp, data, status }) => {
+      const explorer = getExplorerTxUrl(data.chainId as SelectableChainId, data.txHash);
+      return {
+        key: `send:${id}`,
+        timestamp,
+        amount: `Send ${formatTokenAmount(BigInt(data.amount), data.decimals, data.decimals)} ${data.symbol}`,
+        detail: `To ${truncateAddress(data.recipient)} on ${chainName(data.chainId)}`,
+        status: SEND_STATUS[status],
+        transaction: explorer ? { href: explorer, hash: data.txHash } : undefined,
+      };
+    }),
+    ...history.purchases
+      .filter((purchase) => purchase.wallet === owner)
+      .map((purchase) => {
+        const { asset, atomic } = purchase.receive;
+        const amount = formatTokenAmount(BigInt(atomic), asset.decimals, asset.decimals);
+        return {
+          key: `buy:${purchase.operation_id}`,
+          timestamp: Date.parse(purchase.created_at),
+          amount: `Buy ${amount} ${asset.kind === "crypto" ? asset.symbol : asset.currency}`,
+          detail: `Via ${purchase.rail.label}`,
+          status: purchaseStatus(purchase),
+        };
+      }),
+    ...history.cashOuts.map(({ id, timestamp, status, phase, data, totals }) => ({
+      key: `cash-out:${id}`,
+      timestamp,
+      amount:
+        status === "mixed" && totals
+          ? formatMixedCashOut(totals.filled, totals.returned)
+          : `Cash out ${formatUsdc(data.amount)}`,
+      detail: `To your ${railName({ rail: { id: data.rail, label: data.rail } })} (${data.currency})`,
+      status: status === "open" && phase ? CASH_OUT_PHASE[phase] : CASH_OUT_STATUS[status],
+    })),
+  ];
+}
+
+function LocalActivityRow({ row }: { row: LocalRow }) {
+  return (
+    <div className="send-activity__row">
+      <span className="send-activity__amount">{row.amount}</span>
+      <span className="send-activity__meta">{row.detail}</span>
+      <span className="send-activity__status">
+        {row.status}
+        <time dateTime={new Date(row.timestamp).toISOString()}>{formatTimeAgo(row.timestamp)}</time>
+      </span>
+      {row.transaction && (
+        <a href={row.transaction.href} target="_blank" rel="noopener noreferrer">
+          Transaction {truncateAddress(row.transaction.hash)}
+        </a>
+      )}
+    </div>
+  );
+}
+
 interface ActivityFeedProps {
   activities: SwapActivityItem[];
+  localHistory?: LocalHistory;
   isLoading: boolean;
   error: string | null;
   hasMore: boolean;
@@ -565,6 +692,7 @@ function SignInPrompt({
 
 export function ActivityFeed({
   activities,
+  localHistory,
   isLoading,
   error,
   hasMore,
@@ -649,41 +777,71 @@ export function ActivityFeed({
 
   const latest = live[0] ?? activities[0];
   const count = activities.length;
-  const showSkeletons = isLoading && count === 0;
+  const historyRows = localHistory
+    ? [
+        ...localRows(localHistory, connectedWallet).map((row) => ({
+          key: row.key,
+          timestamp: row.timestamp,
+          content: <LocalActivityRow row={row} />,
+        })),
+        ...activities.map((item) => ({
+          key: `swap:${item.id}`,
+          timestamp: item.timestamp,
+          content: (
+            <SwapRow
+              item={item}
+              isExpanded={expandedIds.has(item.id)}
+              onToggle={() => toggleExpanded(item.id)}
+              usd={usd}
+              live={!isTerminalIntentStatus(item.intentStatus)}
+              onReport={onReportSwap}
+              onRetry={onRetrySwap}
+              onClaimNudge={onClaimNudge}
+              linksSignIn={linksSignInFor(item)}
+            />
+          ),
+        })),
+      ].sort((a, b) => b.timestamp - a.timestamp)
+    : undefined;
+  const showSkeletons = isLoading && (historyRows?.length ?? count) === 0;
 
   return (
     <div className="activity-strip">
-      <button
-        className="activity-strip__summary"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-      >
-        <span className="activity-strip__title">Activity</span>
-        <span className="activity-strip__preview">
-          {!isConnected ? (
-            <span className="activity-strip__muted">{UI.CONNECT_TO_VIEW} activity</span>
-          ) : latest ? (
-            <>
-              <SummaryPreview item={latest} />
-              {count > 1 && <span className="activity-strip__count">+{count - 1}</span>}
-            </>
-          ) : (
-            <span className="activity-strip__muted">No activity</span>
-          )}
-          {claimableCount > 0 && (
-            <span className="activity-strip__claim-chip">{claimableCount} claimable</span>
-          )}
-        </span>
-        <Chevron open={open} className="activity-strip__chevron" />
-      </button>
+      {!localHistory && (
+        <button
+          className="activity-strip__summary"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+        >
+          <span className="activity-strip__title">Activity</span>
+          <span className="activity-strip__preview">
+            {!isConnected ? (
+              <span className="activity-strip__muted">{UI.CONNECT_TO_VIEW} activity</span>
+            ) : latest ? (
+              <>
+                <SummaryPreview item={latest} />
+                {count > 1 && <span className="activity-strip__count">+{count - 1}</span>}
+              </>
+            ) : (
+              <span className="activity-strip__muted">No activity</span>
+            )}
+            {claimableCount > 0 && (
+              <span className="activity-strip__claim-chip">{claimableCount} claimable</span>
+            )}
+          </span>
+          <Chevron open={open} className="activity-strip__chevron" />
+        </button>
+      )}
 
-      {open && (
+      {(localHistory || open) && (
         <div className="activity-strip__body">
           <div className="activity-strip__toolbar">
-            {isConnected && count > 0 && (
+            {!localHistory && isConnected && count > 0 && (
               <span className="activity-strip__stat">
-                {fmtUsd(volumeUsd)} traded <span className="activity-dot">.</span> {count}{" "}
-                {count === 1 ? "swap" : "swaps"}
+                <span>{fmtUsd(volumeUsd)} traded</span>
+                <span>
+                  {count} {count === 1 ? "swap" : "swaps"}
+                </span>
               </span>
             )}
             <button
@@ -735,7 +893,40 @@ export function ActivityFeed({
           )}
 
           <div className="activity-feed" aria-live="polite" aria-label="Activity feed">
-            {!isConnected ? (
+            {historyRows ? (
+              <>
+                {needsSignIn && (
+                  <SignInPrompt isSigningIn={isSigningIn} onSignIn={onSignIn} compact />
+                )}
+                {error && !needsSignIn && (
+                  <p className="error-text" role="status">
+                    History could not load. Refresh to try again.
+                  </p>
+                )}
+                {showSkeletons ? (
+                  <ActivitySkeleton />
+                ) : historyRows.length === 0 ? (
+                  <div className="activity-empty">
+                    <p>No activity yet.</p>
+                  </div>
+                ) : (
+                  <ul className="activity-history">
+                    {historyRows.map(({ key, content }) => (
+                      <li key={key}>{content}</li>
+                    ))}
+                  </ul>
+                )}
+                {hasMore && !needsSignIn && (
+                  <button
+                    className="btn btn--ghost btn--sm"
+                    onClick={onLoadMore}
+                    disabled={isLoading}
+                  >
+                    {isLoading ? "Loading…" : "Load more"}
+                  </button>
+                )}
+              </>
+            ) : !isConnected ? (
               <div className="activity-empty">
                 <p>{UI.CONNECT_TO_VIEW} activity</p>
               </div>

@@ -34,10 +34,8 @@ import { ActivityFeed } from "../components/ActivityFeed.js";
 import { PrivacyPanel } from "../components/PrivacyPanel.js";
 import { StealthClaims } from "../components/StealthClaims.js";
 import { AccountChip } from "../components/AccountChip.js";
-import { SendActivityList } from "../components/SendActivityList.js";
 import { useLocalSends } from "../hooks/useLocalSends.js";
-import { OfframpActivityList, useLocalOfframps } from "../ramp/offramp/OfframpActivityList.js";
-import { RampActivityList } from "../components/RampActivityList.js";
+import { useLocalOfframps } from "../ramp/offramp/OfframpActivityList.js";
 import { useRampSummaries } from "../hooks/useRampSummaries.js";
 import { SwapPanel, type SwapPrefill } from "./trade/SwapPanel.js";
 import { PaymentAppSend } from "../ramp/offramp/PaymentAppSend.js";
@@ -674,13 +672,12 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
                 />
               )}
 
-              <SendActivityList sends={localSends} />
-              <OfframpActivityList items={localOfframps} />
-              <RampActivityList ramps={localRamps} wallet={address} />
-
               <section className="launch-txlog" aria-label="Transaction log">
                 {!isConnected ? (
                   <div className="send-card">
+                    <p className="send-note">
+                      See your swaps, sends, purchases and cash-outs here.
+                    </p>
                     <button
                       className="submit-btn send-cta"
                       type="button"
@@ -692,6 +689,11 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
                 ) : (
                   <ActivityFeed
                     activities={activities}
+                    localHistory={{
+                      sends: localSends,
+                      purchases: localRamps,
+                      cashOuts: localOfframps,
+                    }}
                     isLoading={ordersLoading || isRefreshing}
                     error={ordersError}
                     hasMore={hasMoreOrders}

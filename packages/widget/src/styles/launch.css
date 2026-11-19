@@ -813,3 +813,30 @@ html:has(.launch-screen--fixed) .modal-content {
 .launch-screen > .widget-bar .widget-tabs__tab.active {
   border-bottom-color: currentColor;
 }
+
+.activity-history {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.activity-history > li {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.activity-strip__stat {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.activity-strip__toolbar {
+  justify-content: flex-end;
+}
+
+.activity-strip__stat {
+  margin-inline-end: auto;
+}

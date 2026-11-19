@@ -92,7 +92,13 @@ describe("Buy rails", () => {
       <RampRails direction="onramp" account={undefined} active onConnectRequest={connect} />,
     );
     const venue = screen.getByText("Venmo").closest("[aria-disabled=true]")!;
-    expect(within(venue as HTMLElement).getByText("Not checked")).toBeTruthy();
+    expect(within(venue as HTMLElement).queryByText("Not checked")).toBeNull();
+    expect(
+      screen.getByText("Connect a wallet and enter an amount to check availability."),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Chime").closest(".ramp-tile")?.querySelector(".ramp-tile__icon-slot"),
+    ).toBeTruthy();
     expect(venue.querySelector("input, button")).toBeNull();
     expect(venue.querySelector(".ramp-tile__logo")).toBeTruthy();
     expect(
@@ -301,7 +307,9 @@ describe("Send to a payment app rails", () => {
     typeAmount("25");
     await screen.findAllByRole("radio");
     expect(radioNames()).toEqual(["Wise"]);
-    expect(blockedCard("Revolut").textContent).toMatch(/Availability unknown/);
+    const unconfirmed = blockedCard("Revolut");
+    expect(unconfirmed.querySelector("summary")?.textContent).toMatch(/^Unconfirmed:.*Revolut/);
+    expect(blockedCard("Cash App")).toBe(unconfirmed);
     expect(blockedCard("Revolut").textContent).toMatch(/not confirmed live cash-out limits/);
     fireEvent.click(screen.getByLabelText(/Wise/));
     expect(screen.getByRole("note").textContent).toMatch(/nothing will be sent/);

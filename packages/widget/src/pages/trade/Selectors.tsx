@@ -91,7 +91,7 @@ export function TokenSelector({
   };
 
   const zkMoneySelected = zkMoney?.selected === true;
-  const isPrivateChain = chainId === AZTEC_CHAIN_ID;
+  const isShieldedChain = chainId === AZTEC_CHAIN_ID;
   const tokenModalOpen = modalMode === "token" && !tokenLocked;
   const chainModalOpen = modalMode === "chain" && !chainLocked && onChainChange !== undefined;
 
@@ -150,8 +150,8 @@ export function TokenSelector({
               aria-label={
                 zkMoneySelected
                   ? "On zk.money - Change network"
-                  : isPrivateChain
-                    ? "Xochi (Private) - Change network"
+                  : isShieldedChain
+                    ? "On Aztec - Change network"
                     : `On ${EXTENDED_CHAIN_NAMES[chainId]} - Change network`
               }
             >

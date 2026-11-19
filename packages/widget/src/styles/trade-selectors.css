@@ -74,6 +74,7 @@
    so the two halves stay sibling controls -- a button may not contain a
    focusable descendant, so the unit cannot be one big button. */
 .token-btn__token {
+  min-block-size: 24px;
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
@@ -89,11 +90,12 @@
    real phrase, not an icon chip: the design brief forbids making users infer
    which network a side settles on from an unlabeled glyph. */
 .chain-badge {
+  min-block-size: 24px;
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
+  font-size: max(0.75rem, var(--text-xs));
   font-weight: 500;
   padding: 0.2rem 0.45rem;
   background: var(--sky-12);
@@ -436,4 +438,12 @@
   overscroll-behavior: contain;
   z-index: 100;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="light"] .chain-badge__name {
+  color: #185571;
+}
+
+[data-theme="light"] .chain-badge__on {
+  color: #494c4c;
 }

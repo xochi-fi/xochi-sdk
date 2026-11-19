@@ -270,9 +270,12 @@ function EditStep({
     state.status === "done" ? state.estimates.find((e) => e.offerId === offer.offer_id) : undefined;
 
   let status: string | undefined;
-  if (!settlement) status = "Peer’s Base USDC configuration is unavailable.";
+  if (!account) status = "Connect a wallet and enter an amount to check availability.";
+  else if (!settlement)
+    status = "Peer’s Base USDC configuration is unavailable. Check again later.";
   else if (lost) status = "That app is unavailable. Choose again.";
-  else if (flow.runtimeFailed) status = "Cash out is unavailable for this wallet.";
+  else if (flow.runtimeFailed)
+    status = "Cash out is unavailable for this wallet. Reconnect your wallet and check again.";
   else if (account && amount === undefined && !amountInvalid)
     status = "Enter an amount to check payment apps.";
   else if (overCap) status = overCap;

@@ -316,7 +316,7 @@ export function BuyOnramp({
                       })
                     }
                   >
-                    Approve wallet: signal Peer purchase on Base
+                    Confirm purchase
                   </button>
                 </>
               )}

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createBrowserRampOperationStore, type RampOperationStore } from "@xochi/client";
 import { BuyOnramp } from "../peer/BuyOnramp.js";
+import { formatRampTime } from "../availability/model.js";
 import { buyerHarness } from "../../test/buyerPort.js";
 import type { PeerOnrampRuntime } from "../peer/onramp.js";
 import { ResumeOnramp } from "./ResumeOnramp.js";
@@ -45,9 +46,7 @@ async function approved(h: Awaited<ReturnType<typeof buyerHarness>>, store: Ramp
   render(<BuyOnramp intent={h.intent} offer={h.offer} runtime={h.runtime} store={store} />);
   fireEvent.click(screen.getByRole("button", { name: "Review exact Peer quote" }));
   fireEvent.click(await screen.findByRole("checkbox"));
-  fireEvent.click(
-    screen.getByRole("button", { name: "Approve wallet: signal Peer purchase on Base" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Confirm purchase" }));
 }
 /** Simulate a reload: the page and its in-memory provider are gone; storage remains. */
 function reload(h: Awaited<ReturnType<typeof buyerHarness>>, store: RampOperationStore) {
@@ -103,7 +102,7 @@ it("resumes after intent signaling without a second intent", async () => {
   h.setPayout("released");
   fireEvent.click(
     await screen.findByRole("button", {
-      name: "Approve wallet: verify payment and fulfill Peer intent",
+      name: "Confirm payment",
     }),
   );
   await screen.findByText("Confirmed Base USDC received.");
@@ -120,7 +119,7 @@ it("resumes after payment capture by re-capturing, never paying or signaling aga
   );
   await act(async () => h.extension.deliver(h.goodCapture()));
   await screen.findByRole("button", {
-    name: "Approve wallet: verify payment and fulfill Peer intent",
+    name: "Confirm payment",
   });
 
   // The captured proof lived only in provider memory; the reload drops it.
@@ -134,10 +133,10 @@ it("resumes after payment capture by re-capturing, never paying or signaling aga
   await act(async () => h.extension.deliver(h.goodCapture()));
   fireEvent.click(
     await screen.findByRole("button", {
-      name: "Approve wallet: verify payment and fulfill Peer intent",
+      name: "Confirm payment",
     }),
   );
-  await screen.findByText(/Peer purchase: processing|Confirmed Base USDC received/);
+  await screen.findByText(/Waiting for Peer to update this purchase|Confirmed Base USDC received/);
   expect(h.counts()).toEqual({ signals: 1, fulfills: 1 });
   expectNoSecretsStored(h);
 });
@@ -177,13 +176,13 @@ it("resumes a fulfilled purchase whose payout is held, with an estimate and no g
   h.setPayout("held");
   fireEvent.click(
     await screen.findByRole("button", {
-      name: "Approve wallet: verify payment and fulfill Peer intent",
+      name: "Confirm payment",
     }),
   );
   await screen.findByText(/Peer is holding this payout/);
   const held = getRampSummary(listRampSummaries()[0].operation_id)!;
   expect(held).toMatchObject({ payout_state: "held", state: "processing", terminal: false });
-  const release = new Date(Date.parse(held.held_since!) + PEER_HOLD_MS).toISOString().slice(0, 10);
+  const release = formatRampTime(Date.parse(held.held_since!) + PEER_HOLD_MS, true);
 
   reload(h, store);
   const status = await screen.findByText(/Peer is holding this payout/);
@@ -260,9 +259,7 @@ it("disables a live purchase's actions after the wallet changes", async () => {
   );
   fireEvent.click(screen.getByRole("button", { name: "Review exact Peer quote" }));
   fireEvent.click(await screen.findByRole("checkbox"));
-  fireEvent.click(
-    screen.getByRole("button", { name: "Approve wallet: signal Peer purchase on Base" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Confirm purchase" }));
   await screen.findByRole("button", { name: "Open Peer extension to capture my payment" });
   view.rerender(
     <BuyOnramp

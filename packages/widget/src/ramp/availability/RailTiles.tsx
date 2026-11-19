@@ -1,17 +1,19 @@
 import type { CSSProperties, ReactNode } from "react";
-import { railLogo } from "../../assets/rails/index.js";
+import { railLogo, selectedRailIcon } from "../../assets/rails/index.js";
 import { formatRampTime, RAIL_NAMES, type RailCard } from "./model.js";
 
 function RailLogo({ id }: { id: string }) {
   const logo = railLogo(id);
-  if (!logo) return null;
+  if (!logo) return <span className="ramp-tile__icon-slot" aria-hidden="true" />;
   return (
     <span
-      className="ramp-tile__logo"
+      className="ramp-tile__icon-slot ramp-tile__logo"
       style={
         {
           "--rail-logo": `url("${logo.light}")`,
-          "--rail-brand": logo.brandColor,
+          "--rail-icon-dim": selectedRailIcon(logo.brandColor, "#12121a"),
+          "--rail-icon-dark": selectedRailIcon(logo.brandColor, "#080808"),
+          "--rail-icon-light": selectedRailIcon(logo.brandColor, "#f5f3ef"),
         } as CSSProperties
       }
       aria-hidden="true"
@@ -27,7 +29,7 @@ export function RailTileContent({
 }: {
   id: string;
   name: string;
-  status: string;
+  status?: string;
   selected?: boolean;
 }) {
   return (
@@ -35,9 +37,11 @@ export function RailTileContent({
       <RailLogo id={id} />
       <span className="ramp-tile__text">
         <strong className="ramp-tile__name">{name}</strong>
-        <span className="ramp-tile__status">
-          <small>{status}</small>
-        </span>
+        {status && (
+          <span className="ramp-tile__status">
+            <small>{status}</small>
+          </span>
+        )}
       </span>
       {selected && (
         <span className="ramp-tile__check" aria-hidden="true">
@@ -64,7 +68,7 @@ export function RailTiles({
         {untested &&
           Object.entries(RAIL_NAMES).map(([id, name]) => (
             <div key={id} className="ramp-tile" aria-disabled="true">
-              <RailTileContent id={id} name={name} status="Not checked" />
+              <RailTileContent id={id} name={name} />
             </div>
           ))}
         {children}
@@ -91,7 +95,10 @@ export function RailChoice({
   onSelect: () => void;
 }) {
   return (
-    <label className="ramp-tile">
+    <label
+      className="ramp-tile"
+      style={{ "--rail-brand": railLogo(card.id)?.brandColor } as CSSProperties}
+    >
       <input
         className="sr-only"
         type="radio"
@@ -124,22 +131,42 @@ const SHORT_REASONS: Record<RailCard["state"], string> = {
 
 export function UnavailableRails({ cards }: { cards: RailCard[] }) {
   if (!cards.length) return null;
+  const unconfirmed = cards.filter((card) => card.state === "availability_unknown");
   return (
     <section className="ramp-unavailable" aria-label="Unavailable payment apps">
-      {cards.map((card) => (
-        <details key={card.id}>
+      {unconfirmed.length > 0 && (
+        <details>
           <summary>
-            <RailLogo id={card.id} />
-            <strong>{card.name}</strong>
-            <span>{SHORT_REASONS[card.state]}</span>
-            {card.retryAfter && <span>Retry after {formatRampTime(card.retryAfter)}</span>}
+            <span>Unconfirmed: {unconfirmed.map((card) => card.name).join(", ")}</span>
+            <small className="ramp-unavailable__reason">
+              Peer has yet to confirm these apps. Check again later.
+            </small>
           </summary>
-          <p>
-            <strong>{card.status}.</strong> {card.reason}
-          </p>
-          {card.next && <p>{card.next}</p>}
+          <ul>
+            {unconfirmed.map((card) => (
+              <li key={card.id}>
+                <strong>{card.name}</strong> {card.reason}
+              </li>
+            ))}
+          </ul>
         </details>
-      ))}
+      )}
+      {cards
+        .filter((card) => card.state !== "availability_unknown")
+        .map((card) => (
+          <details key={card.id}>
+            <summary>
+              <RailLogo id={card.id} />
+              <strong>{card.name}</strong>
+              <span>{SHORT_REASONS[card.state]}</span>
+              {card.retryAfter && <span>Retry after {formatRampTime(card.retryAfter)}</span>}
+            </summary>
+            <p>
+              <strong>{card.status}.</strong> {card.reason}
+            </p>
+            {card.next && <p>{card.next}</p>}
+          </details>
+        ))}
     </section>
   );
 }
