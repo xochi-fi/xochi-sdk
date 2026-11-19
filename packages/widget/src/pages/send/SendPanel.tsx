@@ -2,10 +2,13 @@ import type { ResolvedRecipient } from "../../lib/recipient/index.js";
 import type { Ref } from "react";
 import type { SwapPrefill } from "../trade/SwapPanel.js";
 import { SEND_DESTINATION_KINDS, type SendDestinationKind } from "../trade/WidgetTabs.js";
+import type { SendRetryDraft } from "./sendRetry.js";
 import { SendForm } from "./SendForm.js";
 
 interface SendPanelProps {
   initialChain?: number;
+  retry?: SendRetryDraft;
+  onEditRetry?: () => void;
   active: boolean;
   destinations?: readonly SendDestinationKind[];
   showQuote: boolean;
@@ -26,7 +29,12 @@ export function SendPanel({
   return (
     <>
       <div className="send-card" hidden={showQuote}>
-        <SendForm destinations={destinations} {...props} active={active && !showQuote} />
+        <SendForm
+          key={props.retry?.nonce}
+          destinations={destinations}
+          {...props}
+          active={active && !showQuote}
+        />
       </div>
       <section className="send-quote" hidden={!showQuote} aria-label="Send quote">
         <button type="button" className="send-secondary" onClick={onCloseQuote}>

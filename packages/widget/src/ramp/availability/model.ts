@@ -291,7 +291,7 @@ export function nextExpiry(offers: readonly RampOffer[], now: number): number | 
 export function rampFacts(direction: RampDirection): string[] {
   const shared = [
     "Base transfers, amounts and wallet addresses are public.",
-    "The other person sees your payment details and name.",
+    `The ${direction === "offramp" ? "buyer" : "seller"} sees your payment details and name.`,
     "Peer handles required payment data. Its access checks and secure verifier must be online.",
   ];
   return direction === "onramp"
@@ -300,9 +300,5 @@ export function rampFacts(direction: RampDirection): string[] {
         "Expired or unverifiable purchases have no protocol refund. Check the active intent before paying.",
         "Without Peer stake, Venmo or PayPal payouts can be held for 14 days. Held funds cannot start a swap.",
       ]
-    : [
-        "Cash out to your own account.",
-        ...shared,
-        "Rates can change. Payments can arrive later in parts.",
-      ];
+    : [...shared, "Rates can change. Payments can arrive later in parts."];
 }

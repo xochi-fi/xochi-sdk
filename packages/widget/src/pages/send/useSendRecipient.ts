@@ -25,13 +25,14 @@ export function useRecipientDeps(): RecipientDeps | undefined {
   }, [config]);
 }
 
-export function useSendRecipient(input: string, chainId: number): Lookup {
+export function useSendRecipient(input: string, chainId: number, attempt = 0): Lookup {
   const deps = useRecipientDeps();
   const [result, setResult] = useState<{
     input: string;
     chainId: number;
     deps: RecipientDeps | undefined;
     lookup: Lookup;
+    attempt: number;
   }>();
   const value = input.trim();
 
@@ -40,7 +41,7 @@ export function useSendRecipient(input: string, chainId: number): Lookup {
     const controller = new AbortController();
     const { signal } = controller;
     const publish = (lookup: Lookup) => {
-      if (!signal.aborted) setResult({ input, chainId, deps, lookup });
+      if (!signal.aborted) setResult({ input, chainId, deps, lookup, attempt });
     };
     const timer = setTimeout(() => {
       void (async () => {
@@ -73,10 +74,13 @@ export function useSendRecipient(input: string, chainId: number): Lookup {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [input, value, chainId, deps]);
+  }, [input, value, chainId, deps, attempt]);
 
   if (!value) return EMPTY;
-  return result?.input === input && result.chainId === chainId && result.deps === deps
+  return result?.input === input &&
+    result.chainId === chainId &&
+    result.deps === deps &&
+    result.attempt === attempt
     ? result.lookup
     : LOOKING;
 }

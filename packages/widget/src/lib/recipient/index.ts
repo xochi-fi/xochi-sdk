@@ -74,7 +74,6 @@ export function classifyRecipientInput(input: string): RecipientKind | "unknown"
   if (value.endsWith(".eth")) return "ens";
   if (value.endsWith(".gwei")) return "gns";
   if (value.endsWith(".wei")) return "wns";
-  if (zkMoneyTagValid(value)) return "zkmoney";
   return "unknown";
 }
 
@@ -355,8 +354,11 @@ export async function resolveRecipient(
     let name: string | undefined;
     let normalizedInput: string;
     if (kind === "address") {
-      address = validAddress(value);
-      if (!address) return { status: "invalid", reason: "Invalid Ethereum address." };
+      const validation = validateAddressForVm(value, "evm");
+      if (!validation.valid) {
+        return { status: "invalid", reason: validation.error ?? "Invalid Ethereum address" };
+      }
+      address = getAddress(value);
       normalizedInput = address;
     } else {
       try {

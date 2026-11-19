@@ -95,7 +95,10 @@ export function RampRails({
   const currencies = [...new Set([fiatCurrency, "USD"])];
 
   let status: string | undefined;
-  if (!account) status = "Connect a wallet and enter an amount to check availability.";
+  if (!account)
+    status = onConnectRequest
+      ? undefined
+      : "Connect a wallet and enter an amount to check availability.";
   else if (!settlement)
     status = "Peer’s Base USDC configuration is unavailable. Check again later.";
   else if (lost) status = "That app is unavailable. Choose again.";

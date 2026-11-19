@@ -4,6 +4,7 @@
  * Unified activity feed types for swaps, x402 payments, and permits.
  */
 
+import type { SendRecipientDisplay } from "../pages/send/sendCopy.js";
 import type { IntentStatus, SelectableChainId, SettlementType } from "./intent.js";
 // The persisted deposit binding is the attestation module's own type, imported
 // rather than restated: a local copy of the signed field set is a thing that can
@@ -129,13 +130,15 @@ export interface SwapActivity {
   settlementType?: SettlementType;
   /**
    * `"other"` on a stealth order that paid someone else's meta-address (Send >
-   * Stealth). The marker only: their keys are never stored, so the row offers
-   * no claim and cannot be retried, since a retry would pay the wallet's own
-   * keys instead. Absent means the wallet's own keys.
+   * Stealth). The marker only: their keys are never stored and the row offers
+   * no claim. Send retries require the recipient to be supplied again from the
+   * session or resolved from their original name. Absent means the wallet's own keys.
    */
   stealthPayee?: "other";
   /** Immutable zk.money recipient captured from the dispatched public tag order. */
   recipientTag?: string;
+  /** Send identity and a retry input only when it is a name or an alias. */
+  sendRecipientDisplay?: SendRecipientDisplay;
   /**
    * Deposit-route facts, present only on a swap the user funds by hand. See
    * `DepositActivity`.

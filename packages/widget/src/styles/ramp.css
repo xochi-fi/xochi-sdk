@@ -329,6 +329,9 @@
 }
 
 .ramp-guest-apps {
+  display: flex;
+  align-items: center;
+  gap: clamp(2px, 2cqi, 8px);
   margin: 0;
   font-size: var(--text-sm);
   color: var(--text-secondary);

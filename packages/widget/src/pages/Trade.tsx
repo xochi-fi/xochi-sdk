@@ -43,7 +43,15 @@ import { PaymentAppSend } from "../ramp/offramp/PaymentAppSend.js";
 import { RAMP_HOST_GATE_COPY, useRampHostGate } from "../lib/rampHostGate.js";
 import { BuyPanel } from "./trade/BuyPanel.js";
 import { CashOutRecovery, PurchaseRecovery } from "./trade/RampRecovery.js";
-import { abbreviateMetaAddress } from "./send/stealthRecipient.js";
+import { useRecipientDeps } from "./send/useSendRecipient.js";
+import {
+  recallSendRecipient,
+  rememberSendRecipient,
+  type SendRetryDraft,
+} from "./send/sendRetry.js";
+import type { SendRecipientDisplay } from "./send/sendCopy.js";
+import { resolveRecipient, classifyRecipientInput } from "../lib/recipient/index.js";
+import { parseStealthMetaAddress, abbreviateMetaAddress } from "./send/stealthRecipient.js";
 import { truncateAddress } from "../utils/format.js";
 import { SendPanel } from "./send/SendPanel.js";
 import {
@@ -172,7 +180,11 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
         item.data.fromToken;
       const to =
         getTokenInfoForChain(item.data.toToken, item.data.toChainId)?.symbol ?? item.data.toToken;
-      showToast(`${from} to ${to} swap complete`, "success");
+      const send = item.data.sendRecipientDisplay;
+      showToast(
+        send ? `Sent with ${send.mode} to ${send.label}` : `${from} to ${to} swap complete`,
+        "success",
+      );
     },
     [showToast],
   );
@@ -233,7 +245,13 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
     for (const s of localSwaps) byId.set(s.id, s);
     for (const s of serverSwaps) {
       const local = byId.get(s.id);
-      byId.set(s.id, mergeHistorySwap(s, local));
+      const merged = mergeHistorySwap(s, local);
+      const send = merged !== s ? local?.data.sendRecipientDisplay : undefined;
+      if (send) {
+        merged.data.sendRecipientDisplay = send;
+        merged.data.stealthPayee = local?.data.stealthPayee;
+      }
+      byId.set(s.id, merged);
     }
     return [...byId.values()].sort((a, b) => b.timestamp - a.timestamp);
   }, [orders, localSwaps]);
@@ -295,7 +313,10 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
     setClaimsWanted(false);
     setSelectedTab("claims");
   }
+  const pendingSendRetry = useRef<AbortController | undefined>(undefined);
+  const cancelSendRetry = useCallback(() => pendingSendRetry.current?.abort(), []);
   const selectTab = useCallback((tab: WidgetTabId): void => {
+    if (tab !== "send") pendingSendRetry.current?.abort();
     setClaimsWanted(false);
     setSelectedTab(tab);
     if (tab !== "send") {
@@ -347,6 +368,9 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
   // distinct so re-clicking the same row re-applies (SwapPanel keys off it).
   const [retryPrefill, setRetryPrefill] = useState<SwapPrefill | null>(null);
   const retryNonce = useRef(0);
+  const recipientDeps = useRecipientDeps();
+  const [sendRetry, setSendRetry] = useState<SendRetryDraft>();
+  useEffect(() => cancelSendRetry, [address, cancelSendRetry]);
   const [sendQuoteRecipient, setSendQuoteRecipient] = useState<ResolvedRecipient>();
   const showSendQuote = sendQuoteRecipient !== undefined;
   const tradeSwapMount = useRef<HTMLDivElement>(null);
@@ -473,8 +497,9 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
 
   const handleRetrySwap = useCallback(
     (item: SwapActivityItem): void => {
+      pendingSendRetry.current?.abort();
       retryNonce.current += 1;
-      setRetryPrefill({
+      const prefill: SwapPrefill = {
         nonce: retryNonce.current,
         fromChainId: item.data.fromChainId,
         toChainId: item.data.toChainId,
@@ -485,15 +510,67 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
         stealthPayee: item.data.stealthPayee,
         recipientTag: item.data.recipientTag,
         refundAddress: item.data.deposit?.attested.refund_address ?? undefined,
-      });
+      };
       setSendQuoteRecipient(undefined);
+      const send = item.data.sendRecipientDisplay;
+      if (send) {
+        if (!surfaces.tabs.includes("send")) {
+          showToast("Send is unavailable in this widget.", "error");
+          return;
+        }
+        const remembered = recallSendRecipient(item.id);
+        const kind = classifyRecipientInput(send.retryInput ?? "");
+        const input =
+          remembered?.input ??
+          (kind === "ens" || kind === "gns" || kind === "wns" || kind === "zkmoney"
+            ? send.retryInput
+            : undefined);
+        setRetryPrefill(null);
+        setSendRetry({ ...prefill, input, mode: send.mode });
+        selectTab("send");
+
+        const controller = new AbortController();
+        pendingSendRetry.current = controller;
+        const reopen = (recipient: ResolvedRecipient) => {
+          if (controller.signal.aborted) return;
+          const meta = parseStealthMetaAddress(recipient.stealthMetaAddress ?? "");
+          const incomingTag = recipient.shieldedAlias;
+          if (send.mode === "Stealth" ? !meta.ok : !incomingTag) return;
+          const display: SendRecipientDisplay = {
+            mode: send.mode,
+            label: send.label,
+            retryInput: remembered ? undefined : input,
+          };
+          rememberSendRecipient(display, recipient);
+          setRetryPrefill({
+            ...prefill,
+            fromSend: true,
+            sendRecipientDisplay: display,
+            settlement: send.mode === "Stealth" ? "stealth" : "public",
+            stealthRecipient: send.mode === "Stealth" && meta.ok ? meta.recipient : undefined,
+            recipientTag: send.mode === "Shielded" ? incomingTag : undefined,
+          });
+          setSendQuoteRecipient(recipient);
+        };
+        if (remembered) {
+          reopen(remembered);
+        } else if (input && recipientDeps) {
+          void resolveRecipient(input, recipientDeps, controller.signal).then((result) => {
+            if (result.status === "resolved") reopen(result.recipient);
+          });
+        }
+        return;
+      }
+
+      setRetryPrefill(prefill);
       setTradeMode("swap");
       selectTab("trade");
     },
-    [selectTab],
+    [recipientDeps, selectTab, showToast, surfaces.tabs],
   );
 
   const handleSendQuote = (order: Omit<SwapPrefill, "nonce">, recipient: ResolvedRecipient) => {
+    pendingSendRetry.current?.abort();
     retryNonce.current += 1;
     const label = recipient.shieldedAlias
       ? `@${recipient.shieldedAlias}`
@@ -501,11 +578,21 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
         (recipient.address
           ? truncateAddress(recipient.address)
           : abbreviateMetaAddress(recipient.stealthMetaAddress ?? "")));
+    const display: SendRecipientDisplay = {
+      label,
+      mode: recipient.shieldedAlias ? "Shielded" : "Stealth",
+      retryInput: recipient.shieldedAlias
+        ? `${recipient.shieldedAlias}.zk.money`
+        : recipient.kind === "ens" || recipient.kind === "gns" || recipient.kind === "wns"
+          ? recipient.input
+          : undefined,
+    };
+    rememberSendRecipient(display, recipient);
     setRetryPrefill({
       ...order,
       nonce: retryNonce.current,
       fromSend: true,
-      sendRecipientDisplay: { mode: recipient.shieldedAlias ? "Shielded" : "Stealth", label },
+      sendRecipientDisplay: display,
     });
     setSendQuoteRecipient(recipient);
   };
@@ -653,6 +740,8 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
                 initialChain={fromChainId}
                 destinations={surfaces.destinations}
                 showQuote={showSendQuote}
+                retry={sendRetry}
+                onEditRetry={cancelSendRetry}
                 quoteMount={sendSwapMount}
                 onQuote={handleSendQuote}
                 onCloseQuote={() => {
@@ -699,7 +788,7 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
                 {!isConnected ? (
                   <div className="send-card">
                     <p className="send-note">
-                      See your swaps, sends, purchases and cash-outs here.
+                      See your swaps, sends, purchases and cash outs here.
                     </p>
                     <button
                       className="submit-btn send-cta"

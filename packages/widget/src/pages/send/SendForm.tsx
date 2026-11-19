@@ -24,8 +24,9 @@ import { useLocalSends } from "../../hooks/useLocalSends.js";
 import { useSendRecipient } from "./useSendRecipient.js";
 import { RecipientChip } from "./RecipientChip.js";
 import { parseStealthMetaAddress } from "./stealthRecipient.js";
-import { MODE_META } from "../trade/settlementCopy.js";
+import { MODE_META, SHIELDED_DEPOSIT_NOTE } from "../trade/settlementCopy.js";
 import { TokenIcon } from "../../components/TokenIcon.js";
+import type { SendRetryDraft } from "./sendRetry.js";
 import { SHIELDED_DESCRIPTION } from "./sendCopy.js";
 import { PrivacyBars } from "../../components/PrivacyBars.js";
 import { SITE_URL } from "../../config.js";
@@ -50,6 +51,8 @@ function lastAsset(chainId: number) {
 
 interface SendFormProps {
   initialChain?: number;
+  retry?: SendRetryDraft;
+  onEditRetry?: () => void;
   active?: boolean;
   /** Hosted wallet UI delegates the connect prompt to the embedding page. */
   onConnectRequest?: () => void;
@@ -64,11 +67,11 @@ const exact = (amount: bigint, decimals: number): string =>
 export function SendForm(props: SendFormProps) {
   const { address } = useAccount();
   const [receive, setReceive] = useState(
-    () => new URLSearchParams(location.search).get("receive") === "1",
+    () => !props.retry && new URLSearchParams(location.search).get("receive") === "1",
   );
   return (
     <WalletSendForm
-      key={address?.toLowerCase()}
+      key={`${address?.toLowerCase()}:${props.retry?.nonce}`}
       {...props}
       receive={receive}
       setReceive={setReceive}
@@ -79,6 +82,8 @@ export function SendForm(props: SendFormProps) {
 function WalletSendForm({
   onConnectRequest,
   initialChain: requestedChain,
+  retry,
+  onEditRetry,
   active = true,
   destinations,
   onQuote,
@@ -95,19 +100,29 @@ function WalletSendForm({
   const send = useAddressSend();
 
   const chainIds = useMemo(() => sendChainIds(config.chains.map((c) => c.id)), [config.chains]);
-  const initialChain = defaultSendChain(chainIds, requestedChain);
+  const initialChain = defaultSendChain(chainIds, retry?.fromChainId ?? requestedChain);
+  const retryToken =
+    retry &&
+    sendTokens(initialChain).find(
+      (asset) => asset.address.toLowerCase() === retry.fromToken.toLowerCase(),
+    );
   const [draft, setDraft] = useState<AddressSendDraft>(() => ({
     chainId: initialChain,
-    tokenAddress: lastAsset(initialChain)?.address ?? "",
-    amount: "",
+    tokenAddress: retryToken?.address ?? lastAsset(initialChain)?.address ?? "",
+    amount:
+      retry && retryToken && /^\d+$/.test(retry.fromAmount)
+        ? exact(BigInt(retry.fromAmount), retryToken.decimals)
+        : "",
     recipient: "",
   }));
   const [attempted, setAttempted] = useState(false);
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(retry?.input ?? "");
   const [pasteError, setPasteError] = useState("");
   const [publicChoice, setPublicChoice] = useState<string>();
   const [reviewedRecipient, setReviewedRecipient] = useState<ResolvedRecipient>();
-  const [selectedDestination, setSelectedDestination] = useState<number>();
+  const [selectedDestination, setSelectedDestination] = useState<number | undefined>(
+    retry?.toChainId,
+  );
   const [inviteStatus, setInviteStatus] = useState("");
   const history = useLocalSends();
   const { capabilities, state: capabilityState } = useCapabilities();
@@ -115,13 +130,20 @@ function WalletSendForm({
   const tokens = sendTokens(draft.chainId);
   const token = tokens.find((t) => t.address.toLowerCase() === draft.tokenAddress.toLowerCase());
   const balance = token ? readBalanceOf(draft.chainId, token.address) : null;
-  const lookup = useSendRecipient(input, draft.chainId);
+  const [lookupAttempt, setLookupAttempt] = useState(0);
+  const lookup = useSendRecipient(input, draft.chainId, lookupAttempt);
   const recipient = lookup.status === "resolved" ? lookup.recipient : undefined;
   const privacy = recipient?.shieldedAlias
     ? "Shielded"
     : recipient?.stealthMetaAddress && publicChoice !== input
       ? "Stealth"
       : "Public";
+  const displayedMode = recipient ? privacy : (retry?.mode ?? privacy);
+  const retryMismatch =
+    retry &&
+    recipient &&
+    privacy !== retry.mode &&
+    !(retry.mode === "Stealth" && publicChoice === input && privacy === "Public");
   const networkMismatch =
     privacy === "Public" && lookup.status === "resolved" && lookup.networkMismatch;
   const isZero = recipient?.address === "0x0000000000000000000000000000000000000000";
@@ -161,19 +183,26 @@ function WalletSendForm({
   );
   const amountCheck = token ? checkSendAmount(draft.amount, token, balance) : null;
   const errors: AddressSendErrors = attempted && !check.ok ? check.errors : {};
-  const update = (patch: Partial<AddressSendDraft>): void => setDraft((d) => ({ ...d, ...patch }));
+  const update = (patch: Partial<AddressSendDraft>): void => {
+    onEditRetry?.();
+    setDraft((d) => ({ ...d, ...patch }));
+  };
   const { phase } = send;
 
   const onChain = (next: number): void => {
     const same = sendTokens(next).find((t) => t.symbol === token?.symbol) ?? defaultSendToken(next);
     update({ chainId: next, tokenAddress: same?.address ?? "" });
   };
-  const onInput = useCallback((next: string) => {
-    setInput(next);
-    setPublicChoice(undefined);
-    setPasteError("");
-    setInviteStatus("");
-  }, []);
+  const onInput = useCallback(
+    (next: string) => {
+      onEditRetry?.();
+      setInput(next);
+      setPublicChoice(undefined);
+      setPasteError("");
+      setInviteStatus("");
+    },
+    [onEditRetry],
+  );
   const paste = async () => {
     try {
       onInput((await navigator.clipboard.readText()).trim());
@@ -207,6 +236,7 @@ function WalletSendForm({
       !recipient ||
       isZero ||
       networkMismatch ||
+      retryMismatch ||
       contract ||
       !permitted ||
       !canRoute ||
@@ -271,7 +301,7 @@ function WalletSendForm({
       not_found: "Not found. Try a 0x address, .eth, .gwei, .wei, or zk.money name",
       unsupported: "Not a supported name",
       unavailable: "Lookup unavailable",
-      invalid: /^0x/i.test(input.trim()) ? "Check this address" : "Check this stealth address",
+      invalid: "reason" in lookup ? lookup.reason.replace(/\.$/, "") : "Check the recipient",
     }[lookup.status];
     const network = (
       <select
@@ -306,7 +336,14 @@ function WalletSendForm({
           <label className="send-field__label" htmlFor={`${id}-to`}>
             To
           </label>
-          <button type="button" className="send-secondary" onClick={() => setReceive(true)}>
+          <button
+            type="button"
+            className="send-secondary"
+            onClick={() => {
+              onEditRetry?.();
+              setReceive(true);
+            }}
+          >
             Receive
           </button>
         </div>
@@ -352,6 +389,19 @@ function WalletSendForm({
             {pasteError || status}
           </p>
         )}
+        {retry && !input && <p className="send-note">Paste the recipient again.</p>}
+        {retryMismatch && (
+          <p className="send-note">Enter a recipient who can receive with {retry.mode}</p>
+        )}
+        {lookup.status === "unavailable" && (
+          <button
+            type="button"
+            className="send-secondary"
+            onClick={() => setLookupAttempt((n) => n + 1)}
+          >
+            Retry
+          </button>
+        )}
         <div className="send-recipient-announcement" aria-live="polite">
           {recipient && (
             <div className="send-recipient-row">
@@ -361,7 +411,10 @@ function WalletSendForm({
                   aria-label="Destination network"
                   className="send-field__control send-chip"
                   value={destination}
-                  onChange={(event) => setSelectedDestination(Number(event.target.value))}
+                  onChange={(event) => {
+                    onEditRetry?.();
+                    setSelectedDestination(Number(event.target.value));
+                  }}
                 >
                   {stealthChains.map((chain) => (
                     <option key={chain} value={chain}>
@@ -374,22 +427,23 @@ function WalletSendForm({
               ) : null}
             </div>
           )}
-          {recipient && (
+          {(recipient || retry) && (
             <div className="send-mode">
               <strong>
                 <PrivacyBars
-                  count={privacy === "Stealth" ? 2 : privacy === "Shielded" ? 3 : 1}
+                  count={displayedMode === "Stealth" ? 2 : displayedMode === "Shielded" ? 3 : 1}
                   active
                 />
-                {privacy}
+                {displayedMode}
               </strong>
               <p className="send-note">
-                {privacy === "Stealth"
-                  ? `${recipient.name ?? "This recipient"} receives at a one-time stealth address. ${MODE_META.stealth}.`
-                  : privacy === "Shielded"
+                {displayedMode === "Stealth"
+                  ? MODE_META.stealth
+                  : displayedMode === "Shielded"
                     ? SHIELDED_DESCRIPTION
-                    : `${MODE_META.public}.`}
+                    : MODE_META.public}
               </p>
+              {displayedMode === "Shielded" && <p className="send-note">{SHIELDED_DEPOSIT_NOTE}</p>}
             </div>
           )}
         </div>
@@ -410,7 +464,7 @@ function WalletSendForm({
             This name points to another address on {chainName(draft.chainId)}
           </p>
         )}
-        {isZero && <p className="send-field__error">Check this address</p>}
+        {isZero && <p className="send-field__error">The zero address cannot receive funds</p>}
         {contract && <p className="send-field__error">This is a token contract, not a wallet</p>}
         {!contract && recipient && !permitted && (
           <p className="send-note">This mode is unavailable here. Try another recipient.</p>
@@ -420,12 +474,13 @@ function WalletSendForm({
         )}
         {!contract &&
           recipient?.address &&
+          recipient.kind !== "address" &&
           !recipient.stealthMetaAddress &&
           !recipient.shieldedAlias && (
             <p className="send-note send-invite">
-              <span>{recipient.name ?? "This wallet"} hasn't set up stealth receiving.</span>
+              <span>{recipient.name ?? "This wallet"} hasn't set up stealth receiving</span>
               <button type="button" className="send-secondary" onClick={() => void copyInvite()}>
-                Copy invite link
+                Copy invite
               </button>
               {inviteStatus && <span role="status">{inviteStatus}</span>}
             </p>
@@ -489,6 +544,7 @@ function WalletSendForm({
             isConnected &&
             (!!contract ||
               !!networkMismatch ||
+              !!retryMismatch ||
               isZero ||
               (!!recipient && (!permitted || !canRoute)) ||
               lookup.status === "looking")

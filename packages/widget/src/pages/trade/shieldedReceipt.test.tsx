@@ -115,7 +115,11 @@ describe("a shielded payout waiting on the recipient", () => {
     await renderTrade(<Trade look={FULL_LOOK} />, { connected: true });
     await expandRow("Settling");
 
-    expect(row().querySelector(".activity-chain-route")?.textContent).toMatch(/Aztec\s*Shielded$/);
+    expect(row().querySelector(".activity-chain-route")?.textContent).toMatch(
+      /zk\.money\s*Shielded$/,
+    );
+    expect(row().textContent).toContain("Amounts and participants hidden inside zk.money.");
+    expect(row().textContent).toContain("Deposit is public on Ethereum.");
     // After the token icon's fallback letter, when it has no image.
     expect(row().querySelector(".to-token")?.textContent).toMatch(/^\D?1\.69 OXDAI$/);
     expect(row().querySelector(".from-token")?.textContent).toMatch(/USDC$/);

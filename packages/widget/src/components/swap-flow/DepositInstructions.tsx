@@ -13,7 +13,8 @@
 
 import { useState, useEffect } from "react";
 import { formatTokenAmount } from "../../utils/format.js";
-import { EXTENDED_CHAIN_NAMES, isTronChainId } from "@xochi/client";
+import { ShieldedDisclosure } from "../../pages/send/ShieldedDisclosure.js";
+import { EXTENDED_CHAIN_NAMES } from "@xochi/client";
 import type { SelectableChainId } from "../../types/intent.js";
 import { QrCode } from "./QrCode.js";
 
@@ -250,14 +251,13 @@ export function DepositInstructions({
 
       {receivedAmount && (
         <p className="deposit-instructions__payout">
-          Receive about {receivedAmount} {toSymbol} on {destName}
-          {recipientTag ? ` for @${recipientTag} on zk.money` : ""}
+          Receive about {receivedAmount} {toSymbol}
+          {recipientTag ? ` for @${recipientTag} on zk.money` : ` on ${destName}`}
           {payoutAddress ? ` at ${shortenAddress(payoutAddress)}` : ""}.
           {recipientTag && (
             <>
-              {" "}
-              This payout deposit is public.
-              {isTronChainId(fromChainId) && " Your TRON send is public."} Aztec credit is separate.
+              <br />
+              <ShieldedDisclosure />
             </>
           )}
         </p>

@@ -121,7 +121,7 @@ describe("estimate and review", () => {
     await mount(port);
     expect(
       within(section()).getByRole("region", { name: "Before you choose" }).textContent,
-    ).toMatch(/your own account/);
+    ).toMatch(/your own account/i);
 
     fireEvent.change(screen.getByLabelText("Cash out from"), { target: { value: "other" } });
     expect(screen.getByRole("region", { name: "Two-leg cash-out review" }).textContent).toMatch(
@@ -151,7 +151,7 @@ describe("estimate and review", () => {
     expect(text).toMatch(/about 24\.75 USD/);
     expect(text).toMatch(/Deposit destination/);
     const facts = within(review).getByRole("list");
-    expect(within(facts).getAllByRole("listitem")).toHaveLength(5);
+    expect(within(facts).getAllByRole("listitem")).toHaveLength(4);
     expect(screen.getByRole("button", { name: "Confirm cash-out" })).toHaveProperty(
       "disabled",
       true,

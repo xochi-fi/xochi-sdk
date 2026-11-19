@@ -1,3 +1,4 @@
+import { ShieldedDisclosure } from "../pages/send/ShieldedDisclosure.js";
 import { sentToRecipient, type SendRecipientDisplay } from "../pages/send/sendCopy.js";
 /**
  * IntentTimeline Component
@@ -265,6 +266,11 @@ export function IntentTimeline({
         })}
       </div>
 
+      {sendRecipientDisplay?.mode === "Shielded" && (
+        <p>
+          <ShieldedDisclosure />
+        </p>
+      )}
       {/* Status text */}
       <div className="timeline-status">
         <span className="timeline-status-text">
@@ -276,7 +282,7 @@ export function IntentTimeline({
                   ? "Landed at the recipient's one-time stealth address."
                   : "Landed at the one-time stealth address. Preparing the claim."
                 : "Funds delivered. Finalizing the swap."
-            : getStatusMessage(status, isCrossChain)}
+            : getStatusMessage(status, isCrossChain, sendRecipientDisplay !== undefined)}
         </span>
         {timeInfo && isInFlight && !delivered && (
           <span className="timeline-time">{timeInfo.elapsedFormatted}</span>
@@ -350,7 +356,7 @@ function formatDuration(seconds: number): string {
   return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
 }
 
-function getStatusMessage(status: IntentStatus, isCrossChain: boolean): string {
+function getStatusMessage(status: IntentStatus, isCrossChain: boolean, isSend: boolean): string {
   const messages: Record<IntentStatus, string> = {
     idle: "Ready",
     pending: "Pending...",
@@ -358,7 +364,7 @@ function getStatusMessage(status: IntentStatus, isCrossChain: boolean): string {
     quoted: "Quote ready",
     signing: "Confirm in wallet...",
     awaiting_deposit: "Waiting for the deposit...",
-    executing: isCrossChain ? "Submitting to bridge..." : "Executing swap...",
+    executing: isCrossChain ? "Submitting to bridge..." : isSend ? "Sending…" : "Executing swap...",
     bridging: "Bridging across chains...",
     settling: "Settling on destination...",
     completed: "Complete",

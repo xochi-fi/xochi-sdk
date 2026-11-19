@@ -63,3 +63,5 @@ export const payoutHeadline = (payout: string): string =>
 
 /** The same guarantee where no figure is shown (the configurator's preview). */
 export const PAYOUT_GUARANTEE = "Receive exactly the quoted amount, or a full refund.";
+
+export const SHIELDED_DEPOSIT_NOTE = "Deposit is public on Ethereum.";
