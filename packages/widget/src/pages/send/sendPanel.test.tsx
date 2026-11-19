@@ -304,7 +304,10 @@ describe("send with Stealth to someone else", () => {
               roles: ["origin", "destination"],
               decimals: 18,
               addresses: Object.fromEntries(
-                [1, 8453].map((chainId) => [chainId, findTokenBySymbol(chainId, "WETH")!.address]),
+                ([1, 8453] as const).map((chainId) => [
+                  chainId,
+                  findTokenBySymbol(chainId, "WETH")!.address,
+                ]),
               ),
             },
           ],
