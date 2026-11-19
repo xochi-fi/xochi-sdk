@@ -219,7 +219,7 @@ export function SwapPanel({
     classifyDestinationToken,
     originChainBlockedReason,
     destinationChainBlockedReason,
-  } = useSwapPanel(prefill, onStealthSettled);
+  } = useSwapPanel(prefill, onStealthSettled, !!sendRecipient);
   const stealthChainNames = joinChainNames(
     stealthChains.map((chainId) => EXTENDED_CHAIN_NAMES[chainId]),
   );
@@ -321,10 +321,6 @@ export function SwapPanel({
   const shieldedBlockedId = useId();
   const selectedMode = zkMoneyDestination ? "shielded" : settlement;
   const selectedModeFix = selectedMode === "stealth" ? stealthFixLine : null;
-  const submitLabel =
-    sendRecipient && cta.label.startsWith("Swap ")
-      ? `Send ${formatTokenAmount(amountBigInt, fromToken.decimals, fromToken.decimals)} ${fromToken.symbol} with ${sendMode}`
-      : cta.label;
 
   return (
     <div className="trade-card">
@@ -1375,7 +1371,7 @@ export function SwapPanel({
                 : stealthSetupError
                   ? "Retry Stealth setup"
                   : "Set up Stealth"
-              : submitLabel}
+              : cta.label}
           </button>
 
           {howItWorks && (

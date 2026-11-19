@@ -113,10 +113,7 @@ const tokenSymbols = (dialog: HTMLElement): string[] =>
   );
 
 async function waitForLiveGuidance() {
-  await waitFor(
-    () => expect(guidance()?.textContent).toContain("Live Stealth destinations:"),
-    WAIT,
-  );
+  await waitFor(() => expect(guidance()?.textContent).toContain("Stealth is available on"), WAIT);
 }
 
 function expectNoSignatures(walletMethods: readonly string[]) {

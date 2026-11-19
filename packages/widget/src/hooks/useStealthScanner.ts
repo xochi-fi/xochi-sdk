@@ -227,7 +227,7 @@ export function useStealthScanner({
       if (!keys || SCAN_CHAIN_IDS.length === 0) {
         setState((prev) => ({
           ...prev,
-          error: "Can't scan for private payments. Try again later.",
+          error: "Can't scan for Stealth payments. Try again later.",
         }));
         return;
       }

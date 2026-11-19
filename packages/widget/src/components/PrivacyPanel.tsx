@@ -151,7 +151,7 @@ export function PrivacyPanel({
         </div>
 
         {stealthInitialized && !stealthRegistered && (
-          <p className="pp-status-hint">Register onchain to receive private payments.</p>
+          <p className="pp-status-hint">Register onchain to receive Stealth payments.</p>
         )}
 
         {/* Shielded accounts. Inert while not offered: there is no setup to

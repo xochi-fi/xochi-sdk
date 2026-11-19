@@ -52,6 +52,7 @@ export function useSwapPanel(
   prefill: SwapPrefill | null | undefined,
   /** Fired once when a stealth swap settles, so the receive panel can auto-scan. */
   onStealthSettled?: () => void,
+  hasSendRecipient = false,
 ) {
   // The wallet's ACTUAL chain, from the connection. Not `useChainId()`: wagmi
   // does not sync a connector chain it has no config for, so on an unlisted
@@ -286,6 +287,7 @@ export function useSwapPanel(
 
   const flow = useSwapFlow({
     prefill: admittedPrefill,
+    hasSendRecipient,
     intent: gating.intent,
     isConnected,
     address,

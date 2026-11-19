@@ -131,6 +131,7 @@ export interface SwapPrefill {
 
 export interface UseSwapFlowParams {
   prefill: SwapPrefill | null | undefined;
+  hasSendRecipient?: boolean;
   intent: UseIntentReturn;
   isConnected: boolean;
   address: string | undefined;
@@ -204,6 +205,7 @@ export interface UseSwapFlowResult {
 
 export function useSwapFlow({
   prefill,
+  hasSendRecipient,
   intent,
   isConnected,
   address,
@@ -265,7 +267,8 @@ export function useSwapFlow({
 
   // Tag labels on a held quote describe its accepted recipient, not edits to
   // the form behind the modal. The quote remains the funding authority.
-  const sendRecipientDisplay = prefill?.fromSend ? prefill.sendRecipientDisplay : undefined;
+  const sendRecipientDisplay =
+    hasSendRecipient && prefill?.fromSend ? prefill.sendRecipientDisplay : undefined;
   const quotedDestination: FlowDestination = {
     ...destination,
     recipientTag: intent.quote ? intent.quote.recipientTag : destination.recipientTag,
