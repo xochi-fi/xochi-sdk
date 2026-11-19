@@ -71,7 +71,7 @@ describe("a wallet on an unconfigured chain", () => {
 
     // The prompt moves the wallet onto the origin; only then does the CTA offer
     // the swap itself.
-    await screen.findByRole("button", { name: /^Swap USDC/ }, WAIT);
+    await screen.findByRole("button", { name: "Bridge USDC" }, WAIT);
     expect(walletMethods).not.toContain("eth_signTypedData_v4");
   });
 });

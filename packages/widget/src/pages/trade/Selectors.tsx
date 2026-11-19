@@ -189,34 +189,10 @@ export function TokenSelector({
         classify={classify}
         chainBlockedReason={chainBlockedReason}
         zkMoney={!liveStealthDestination && zkMoney ? { selected: zkMoneySelected } : undefined}
-        showAztecUnavailable={!isSource && !liveStealthDestination}
         portalTarget={
           modalTrigger.current === "chain" ? chainTriggerRef.current : tokenTriggerRef.current
         }
       />
-    </div>
-  );
-}
-
-interface SlippageSelectorProps {
-  value: number;
-  options: readonly number[];
-  onChange: (bps: number) => void;
-}
-
-export function SlippageSelector({ value, options, onChange }: SlippageSelectorProps) {
-  return (
-    <div className="slippage-options">
-      {options.map((bps) => (
-        <button
-          type="button"
-          key={bps}
-          className={`slippage-btn ${value === bps ? "active" : ""}`}
-          onClick={() => onChange(bps)}
-        >
-          {(bps / 100).toFixed(1)}%
-        </button>
-      ))}
     </div>
   );
 }

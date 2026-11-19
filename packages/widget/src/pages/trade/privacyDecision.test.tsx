@@ -198,10 +198,15 @@ describe("zk.money privacy shortcut", () => {
 
     fireEvent.click(mode("Shielded"));
     expect(screen.getByRole("button", { name: "On zk.money - Change network" })).toBeTruthy();
-    expect(screen.getByLabelText("zk.money tag")).toBeTruthy();
+    expect(screen.getByText("Choose a zk.money alias.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "To: Your wallet" }));
+    expect(screen.getByLabelText("Name or address")).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     expect(selected()).toEqual(["Shielded"]);
-    expect(modeCaption()?.textContent).toBe("Amounts and participants hidden inside zk.money.");
-    expect(screen.getByText("Receive changes to DAI on zk.money.")).toBeTruthy();
+    expect(modeCaption()?.textContent).toContain(
+      "Amounts and participants hidden inside zk.money.",
+    );
+    expect(screen.getByText("Deposit is public on Ethereum.")).toBeTruthy();
     // The tag rail stays Public internally; Stealth is still navigation out.
     expect((mode("Stealth") as HTMLButtonElement).disabled).toBe(false);
     expect(mode("Stealth").getAttribute("aria-pressed")).toBe("false");

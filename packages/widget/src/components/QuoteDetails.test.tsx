@@ -49,7 +49,7 @@ it("keeps the Swap receipt's route, own-wallet description and Public guidance",
   const { container } = receipt();
   expect(container.querySelector(".quote-route")?.textContent).toMatch(/Base.*Ethereum.*Stealth/);
   expect(screen.getByText(/stealth address only the connected wallet controls/)).toBeTruthy();
-  expect(screen.getByText(/switch to Public/)).toBeTruthy();
+  expect(screen.getByText(/use Public instead/)).toBeTruthy();
   expect(screen.getByRole("button", { name: "Cost details" })).toBeTruthy();
   expect(screen.getByRole("timer")).toBeTruthy();
 });

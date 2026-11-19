@@ -22,7 +22,6 @@ import type {
   OriginApproval,
   SettlementType,
 } from "../types/intent.js";
-import { SHIELDED_DESCRIPTION } from "../pages/send/sendCopy.js";
 import { paysNoGas, resolvePaymentMethod } from "../types/intent.js";
 import { formatTokenAmount, payoutDisplayDecimals, safeBigInt } from "../utils/format.js";
 import { EXTENDED_CHAIN_NAMES, QUOTE_REFRESH_BUFFER_MS } from "@xochi/client";
@@ -48,7 +47,11 @@ import { quoteCost } from "../lib/quoteCost.js";
 import { formatUsd, approxUsd, splitUsd, decomposeMarketGap } from "../lib/receiptCost.js";
 import { paymentSummary } from "../lib/paymentSummary.js";
 import { GLYPH, SEVERITY_GLYPH } from "../lib/glyphs.js";
-import { payoutHeadline } from "../pages/trade/settlementCopy.js";
+import {
+  payoutHeadline,
+  SHIELDED_DESCRIPTION,
+  SHIELDED_DEPOSIT_NOTE,
+} from "../pages/trade/settlementCopy.js";
 import { ZKMONEY_ARRIVAL_NOTE } from "../pages/trade/zkMoney.js";
 import { useState } from "react";
 import defiLlamaIcon from "../assets/defillama.svg?no-inline";
@@ -116,6 +119,7 @@ interface QuoteDetailsProps {
    * the amount as approximate, because zk.money takes its fee on arrival.
    */
   recipientTag?: string;
+  swapRecipientLabel?: string;
   /** The Send payee and route are already displayed above the receipt. */
   sendMode?: "Stealth" | "Shielded";
 }
@@ -140,6 +144,7 @@ export function QuoteDetails({
   trustEconomicsLive = false,
   quoteExpiresIn,
   recipientTag,
+  swapRecipientLabel,
   sendMode,
 }: QuoteDetailsProps) {
   const { prices, livePrices } = usePrices();
@@ -185,9 +190,11 @@ export function QuoteDetails({
   const privateBlocked = wantsPrivate && stealthOption !== undefined && !stealthOption.available;
   const settlementState = privateConfirmed ? "private" : privateBlocked ? "blocked" : "public";
   const settlementDesc = privateConfirmed
-    ? "Settles to a one-time stealth address only the connected wallet controls."
+    ? swapRecipientLabel
+      ? "Goes to the recipient’s one-time stealth address."
+      : "Settles to a one-time stealth address only the connected wallet controls."
     : privateBlocked
-      ? `${stealthOption?.reason ?? "Stealth settlement unavailable"}. This order settles to the connected wallet.`
+      ? `${stealthOption?.reason ?? "Stealth settlement unavailable"}.`
       : "Goes to the connected wallet, visible onchain.";
 
   // Every cost figure on this panel (fee anatomy, its denomination, the served
@@ -404,7 +411,8 @@ export function QuoteDetails({
   // request this quote cannot honour settles public, and says so.
   const routeLabel =
     fromChainId === toChainId ? fromChainName : `${fromChainName} ${GLYPH.flow} ${toChainName}`;
-  const privacyLabel = privateConfirmed ? "Stealth" : "Public";
+  const privacyLabel =
+    recipientTag !== undefined ? "Shielded" : privateConfirmed ? "Stealth" : "Public";
 
   return (
     <div className="quote-details">
@@ -425,7 +433,18 @@ export function QuoteDetails({
           </span>
         )}
       </div>
-      {recipientTag !== undefined && <p className="quote-meta">{ZKMONEY_ARRIVAL_NOTE}</p>}
+      {swapRecipientLabel && !recipientTag && (
+        <p className="quote-meta">To: {swapRecipientLabel}</p>
+      )}
+      {recipientTag !== undefined && (
+        <>
+          <p className="quote-meta">
+            {SHIELDED_DESCRIPTION}
+            <span className="shielded-deposit-note">{SHIELDED_DEPOSIT_NOTE}</span>
+          </p>
+          <p className="quote-meta">{ZKMONEY_ARRIVAL_NOTE}</p>
+        </>
+      )}
 
       {hasGap && (
         <p className={`quote-gap ${gapSeverity === "normal" ? "" : gapSeverity}`}>
@@ -444,9 +463,7 @@ export function QuoteDetails({
       {/* Settlement confirmation: only when it adds something the toggle does not
           already say -- the quote confirms private settlement, or stealth was
           requested but this route can only settle public. */}
-      {sendMode === "Shielded" ? (
-        <p className="quote-meta">{SHIELDED_DESCRIPTION}</p>
-      ) : sendMode === "Stealth" ? (
+      {sendMode === "Shielded" ? null : sendMode === "Stealth" ? (
         privateConfirmed && (
           <p className="quote-meta">Goes to the recipient's one-time stealth address.</p>
         )
@@ -505,7 +522,7 @@ export function QuoteDetails({
           stablecoin pair. On small orders this is mostly network settlement cost.{" "}
           {sendMode
             ? `Back to Send to increase the amount${sendMode === "Stealth" ? " or choose Send publicly instead if offered" : ""}.`
-            : `Increase the amount so more is received${settlementState === "private" ? ", or switch to Public" : ""}.`}
+            : `Increase the amount so more is received${settlementState === "private" ? ", or use Public instead" : ""}.`}
         </p>
       )}
 

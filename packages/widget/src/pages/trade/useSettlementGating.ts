@@ -72,6 +72,9 @@ import {
 } from "../../lib/settlementAvailability.js";
 import { normalizeZkMoneyTag, zkMoneyTagError, zkMoneyTagValid } from "./zkMoney.js";
 import { cantonRecipientCheck } from "./canton.js";
+import type { ResolvedRecipient } from "../../lib/recipient/index.js";
+import { parseStealthMetaAddress } from "../send/stealthRecipient.js";
+import { recipientIssue } from "./RecipientSheet.js";
 import type { StealthRecipient } from "../send/stealthRecipient.js";
 
 /** The explicit settlement notice; live destination guidance is derived separately. */
@@ -96,6 +99,7 @@ export interface UseSettlementGatingParams {
   isNonEvmOrigin: boolean;
   /** The destination is zk.money (useSwapRoute): one tag field, settled public. */
   zkMoneyDestination: boolean;
+  swapRecipient?: ResolvedRecipient | null;
   isConnected: boolean;
   address: string | undefined;
   trustScore: number;
@@ -145,6 +149,7 @@ export interface UseSettlementGatingResult {
   recipientAddress: string;
   setRecipientAddress: Dispatch<SetStateAction<string>>;
   recipientInvalid: boolean;
+  swapRecipientIssue: string | null;
   recipientMissing: boolean;
   recipientCheck: { valid: boolean; error?: string };
   /**
@@ -194,6 +199,7 @@ export function useSettlementGating({
   isNonEvmDest,
   isNonEvmOrigin,
   zkMoneyDestination,
+  swapRecipient,
   isConnected,
   address,
   trustScore,
@@ -216,7 +222,7 @@ export function useSettlementGating({
   const [selectedSettlement, setSettlement] = useState<SettlementType | null>(
     initialSettlement ?? null,
   );
-  const [stealthRecipient, setStealthRecipient] = useState<StealthRecipient | null>(null);
+  const [restoredStealthRecipient, setStealthRecipient] = useState<StealthRecipient | null>(null);
 
   // A Canton party goes out byte for byte as typed (SPEC.md §3.3): validated
   // untrimmed, so a padded paste is refused rather than silently repaired.
@@ -227,14 +233,16 @@ export function useSettlementGating({
     : cantonDestination
       ? cantonRecipientCheck(sentRecipient)
       : validateDestinationAddress(sentRecipient, toChainId, capabilities);
-  const zkMoneyTag = normalizeZkMoneyTag(recipientTag);
+  const zkMoneyTag = normalizeZkMoneyTag(
+    swapRecipient ? (swapRecipient.shieldedAlias ?? "") : recipientTag,
+  );
   const tagError = zkMoneyDestination ? zkMoneyTagError(zkMoneyTag) : null;
   // Either leg-scoped recipient input, under the one pair of names the amount
   // group (quote trigger) and the flow (CTA) gate on.
   const recipientMissing =
     (isNonEvmDest && sentRecipient.length === 0) || (zkMoneyDestination && zkMoneyTag.length === 0);
   // Invalid = required but not a valid value (empty counts as not-yet-valid).
-  const recipientInvalid =
+  const requiredRecipientInvalid =
     (isNonEvmDest && !recipientCheck.valid) || (zkMoneyDestination && !zkMoneyTagValid(zkMoneyTag));
 
   const trimmedRefund = refundAddress.trim();
@@ -287,6 +295,22 @@ export function useSettlementGating({
     }
   }, [openingSettled, stealthEligible, zkMoneyDestination]);
 
+  const recipientMode = zkMoneyDestination ? "shielded" : settlement;
+  const swapRecipientIssue =
+    swapRecipient && !isNonEvmDest ? recipientIssue(swapRecipient, recipientMode) : null;
+  const recipientInvalid = requiredRecipientInvalid || swapRecipientIssue !== null;
+  const publicRecipient =
+    !isNonEvmDest && recipientMode === "public" ? swapRecipient?.address : undefined;
+  const parsedMeta =
+    settlement === "stealth" && !isNonEvmDest && swapRecipient?.stealthMetaAddress
+      ? parseStealthMetaAddress(swapRecipient.stealthMetaAddress)
+      : undefined;
+  const stealthRecipient = swapRecipient
+    ? parsedMeta?.ok
+      ? parsedMeta.recipient
+      : null
+    : restoredStealthRecipient;
+
   const stealthRouteAuthorized =
     STEALTH_SETTLEMENT_LIVE && routeAdvertisesStealth && stealthDestinationSupported;
   const shieldedRouteAuthorized = SHIELDED_SETTLEMENT_LIVE && routeAdvertisesShielded;
@@ -299,7 +323,9 @@ export function useSettlementGating({
         // recipient's scanner looks for it.
         chainId: toChainId as ChainId,
       }
-    : stealth.metaAddress;
+    : swapRecipient && !isNonEvmDest
+      ? null
+      : stealth.metaAddress;
   const stealthAuthorized = stealthRouteAuthorized && isConnected && payeeMetaAddress !== null;
   // zk.money is the typed Public tag-deposit rail even though its navigation
   // affordance lives under Shielded. Every other selection is requested as-is:
@@ -318,11 +344,10 @@ export function useSettlementGating({
     fromToken: fromTokenAddress,
     toToken: toTokenAddress,
     settlementPreference: requestedSettlement,
-    settlementAuthorized: settlementRouteAuthorized,
+    settlementAuthorized: settlementRouteAuthorized && !recipientInvalid,
     trustScore,
     slippageBps,
-    // Only send a recipient for a non-EVM destination (EVM settles to wallet).
-    recipientAddress: isNonEvmDest ? sentRecipient : undefined,
+    recipientAddress: isNonEvmDest ? sentRecipient : publicRecipient,
     // zk.money: the tag, never an address; the Worker binds the resolved one.
     recipientTag: zkMoneyDestination ? zkMoneyTag : undefined,
     // Only send a refund address for a deposit-route origin, and only once it is
@@ -488,10 +513,10 @@ export function useSettlementGating({
   // order that remains visibly pays this wallet rather than silently going
   // Public to the wrong party or quietly keeping a recipient it cannot pay.
   useEffect(() => {
-    if (stealthRecipient === null || settlement === "stealth") return;
+    if (restoredStealthRecipient === null || settlement === "stealth") return;
     setStealthRecipient(null);
     showToast("Removed the stealth recipient. This order now pays your own wallet.", "info");
-  }, [settlement, stealthRecipient, showToast]);
+  }, [settlement, restoredStealthRecipient, showToast]);
 
   // Browsing Stealth never requests keys or repairs either financial leg.
   const handleSettlementChange = useCallback(
@@ -536,7 +561,9 @@ export function useSettlementGating({
       ? STEALTH_DESTINATION
       : isNonEvmDest
         ? { ...DEFAULT_DESTINATION, recipientAddress: sentRecipient }
-        : DEFAULT_DESTINATION;
+        : publicRecipient
+          ? { ...DEFAULT_DESTINATION, recipientAddress: publicRecipient }
+          : DEFAULT_DESTINATION;
 
   // Who actually receives the payout: a typed address on a non-EVM destination,
   // otherwise the connected wallet. Only query once a typed address is complete
@@ -551,7 +578,7 @@ export function useSettlementGating({
         ? recipientInvalid || !sentRecipient
           ? undefined
           : sentRecipient
-        : address;
+        : (publicRecipient ?? address);
 
   const clearRecipient = useCallback((): void => {
     setRecipientAddress("");
@@ -589,6 +616,7 @@ export function useSettlementGating({
     recipientAddress,
     setRecipientAddress,
     recipientInvalid,
+    swapRecipientIssue,
     recipientMissing,
     recipientCheck,
     sentRecipient,

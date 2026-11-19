@@ -93,7 +93,7 @@
   }
 }
 
-/* Header with tabs and settings */
+/* Trade header */
 .trade-header {
   display: flex;
   justify-content: space-between;
@@ -164,109 +164,6 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-}
-
-.settings-btn {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-control);
-  color: var(--text-dim);
-  cursor: pointer;
-  transition: color 0.2s ease;
-}
-
-.settings-btn:hover {
-  color: var(--text-secondary);
-}
-
-/* Settings panel */
-.settings-panel {
-  background: var(--inset-bg);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-control);
-  padding: 0.75rem;
-  margin-bottom: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  box-shadow: var(--shadow-inset);
-  animation: fadeInDown var(--duration-normal) var(--ease-out);
-}
-
-/* Settings button active state */
-.settings-btn.active {
-  border-color: var(--muted-gold-25);
-  color: var(--muted-gold);
-  background: var(--muted-gold-subtle);
-}
-
-.settings-btn svg {
-  transition: transform var(--duration-slow) var(--ease-out);
-}
-
-.settings-btn.active svg {
-  transform: rotate(60deg);
-}
-
-.settings-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.25rem 0;
-  opacity: 0;
-  animation: fadeInUp var(--duration-normal) var(--ease-out) forwards;
-}
-
-/* Stagger the settings rows */
-.settings-row:nth-child(1) {
-  animation-delay: 50ms;
-}
-.settings-row:nth-child(2) {
-  animation-delay: 100ms;
-}
-.settings-row:nth-child(3) {
-  animation-delay: 150ms;
-}
-.settings-row:nth-child(4) {
-  animation-delay: 200ms;
-}
-.settings-row:nth-child(5) {
-  animation-delay: 250ms;
-}
-
-.settings-row--destination {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.35rem;
-}
-
-.settings-row--destination .settings-label {
-  margin-bottom: 0.15rem;
-}
-
-.settings-row--tier {
-  flex-direction: column;
-  align-items: stretch;
-}
-
-.settings-row--tier .tier-progress {
-  background: transparent;
-  border: none;
-  padding: 0;
-}
-
-.settings-label {
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
 /* Input rows. The 0.75rem gap keeps at least 12px between the amount and the
@@ -937,16 +834,6 @@
   color: var(--text-faint);
 }
 
-/* Tier badge in settings */
-.tier-badge {
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: var(--radius-xs);
-  background: var(--muted-gold-15);
-  color: var(--muted-gold);
-}
-
 /* Responsive */
 @media (max-width: 480px) {
   .trade-container {
@@ -981,10 +868,6 @@
     font-size: 0.85rem;
   }
 
-  .settings-panel {
-    padding: 0.6rem;
-  }
-
   .swap-btn {
     width: 36px;
     height: 36px;
@@ -992,12 +875,6 @@
 
   .header-actions {
     gap: 0.35rem;
-  }
-
-  .settings-btn {
-    width: 28px;
-    height: 28px;
-    font-size: 0.9rem;
   }
 }
 
@@ -1057,11 +934,6 @@
   }
 
   .swap-btn {
-    min-width: 44px;
-    min-height: 44px;
-  }
-
-  .settings-btn {
     min-width: 44px;
     min-height: 44px;
   }
@@ -1149,7 +1021,7 @@
 
 .type-btn--privacy {
   flex: 1 1 auto;
-  padding: 0.5rem 0.2rem;
+  padding: 0.5rem;
   font-size: 0.75rem;
   letter-spacing: 0;
   min-width: 0;
@@ -1161,6 +1033,23 @@
   gap: 0.25rem;
 }
 
+@container (width < 420px) {
+  .trade-settlement .trade-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .trade-settlement .header-actions {
+    justify-self: end;
+    margin-inline-start: 0;
+  }
+}
+
+.shielded-deposit-note {
+  display: block;
+}
+
 @container (width < 300px) {
   .order-type-toggle--privacy {
     flex-direction: column;
@@ -1169,7 +1058,6 @@
 
 .type-btn__meta {
   margin: 0 0 0.5rem;
-  font-family: system-ui, sans-serif;
   font-size: 0.75rem;
   font-weight: 500;
   line-height: 1.35;
@@ -1460,4 +1348,78 @@
 .widget-info-button:hover,
 .widget-info-button[aria-expanded="true"] {
   color: var(--muted-gold);
+}
+
+.swap-recipient-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-inline-size: 100%;
+  min-block-size: 44px;
+  padding: 0 0.65rem;
+  margin-block-end: 0.25rem;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-control);
+  background: var(--inset-bg);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.swap-recipient-trigger span:last-child {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.swap-recipient-sheet {
+  width: min(26rem, calc(100% - 1rem));
+  max-height: calc(100dvh - 1rem);
+  overflow-y: auto;
+}
+
+.swap-recipient-sheet form,
+.swap-recipient-recent {
+  padding: 0.75rem 1rem;
+}
+
+.swap-recipient-sheet .recipient-field__label,
+.swap-recipient-sheet .btn {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.swap-recipient-sheet form,
+.swap-recipient-recent,
+.swap-recipient-status {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.swap-recipient-status,
+.swap-recipient-flow {
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.swap-recipient-flow {
+  padding-inline: 1rem;
+}
+
+.swap-recipient-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.swap-recipient-actions button,
+.swap-recipient-recent button {
+  min-height: 44px;
+}
+
+.swap-recipient-recent {
+  margin-block-start: 0.75rem;
 }

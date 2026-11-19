@@ -87,7 +87,7 @@ describe("an amount over the balance", () => {
     expect(submit?.textContent).toBe("Updating quote...");
     expect(submit?.disabled).toBe(true);
     // The re-quote for 2.61 lands and the swap becomes available.
-    await screen.findByRole("button", { name: /^Swap USDC/ }, WAIT);
+    await screen.findByRole("button", { name: "Bridge USDC" }, WAIT);
   });
 });
 
