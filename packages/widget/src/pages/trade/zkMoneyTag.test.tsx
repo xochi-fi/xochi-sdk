@@ -290,7 +290,7 @@ describe("zk.money destination", () => {
     }
 
     const receipt = document.querySelector(".quote-details")?.textContent ?? "";
-    expect(receipt).toContain(`@${TAG} receives ≈ 998`);
+    expect(receipt).toContain(`@${TAG} receives 998`);
     expect(receipt).toContain("DAI");
     expect(receipt).toContain("zk.money charges about $0.35 on arrival");
   });
@@ -381,7 +381,11 @@ describe("zk.money destination", () => {
         />,
         { connected: true, walletChainId: 8453 },
       );
-      await screen.findByText(`@${TAG} receives ≈ 998 DAI`, {}, WAIT);
+      await screen.findByText(
+        `@${TAG} receives 998 DAI, paid as quoted or fully refunded.`,
+        {},
+        WAIT,
+      );
       expect(screen.getByRole("button", { name: "On zk.money - Change network" })).toBeTruthy();
       expect(screen.getByRole("button", { name: `To: @${TAG}` })).toBeTruthy();
       expect(document.querySelector<HTMLInputElement>("#swap-refund")?.value).toBe(refund);
@@ -414,7 +418,11 @@ describe("zk.money destination", () => {
       await waitFor(() => expect(document.querySelector(".quote-details")).toBeNull(), WAIT);
       expect(bodies).toHaveLength(quotedBodies);
       fireEvent.change(screen.getByLabelText("Pay"), { target: { value: "1000" } });
-      await screen.findByText(`@${TAG} receives ≈ 998 DAI`, {}, WAIT);
+      await screen.findByText(
+        `@${TAG} receives 998 DAI, paid as quoted or fully refunded.`,
+        {},
+        WAIT,
+      );
       sessionStorage.setItem(
         STORAGE_KEYS.walletSession,
         JSON.stringify({ token: "wallet.session.jwt", wallet: TEST_ACCOUNT.toLowerCase() }),

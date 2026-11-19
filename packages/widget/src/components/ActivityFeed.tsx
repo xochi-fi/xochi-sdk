@@ -312,6 +312,7 @@ function SwapRow({
       ? "zk.money"
       : CHAIN_SHORT_NAMES[data.toChainId];
   const send = data.sendRecipientDisplay;
+  const swapPayee = data.swapRecipientLabel ?? (recipientTag && `@${recipientTag}`);
   const mode =
     send?.mode ??
     (recipientTag || data.settlementType === "shielded"
@@ -327,7 +328,11 @@ function SwapRow({
         <div className="activity-details">
           <div className="activity-main">
             <span className="activity-action">
-              {send ? `Send · to ${send.label}` : getActivityLabel("swap")}
+              {send
+                ? `Send · to ${send.label}`
+                : swapPayee
+                  ? `Swap · to ${swapPayee}`
+                  : getActivityLabel("swap")}
             </span>
             {item.initiator === "agent" && item.agentLabel && (
               <span className="activity-via">via {item.agentLabel}</span>
@@ -555,6 +560,7 @@ interface LocalRow {
   timestamp: number;
   amount: string;
   detail: string;
+  action?: string;
   status: string;
   transaction?: { href: string; hash: string };
 }
@@ -610,8 +616,9 @@ function localRows(history: LocalHistory, wallet?: string): LocalRow[] {
       return {
         key: `send:${id}`,
         timestamp,
-        amount: `Send ${formatTokenAmount(BigInt(data.amount), data.decimals, data.decimals)} ${data.symbol}`,
-        detail: `To ${activityAddress(data.recipient)} on ${chainName(data.chainId)}`,
+        action: `Send · to ${activityAddress(data.recipient)}`,
+        amount: `${formatTokenAmount(BigInt(data.amount), data.decimals, data.decimals)} ${data.symbol}`,
+        detail: chainName(data.chainId),
         status: SEND_STATUS[status],
         transaction: explorer ? { href: explorer, hash: data.txHash } : undefined,
       };
@@ -653,7 +660,8 @@ function ActivityMode({ mode }: { mode: "Public" | "Stealth" | "Shielded" }) {
 function LocalActivityRow({ row }: { row: LocalRow }) {
   return (
     <div className="send-activity__row">
-      <span className="send-activity__amount">{row.amount}</span>
+      <span className="send-activity__amount">{row.action ?? row.amount}</span>
+      {row.action && <span className="send-activity__meta">{row.amount}</span>}
       <span className="send-activity__meta">{row.detail}</span>
       <span className="send-activity__status">
         <ActivityMode mode="Public" />
@@ -676,6 +684,7 @@ interface ActivityFeedProps {
   error: string | null;
   hasMore: boolean;
   isConnected: boolean;
+  enableAgents?: boolean;
   /** Connected wallet; used to choose per-row private-intent recovery. */
   connectedWallet?: string;
   /** Wallet bound to the active SIWE session, when one exists. */
@@ -725,6 +734,7 @@ export function ActivityFeed({
   error,
   hasMore,
   isConnected,
+  enableAgents,
   connectedWallet,
   sessionWallet,
   needsSignIn,
@@ -935,7 +945,7 @@ export function ActivityFeed({
                   <ActivitySkeleton />
                 ) : historyRows.length === 0 ? (
                   <div className="activity-empty">
-                    <p>No activity yet.</p>
+                    <p>Nothing yet</p>
                   </div>
                 ) : (
                   <ul className="activity-history">
@@ -979,7 +989,7 @@ export function ActivityFeed({
               </>
             ) : count === 0 ? (
               <div className="activity-empty">
-                <p>No swaps</p>
+                <p>Nothing yet</p>
               </div>
             ) : (
               <>
@@ -1035,7 +1045,7 @@ export function ActivityFeed({
             )}
           </div>
 
-          {isConnected && <AuthorizedAgents />}
+          {isConnected && <AuthorizedAgents enabled={enableAgents} />}
         </div>
       )}
     </div>

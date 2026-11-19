@@ -105,6 +105,8 @@ interface TradeProps {
    * the frame URL's (`readWidgetEmbedConfig`), read once on mount.
    */
   embed?: WidgetEmbedConfig;
+  /** Show agent authorization even when this wallet has no agents yet. */
+  enableAgents?: boolean;
 }
 
 function useWalletUi(connection: WalletUiConnection | null): WalletUi {
@@ -122,7 +124,13 @@ function useWalletUi(connection: WalletUiConnection | null): WalletUi {
   return walletUi;
 }
 
-export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) {
+export function Trade({
+  look,
+  hostConnection = hostBridge,
+  embed,
+  enableAgents = typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("agents") === "1",
+}: TradeProps) {
   const { isConnected, address, connector } = useAccount();
   const config = useConfig();
   const { showToast } = useToast();
@@ -182,7 +190,11 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
         getTokenInfoForChain(item.data.toToken, item.data.toChainId)?.symbol ?? item.data.toToken;
       const send = item.data.sendRecipientDisplay;
       showToast(
-        send ? `Sent with ${send.mode} to ${send.label}` : `${from} to ${to} swap complete`,
+        send
+          ? `Sent with ${send.mode} to ${send.label}`
+          : item.data.swapRecipientLabel || item.data.recipientTag
+            ? `Sent to ${item.data.swapRecipientLabel ?? `@${item.data.recipientTag}`}`
+            : `${from} to ${to} swap complete`,
         "success",
       );
     },
@@ -246,10 +258,11 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
     for (const s of serverSwaps) {
       const local = byId.get(s.id);
       const merged = mergeHistorySwap(s, local);
-      const send = merged !== s ? local?.data.sendRecipientDisplay : undefined;
-      if (send) {
-        merged.data.sendRecipientDisplay = send;
-        merged.data.stealthPayee = local?.data.stealthPayee;
+      if (merged !== s && local) {
+        merged.data.sendRecipientDisplay = local.data.sendRecipientDisplay;
+        merged.data.stealthPayee = local.data.stealthPayee;
+        merged.data.swapRecipientLabel = local.data.swapRecipientLabel;
+        merged.data.swapRecipientRetryInput = local.data.swapRecipientRetryInput;
       }
       byId.set(s.id, merged);
     }
@@ -562,7 +575,27 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
         return;
       }
 
-      setRetryPrefill(prefill);
+      if (
+        item.data.swapRecipientLabel ||
+        prefill.stealthPayee === "other" ||
+        prefill.recipientTag
+      ) {
+        const input = item.data.swapRecipientRetryInput;
+        const kind = classifyRecipientInput(input ?? "");
+        setRetryPrefill({
+          ...prefill,
+          recipientTag: undefined,
+          swapRecipientRetry: {
+            zkMoneyDestination: !!prefill.recipientTag,
+            input:
+              kind === "ens" || kind === "gns" || kind === "wns" || kind === "zkmoney"
+                ? input
+                : undefined,
+          },
+        });
+      } else {
+        setRetryPrefill(prefill);
+      }
       setTradeMode("swap");
       selectTab("trade");
     },
@@ -810,6 +843,7 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
                     error={ordersError}
                     hasMore={hasMoreOrders}
                     isConnected={isConnected}
+                    enableAgents={enableAgents}
                     connectedWallet={address}
                     sessionWallet={sessionWallet}
                     needsSignIn={historyNeedsSignIn}

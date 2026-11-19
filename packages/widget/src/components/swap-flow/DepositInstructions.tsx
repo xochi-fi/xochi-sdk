@@ -33,6 +33,7 @@ interface DepositInstructionsProps {
   receivedAmount?: string;
   /** Accepted-order display metadata, never a source of attested funding facts. */
   recipientTag?: string;
+  swapRecipientLabel?: string;
   /**
    * EVM payout address the attestation was VERIFIED against, not the connected
    * wallet. Those are the same value at quote time and diverge afterwards: an
@@ -100,6 +101,7 @@ export function DepositInstructions({
   toChainId,
   receivedAmount,
   recipientTag,
+  swapRecipientLabel,
   payoutAddress,
   refundAddress,
   depositDeadline,
@@ -251,8 +253,9 @@ export function DepositInstructions({
 
       {receivedAmount && (
         <p className="deposit-instructions__payout">
-          Receive about {receivedAmount} {toSymbol}
-          {recipientTag ? ` for @${recipientTag} on zk.money` : ` on ${destName}`}
+          {swapRecipientLabel ? `${swapRecipientLabel} receives ` : "Receive about "}
+          {receivedAmount} {toSymbol}
+          {recipientTag ? " on zk.money" : ` on ${destName}`}
           {payoutAddress ? ` at ${shortenAddress(payoutAddress)}` : ""}.
           {recipientTag && (
             <>

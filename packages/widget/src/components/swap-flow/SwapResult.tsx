@@ -48,6 +48,7 @@ interface SwapResultProps {
    */
   stealthPayee?: "self" | "other";
   sendRecipientDisplay?: SendRecipientDisplay;
+  swapRecipientLabel?: string;
   /**
    * The zk.money tag the DAI was sent for. Our side ends at the confirmed L1
    * transfer; the credit shows up in zk.money, so the ending links there.
@@ -126,6 +127,7 @@ export function SwapResult({
   isStealth,
   stealthPayee,
   sendRecipientDisplay,
+  swapRecipientLabel,
   recipientTag,
   substatus,
   fromChainId,
@@ -246,17 +248,22 @@ export function SwapResult({
         <h3 className="swap-result__title">
           {sendRecipientDisplay
             ? sentToRecipient(sendRecipientDisplay)
-            : isStealth
-              ? stealthPayee === "other"
-                ? "Landed at the recipient's one-time stealth address"
-                : "Landed at the one-time stealth address"
-              : recipientTag !== undefined
-                ? `Sent to @${recipientTag}`
-                : "Swap complete"}
+            : swapRecipientLabel
+              ? `Sent to ${swapRecipientLabel}`
+              : isStealth
+                ? stealthPayee === "other"
+                  ? "Landed at the recipient's one-time stealth address"
+                  : "Landed at the one-time stealth address"
+                : recipientTag !== undefined
+                  ? `Sent to @${recipientTag}`
+                  : "Swap complete"}
         </h3>
         {receivedAmount && (
           <p className="swap-result__amount">
-            +{receivedAmount} {toSymbol}
+            {sendRecipientDisplay || swapRecipientLabel || recipientTag || stealthPayee === "other"
+              ? ""
+              : "+"}
+            {receivedAmount} {toSymbol}
           </p>
         )}
         {(recipientTag || sendRecipientDisplay?.mode === "Shielded") && (
@@ -378,15 +385,19 @@ export function SwapResult({
             ? stealthDelivered || useReceipt
               ? sentToRecipient(sendRecipientDisplay)
               : `Settling ${sendRecipientDisplay.mode} send`
-            : isStealth
-              ? stealthDelivered
-                ? stealthPayee === "other"
-                  ? "Delivered with Stealth"
-                  : "Preparing the claim"
-                : "Settling with Stealth"
-              : useReceipt
-                ? "Funds delivered"
-                : "Still confirming"}
+            : swapRecipientLabel
+              ? stealthDelivered || useReceipt
+                ? `Sent to ${swapRecipientLabel}`
+                : `Settling swap to ${swapRecipientLabel}`
+              : isStealth
+                ? stealthDelivered
+                  ? stealthPayee === "other"
+                    ? "Delivered with Stealth"
+                    : "Preparing the claim"
+                  : "Settling with Stealth"
+                : useReceipt
+                  ? "Funds delivered"
+                  : "Still confirming"}
         </h3>
         <p className="swap-result__desc">
           {isStealth && stealthPayee === "other"
