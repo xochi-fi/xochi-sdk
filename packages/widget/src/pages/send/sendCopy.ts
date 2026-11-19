@@ -3,6 +3,8 @@ export const SHIELDED_DESCRIPTION = "Amounts and participants hidden inside zk.m
 export interface SendRecipientDisplay {
   mode: "Stealth" | "Shielded";
   label: string;
+  /** Only a resolved name or an explicit zk.money alias may be persisted for retry. */
+  retryInput?: string;
 }
 
 export function sentToRecipient({ mode, label }: SendRecipientDisplay): string {

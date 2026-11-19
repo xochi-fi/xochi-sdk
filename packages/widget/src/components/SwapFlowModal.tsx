@@ -22,7 +22,7 @@ import type {
   OriginApproval,
   RaceWebSocketMessage,
 } from "../types/intent.js";
-import { EXTENDED_CHAIN_NAMES, isCantonDestinationChainId, isTronChainId } from "@xochi/client";
+import { EXTENDED_CHAIN_NAMES, isCantonDestinationChainId } from "@xochi/client";
 import type { EscrowStatusData } from "@xochi/client";
 import {
   type Receipt,
@@ -45,6 +45,7 @@ import { buildDepositScreen } from "./swap-flow/depositScreen.js";
 import type { StoredDepositAttestation, DepositAttestationFields } from "@xochi/client";
 import { useWidgetTabsShown } from "./widgetTabsContext.js";
 import { confirmSend, type SendRecipientDisplay } from "../pages/send/sendCopy.js";
+import { ShieldedDisclosure } from "../pages/send/ShieldedDisclosure.js";
 import { APP_VERSION } from "../config.js";
 
 const PHASE_TITLES: Record<SwapPhase, string> = {
@@ -437,11 +438,18 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
           phase !== "deposit" &&
           phase !== "success" && (
             <p className="swap-flow-tag-route">
-              Route: public Ethereum DAI payout to @{props.destination.recipientTag} on zk.money.
-              {depositView &&
-                isTronChainId(depositView.from_chain_id) &&
-                " TRON funding is public."}{" "}
-              Aztec credit is separate.
+              To @{props.destination.recipientTag} on zk.money
+              {(sendRecipientDisplay?.mode !== "Shielded" ||
+                phase === "pending" ||
+                phase === "refunded" ||
+                phase === "failed" ||
+                phase === "may-have-moved" ||
+                (phase === "awaiting-wallet" && awaitingPull)) && (
+                <>
+                  <br />
+                  <ShieldedDisclosure />
+                </>
+              )}
             </p>
           )}
 

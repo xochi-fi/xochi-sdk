@@ -63,8 +63,18 @@ export function RailTiles({
   guest: boolean;
   children: ReactNode;
 }) {
-  if (guest)
-    return <p className="ramp-guest-apps">{Object.keys(RAIL_NAMES).length} payment apps</p>;
+  if (guest) {
+    const rails = Object.keys(RAIL_NAMES);
+    const logos = rails.filter((id) => railLogo(id)).slice(0, 6);
+    return (
+      <div className="ramp-guest-apps" role="img" aria-label={Object.values(RAIL_NAMES).join(", ")}>
+        {logos.map((id) => (
+          <RailLogo key={id} id={id} />
+        ))}
+        <span aria-hidden="true">+{rails.length - logos.length}</span>
+      </div>
+    );
+  }
 
   return (
     <fieldset className="ramp-tile-group">

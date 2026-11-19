@@ -1,3 +1,4 @@
+import { ShieldedDisclosure } from "../../pages/send/ShieldedDisclosure.js";
 import { sentToRecipient, type SendRecipientDisplay } from "../../pages/send/sendCopy.js";
 /**
  * SwapResult
@@ -32,14 +33,6 @@ import {
   useClaimInXochiApp,
   useWidgetTabsShown,
 } from "../widgetTabsContext.js";
-
-/**
- * Above this the fill genuinely took a while (a cross-chain bridge leg, say),
- * so it is stated plainly instead of celebrated. 6s is the published P95
- * delivery target: dressing up a slower-than-target fill as a proof point is
- * how a speed claim stops being believed.
- */
-const FAST_FILL_MS = 6000;
 
 function formatFillMs(ms: number): string {
   return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(2)}s`;
@@ -266,19 +259,14 @@ export function SwapResult({
             +{receivedAmount} {toSymbol}
           </p>
         )}
-        {/* Measured submit->filled time. A celebratory stamp when it is
-            genuinely fast, a plain line past the P95 threshold, and nothing at
-            all when it could not be measured honestly. */}
-        {fillMs != null &&
-          (fillMs <= FAST_FILL_MS ? (
-            <div className="swap-result__fill">
-              <span className="swap-result__fill-label">Filled in</span>
-              <span className="swap-result__fill-time">{formatFillMs(fillMs)}</span>
-              <span className="swap-result__fill-sub">sealed intent</span>
-            </div>
-          ) : (
-            <p className="swap-result__settled">Settled in {formatFillMs(fillMs)}</p>
-          ))}
+        {(recipientTag || sendRecipientDisplay?.mode === "Shielded") && (
+          <p className="swap-result__desc">
+            <ShieldedDisclosure />
+          </p>
+        )}
+        {fillMs != null && (
+          <p className="swap-result__settled">Settled in {formatFillMs(fillMs)}</p>
+        )}
         {/* The stealth ending is not the end: the payout waits at a one-time
             address until the recipient claims it, so the receipt names that as
             the next step and its button opens the stealth claim flow. */}
@@ -413,10 +401,10 @@ export function SwapResult({
                     ? `The funds landed at a one-time stealth address that only the connected wallet can spend from. The claim is still being set up; there is nothing to do. Safe to close this. When it is ready: ${CLAIM_IN_XOCHI_APP}`
                     : "The funds landed at a one-time stealth address that only the connected wallet can spend from. The claim is still being set up; there is nothing to do. Safe to close this, then claim it on the full widget when it is ready."
                 : tabsShown
-                  ? "Stealth swaps route to a one-time address only the connected wallet controls. When it lands, claim it in the Claims tab to move it into the wallet. The funds are safe -- safe to close this."
+                  ? "Stealth swaps route to a one-time address only the connected wallet controls. When it lands, claim it in the Claims tab to move it into the wallet. Your funds are safe. You can close this."
                   : claimInXochiApp
-                    ? `Stealth swaps route to a one-time address only the connected wallet controls. When it lands: ${CLAIM_IN_XOCHI_APP} The funds are safe -- safe to close this.`
-                    : "Stealth swaps route to a one-time address only the connected wallet controls. When it lands, claim it on the full widget, which opens in a new tab, to move it into the wallet. The funds are safe -- safe to close this."
+                    ? `Stealth swaps route to a one-time address only the connected wallet controls. When it lands: ${CLAIM_IN_XOCHI_APP} Your funds are safe. You can close this.`
+                    : "Stealth swaps route to a one-time address only the connected wallet controls. When it lands, claim it on the full widget, which opens in a new tab, to move it into the wallet. Your funds are safe. You can close this."
               : useReceipt
                 ? tabsShown
                   ? "Funds arrived. Finalizing the last step. Safe to close this and check Activity."

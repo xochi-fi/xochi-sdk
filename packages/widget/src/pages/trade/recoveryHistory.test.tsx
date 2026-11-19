@@ -581,9 +581,9 @@ describe("terminal rows name the next action", () => {
     expandRow();
 
     const route = document.querySelector(".activity-chain-route")?.textContent ?? "";
-    expect(route).toContain("Aztec");
+    expect(route).toContain("zk.money");
     expect(route).toContain("Stealth");
-    expect(screen.getByText("Aztec Network (Stealth)")).toBeTruthy();
+    expect(screen.getByText("zk.money", { exact: true })).toBeTruthy();
     expect(document.body.textContent).not.toContain("Shielded");
   });
 

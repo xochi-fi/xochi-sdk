@@ -25,7 +25,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("Aztec route labeling", () => {
+describe("zk.money route labeling", () => {
   it("names a non-shielded Aztec destination Stealth", async () => {
     await renderTrade(
       <TransactionPreview
@@ -49,7 +49,7 @@ describe("Aztec route labeling", () => {
 
     const route = screen.getByText(/arrives in/).textContent ?? "";
     expect(route).toContain("arrives in Stealth");
-    expect(route).toContain("on Aztec");
+    expect(route).toContain("on zk.money");
     expect(route).not.toContain("Shielded");
   });
 });

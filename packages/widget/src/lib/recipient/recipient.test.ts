@@ -143,7 +143,7 @@ describe("recipient resolution", () => {
     ["ETH.WEI", "wns"],
     ["@alice", "zkmoney"],
     ["alice.zk.money", "zkmoney"],
-    ["alice", "zkmoney"],
+    ["alice", "unknown"],
     [META, "stealth_meta"],
     ["alice.com", "unknown"],
   ])("classifies %s as %s", (input, kind) => {
@@ -197,7 +197,7 @@ describe("recipient resolution", () => {
     });
   });
 
-  it.each(["@ALICE", "ALICE.zk.money", "ALICE"])("checks the Shielded alias %s", async (input) => {
+  it.each(["@ALICE", "ALICE.zk.money"])("checks the Shielded alias %s", async (input) => {
     expect(await resolveRecipient(input, deps())).toEqual({
       status: "resolved",
       recipient: {
@@ -227,7 +227,7 @@ describe("recipient resolution", () => {
     },
   );
 
-  it.each(["", "0x123", zeroAddress, "a..eth", ".gwei", "st:eth:0xdead", "@!"])(
+  it.each(["", "alice", "0x123", zeroAddress, "a..eth", ".gwei", "st:eth:0xdead", "@!"])(
     "rejects invalid %s",
     async (input) => {
       const calls: string[] = [];

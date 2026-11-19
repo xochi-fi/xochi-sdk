@@ -26,6 +26,7 @@ import {
   getTokenInfoForChain,
 } from "@xochi/client";
 import { swapExplorerLinks } from "../lib/explorerLinks.js";
+import { ShieldedDisclosure } from "../pages/send/ShieldedDisclosure.js";
 import { getAztecTokenInfo } from "../lib/aztecTokens.js";
 import { LinksSignIn, type LinksSignInAction } from "./LinksSignIn.js";
 import { linksRecoveryKind } from "../lib/linksSignIn.js";
@@ -253,7 +254,8 @@ function SwapRow({
     intentStatus === "completed" &&
     data.settlementType === "stealth" &&
     // Someone else's payment is theirs to claim.
-    data.stealthPayee !== "other";
+    data.stealthPayee !== "other" &&
+    !data.sendRecipientDisplay;
   // The recipient's receipt step on a shielded payout, behind its kill switch.
   const command = receiptCommand(item, RECIPIENT_RECEIPTS_LIVE);
   const refundAddress = useMemo(() => {
@@ -306,15 +308,17 @@ function SwapRow({
 
   const destinationLabel = recipientTag
     ? `@${recipientTag} on zk.money`
-    : data.destinationType === "aztec"
-      ? "Aztec"
+    : data.destinationType === "aztec" || data.settlementType === "shielded"
+      ? "zk.money"
       : CHAIN_SHORT_NAMES[data.toChainId];
+  const send = data.sendRecipientDisplay;
   const mode =
-    recipientTag || data.settlementType === "shielded"
+    send?.mode ??
+    (recipientTag || data.settlementType === "shielded"
       ? "Shielded"
       : data.settlementType === "stealth"
         ? "Stealth"
-        : "Public";
+        : "Public");
 
   return (
     <div className={`activity-row-wrapper ${isExpanded ? "expanded" : ""}`}>
@@ -322,22 +326,26 @@ function SwapRow({
         <div className="activity-icon-wrap activity-icon--swap">{getActivityIcon("swap")}</div>
         <div className="activity-details">
           <div className="activity-main">
-            <span className="activity-action">{getActivityLabel("swap")}</span>
+            <span className="activity-action">
+              {send ? `Send · to ${send.label}` : getActivityLabel("swap")}
+            </span>
             {item.initiator === "agent" && item.agentLabel && (
               <span className="activity-via">via {item.agentLabel}</span>
             )}
-            <span className="activity-chain-route">
-              <ChainIcon chainId={data.fromChainId} />
-              {CHAIN_SHORT_NAMES[data.fromChainId]}
-              <span className="chain-arrow"> → </span>
-              {data.destinationType === "aztec" ? (
-                <img src={AZTEC_ICON} alt="" className="inline-chain-icon" />
-              ) : (
-                <ChainIcon chainId={data.toChainId} />
-              )}
-              {destinationLabel}
-              {data.destinationType === "aztec" && <ActivityMode mode={mode} />}
-            </span>
+            {!send && (
+              <span className="activity-chain-route">
+                <ChainIcon chainId={data.fromChainId} />
+                {CHAIN_SHORT_NAMES[data.fromChainId]}
+                <span className="chain-arrow"> → </span>
+                {data.destinationType === "aztec" ? (
+                  <img src={AZTEC_ICON} alt="" className="inline-chain-icon" />
+                ) : (
+                  <ChainIcon chainId={data.toChainId} />
+                )}
+                {destinationLabel}
+                {data.destinationType === "aztec" && <ActivityMode mode={mode} />}
+              </span>
+            )}
           </div>
           <div className="activity-tokens">
             <span className="from-token">
@@ -362,7 +370,7 @@ function SwapRow({
           )}
           {live && <PhaseLine status={intentStatus} />}
           <div className="activity-meta">
-            {data.destinationType !== "aztec" && <ActivityMode mode={mode} />}
+            {(send || data.destinationType !== "aztec") && <ActivityMode mode={mode} />}
             <span className={`activity-status-badge ${badge.className}`}>{badge.label}</span>
             <time className="activity-time" dateTime={new Date(timestamp).toISOString()}>
               {formatTimeAgo(timestamp)}
@@ -376,7 +384,9 @@ function SwapRow({
         <div className="activity-expanded">
           {stateCopy && (
             <div className={`expanded-status expanded-status--${stateCopy.tone}`} role="status">
-              <p className="expanded-status__headline">{stateCopy.headline}</p>
+              <p className="expanded-status__headline">
+                {send && intentStatus === "failed" ? "Send failed" : stateCopy.headline}
+              </p>
               {stateCopy.detail && <p className="expanded-status__detail">{stateCopy.detail}</p>}
             </div>
           )}
@@ -390,14 +400,20 @@ function SwapRow({
             <DetailRow
               label="Destination"
               value={
-                recipientTag
-                  ? `@${recipientTag} on zk.money (public Ethereum DAI deposit)`
-                  : data.destinationType === "aztec"
-                    ? `Aztec Network${mode !== "Public" ? ` (${mode})` : ""}`
-                    : `${CHAIN_FULL_NAMES[data.toChainId]} (${toSymbol})`
+                send?.label ??
+                (mode === "Shielded" || data.destinationType === "aztec"
+                  ? destinationLabel
+                  : `${CHAIN_FULL_NAMES[data.toChainId]} (${toSymbol})`)
               }
             />
-            {data.isCrossChain && <DetailRow label="Type" value="Cross-chain swap" />}
+            {mode === "Shielded" && (
+              <p className="expanded-status__detail">
+                <ShieldedDisclosure />
+              </p>
+            )}
+            {data.isCrossChain && (
+              <DetailRow label="Type" value={send ? "Cross-chain send" : "Cross-chain swap"} />
+            )}
           </div>
 
           <div className="expanded-section">

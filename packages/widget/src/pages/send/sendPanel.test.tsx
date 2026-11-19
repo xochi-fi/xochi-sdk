@@ -34,6 +34,7 @@ import { Trade } from "../Trade.js";
 import { FULL_LOOK } from "../trade/embedParams.js";
 import { findTokenBySymbol } from "../trade/config.js";
 import { intentAPI } from "../../lib/intentAPI.js";
+import { upsertLocalSwap } from "../../lib/localActivity.js";
 import { listLocalSends } from "../../lib/localSends.js";
 import { clearWalletSession } from "../../lib/walletSession.js";
 import { WAIT, testBudget } from "../../test/waitBudget.js";
@@ -269,7 +270,7 @@ describe("Receive", () => {
     fireEvent.click(topTab("Send"));
     fireEvent.click(sendForm().getByRole("button", { name: "Receive" }));
     expect(
-      screen.getByText("Share your wallet or stealth meta-address to receive funds."),
+      screen.getByText("Connect your wallet so people can send to you with Stealth."),
     ).toBeTruthy();
 
     await connect(config, { connector: config.connectors[0], chainId: 8453 });
@@ -284,16 +285,16 @@ describe("Receive", () => {
     expect(within(receive).getByRole("img", { name: "Wallet address QR code" })).toBeTruthy();
     expect(prompts(calls)).toEqual([]);
     const setup = within(receive).getByRole<HTMLButtonElement>("button", {
-      name: "Set up stealth meta-address",
+      name: "Set up Stealth",
     });
     await waitFor(() => expect(setup.disabled).toBe(false), WAIT);
     fireEvent.click(setup);
     await within(receive).findByRole("img", { name: "Stealth meta-address QR code" }, WAIT);
     expect(prompts(calls)).toHaveLength(1);
-    fireEvent.click(within(receive).getByRole("button", { name: "Publish stealth meta-address" }));
+    fireEvent.click(within(receive).getByRole("button", { name: "Publish Stealth details" }));
     expect(
       within(receive).getByText(
-        "Your stealth meta-address becomes public and linked to this wallet.",
+        "Your Stealth receiving details become public and linked to this wallet.",
       ),
     ).toBeTruthy();
     expect(within(receive).getByRole("button", { name: "Confirm in wallet" })).toBeTruthy();
@@ -405,7 +406,7 @@ describe("send with Stealth to someone else", () => {
     await fillAddressForm("5", META.slice(0, -2));
     const field = panel.getByLabelText("To");
     expect(field.getAttribute("aria-invalid")).toBe("true");
-    expect(panel.getByText("Check this stealth address")).toBeTruthy();
+    expect(panel.getByText("Invalid stealth meta-address")).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Review send" })).toBeNull();
     expect(prompts(calls)).toEqual([]);
   });
@@ -486,6 +487,55 @@ describe("send with Stealth to someone else", () => {
     expect(within(swapModal).queryByText(/controlled by published\.gwei/)).toBeNull();
   });
 
+  it.each([
+    ["Stealth", "published.gwei", "published.gwei"],
+    ["Shielded", "@mira", "mira.zk.money"],
+    ["Stealth", "st:eth:0x0354…8912", undefined],
+  ] as const)("retries a recorded %s send to %s from Send", async (mode, label, retryInput) => {
+    upsertLocalSwap(TEST_ACCOUNT, {
+      id: "retry-fixture",
+      type: "swap",
+      timestamp: Date.now(),
+      status: "failed",
+      intentStatus: "failed",
+      data: {
+        fromChainId: 8453,
+        toChainId: 1,
+        fromToken: findTokenBySymbol(8453, "USDC")!.address,
+        toToken: findTokenBySymbol(1, mode === "Shielded" ? "DAI" : "USDC")!.address,
+        fromAmount: "5000000",
+        toAmount: null,
+        tier: "",
+        feeRate: 0,
+        txHash: TX_HASH,
+        receivingTxHash: null,
+        isCrossChain: true,
+        substatus: "not_executed",
+        settlementType: mode === "Stealth" ? "stealth" : "public",
+        sendRecipientDisplay: { mode, label, retryInput },
+      },
+    });
+    await openOther("USDC", true);
+    fireEvent.click(topTab("Activity"));
+    fireEvent.click(
+      await screen.findByRole("button", { name: new RegExp(`Send · to ${label}`) }, WAIT),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    if (retryInput) {
+      const card = within(await screen.findByRole("region", { name: "Send quote" }, WAIT));
+      expect(
+        await card.findByRole("button", { name: `Send 5 USDC with ${mode}` }, WAIT),
+      ).toBeTruthy();
+      expect(await card.findByText(retryInput, { exact: true }, WAIT)).toBeTruthy();
+    } else {
+      const form = sendForm();
+      expect(form.getByText("Paste the recipient again.")).toBeTruthy();
+      expect(form.getByLabelText("To")).toHaveProperty("value", "");
+      expect(form.getByLabelText("Amount")).toHaveProperty("value", "5");
+      expect(form.getByText("Stealth", { exact: true })).toBeTruthy();
+    }
+  });
+
   it("locks settlement and the payee in the quote and preserves the Send draft", async () => {
     const { panel } = await openOther();
     await fillAddressForm("5", META);
@@ -536,7 +586,7 @@ describe("send to a payment app", () => {
     const panel = document.getElementById(mode.getAttribute("aria-controls")!)!;
     expect(panel.hasAttribute("hidden")).toBe(false);
     const facts = within(panel).getByRole("region", { name: "Before you choose" }).textContent;
-    expect(facts).toMatch(/your own account/);
+    expect(facts).toMatch(/your own account/i);
     expect(facts).toMatch(/Rates can change/);
     expect(within(panel).queryAllByRole("radio")).toHaveLength(0);
 

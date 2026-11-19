@@ -91,11 +91,12 @@ describe("Buy rails", () => {
       port,
       <RampRails direction="onramp" account={undefined} active onConnectRequest={connect} />,
     );
-    expect(screen.getByText("14 payment apps")).toBeTruthy();
+    expect(screen.getByRole("img", { name: /Venmo.*Alipay/ })).toBeTruthy();
+    expect(screen.getByText("+8")).toBeTruthy();
     expect(screen.queryByText("Venmo")).toBeNull();
     expect(
-      screen.getByText("Connect a wallet and enter an amount to check availability."),
-    ).toBeTruthy();
+      screen.queryByText("Connect a wallet and enter an amount to check availability."),
+    ).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Connect wallet" }));
     expect(connect).toHaveBeenCalledOnce();
     expect(port.calls).toEqual([]);
@@ -292,7 +293,7 @@ describe("Send to a payment app rails", () => {
     const port = recordedPort({ account: ACCOUNT, clock, makerRails: ["wise"] });
     renderRails(port, <RampRails direction="offramp" account={ACCOUNT} active />);
     const facts = screen.getByRole("region", { name: "Before you choose" }).textContent;
-    expect(facts).toMatch(/your own account/);
+    expect(facts).toMatch(/The buyer sees your payment details and name/);
     expect(facts).toMatch(/Rates can change/);
     expect(facts).toMatch(/wallet addresses are public/);
 
