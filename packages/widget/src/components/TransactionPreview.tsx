@@ -133,7 +133,6 @@ export function TransactionPreview({
     destination.type === "aztec"
       ? { name: "Aztec", icon: AZTEC_ICON }
       : { name: CHAIN_NAMES[toChainId], icon: CHAIN_ICONS[toChainId] };
-  const isPrivate = destination.type === "aztec" || destination.type === "stealth";
 
   // A deposit route first (the solver's own value is wrong there), then the
   // server-supplied method, then permit inference.
@@ -251,9 +250,6 @@ export function TransactionPreview({
                 ) : (
                   <>
                     arrives in {destLabel}
-                    {/* The canonical settlement mode and the badge answer different
-                  questions: how the route works, and whether it is private. */}
-                    {isPrivate && <span className="tx-preview-badge">Private</span>}
                     {" on "}
                     {settlementVenue.icon && (
                       <img src={settlementVenue.icon} alt="" className="inline-chain-icon" />

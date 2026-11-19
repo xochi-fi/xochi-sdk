@@ -104,21 +104,6 @@
   color: var(--text-muted);
 }
 
-.tx-preview-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 5px;
-  margin-left: 0.35rem;
-  font-family: var(--font-mono);
-  font-size: 0.6rem;
-  font-weight: 600;
-  background: var(--sky-20);
-  border-radius: 3px;
-  color: var(--cryptowave-sky);
-  white-space: nowrap;
-  vertical-align: middle;
-}
-
 .tx-preview-usd {
   font-family: var(--font-mono);
   font-size: 0.7rem;

@@ -20,9 +20,7 @@
 .trade-card {
   position: relative;
   width: 100%;
-  /* Below this the toggle and token rows cram into an unreadable column, so the
-     page scrolls instead. */
-  min-width: 320px;
+  min-width: 0;
   max-width: 420px;
   /* The card's backdrop-filter creates a stacking context that traps the
      dropdown z-index of its own selectors, which open downward past its lower
@@ -1020,6 +1018,31 @@
 
   .trade-header {
     margin-bottom: 1rem;
+  }
+}
+
+@media (max-width: 320px) {
+  .trade-card .input-row {
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .trade-card .input-row .amount-fit {
+    flex-basis: 100%;
+  }
+
+  .trade-card .token-selector {
+    max-width: 100%;
+  }
+
+  .trade-card .token-btn {
+    flex-wrap: wrap;
+    padding-inline: 0.4rem;
+  }
+
+  .trade-card .trade-header,
+  .trade-card .order-type-toggle {
+    flex-wrap: wrap;
   }
 }
 

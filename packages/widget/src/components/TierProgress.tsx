@@ -106,7 +106,7 @@ export function TierProgress({
       <div className="tier-progress-bar">
         <div
           className="tier-progress-fill"
-          style={{ width: `${progressPercent}%` }}
+          style={{ transform: `scaleX(${progressPercent / 100})` }}
           data-tier={tier.tierName.toLowerCase()}
         />
       </div>

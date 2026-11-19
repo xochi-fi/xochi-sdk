@@ -86,17 +86,14 @@ afterEach(() => {
 
 /**
  * Open the Activity tab and expand the one row it shows, once its badge reads
- * `badge`. A live row opens the strip by itself; a settled one waits for the
- * toggle. Clicking before the row settles would hit the live copy it replaces.
+ * `badge`. Clicking before the row settles would hit the live copy it replaces.
  */
 const expandRow = async (badge: string): Promise<void> => {
   fireEvent.click(screen.getByRole("tab", { name: /^Activity/ }));
-  const toggle = screen.getByRole("button", { name: /^Activity/ });
   const found = await waitFor(() => {
     // Not the loading skeleton, which shares the class.
     const rowButton = document.querySelector<HTMLElement>(".activity-row-wrapper > .activity-row");
     if (rowButton?.querySelector(".activity-status-badge")?.textContent === badge) return rowButton;
-    if (toggle.getAttribute("aria-expanded") === "false") fireEvent.click(toggle);
     throw new Error(`no activity row reading ${badge}`);
   }, WAIT);
   fireEvent.click(found);
@@ -121,9 +118,7 @@ describe("a shielded payout waiting on the recipient", () => {
     expect(row().querySelector(".activity-chain-route")?.textContent).toMatch(/Aztec\s*Shielded$/);
     // After the token icon's fallback letter, when it has no image.
     expect(row().querySelector(".to-token")?.textContent).toMatch(/^\D?1\.69 OXDAI$/);
-    expect(document.querySelector(".activity-strip__latest")?.textContent).toMatch(
-      /USDC -> \D?OXDAI/,
-    );
+    expect(row().querySelector(".from-token")?.textContent).toMatch(/USDC$/);
     expect(headline()).toBe(AWAITING);
     expect(row().textContent).not.toMatch(/hello@xochi\.fi/);
     // Behind the client kill switch: the receipt endpoints 404 until it flips.

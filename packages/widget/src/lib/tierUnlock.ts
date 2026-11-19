@@ -33,7 +33,7 @@ export interface TierUnlock {
 const TIER_UNLOCK: Record<TierName, TierUnlock> = {
   Standard: { label: "Lower fees", status: "live" },
   Trusted: { label: "Lower fees", status: "live" },
-  Verified: { label: "Private target (unavailable)", status: "later" },
+  Verified: { label: "Shielded target (unavailable)", status: "later" },
   Premium: { label: "Sovereign unavailable", status: "later" },
   Institutional: { label: "Lower fees", status: "live" },
 };

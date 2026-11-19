@@ -223,8 +223,8 @@ describe("send to an address", () => {
     expect(row).toMatchObject({ id: TX_HASH, status: "completed" });
     expect(row.data).toMatchObject({ amount: "1234567", symbol: "USDC", chainId: 1 });
     fireEvent.click(topTab("Activity"));
-    const sends = screen.getByRole("region", { name: "Sends" });
-    expect(within(sends).getByText("1.234567 USDC")).toBeTruthy();
+    const panel = screen.getByRole("tabpanel", { name: /^Activity/ });
+    expect(within(panel).getByRole("listitem").textContent).toContain("1.234567 USDC");
   });
 
   it("asks the host page's wallet the same way", async () => {
@@ -469,9 +469,16 @@ describe("send to a payment app", () => {
     });
     await within(panel).findByRole("radio", { name: /Wise/ }, WAIT);
     expect(within(panel).getAllByRole("radio")).toHaveLength(1);
+    const wise = within(panel).getByRole("radio", { name: /Wise/ }).closest("label")!;
+    expect(wise.textContent).toContain("Wise");
     expect(
-      within(panel).getByRole("region", { name: "Unavailable payment apps" }).textContent,
-    ).toMatch(/Availability unknown/);
+      wise.querySelector<HTMLElement>(".ramp-tile__logo")?.style.getPropertyValue("--rail-logo"),
+    ).toMatch(/wise/);
+    const unavailable = within(panel).getByRole("region", { name: "Unavailable payment apps" });
+    const summary = within(unavailable).getByText(/^Unconfirmed:.*Venmo/);
+    const details = summary.closest("details")!;
+    expect(details.open).toBe(false);
+    expect(within(details).getByText("Venmo", { exact: true })).toBeTruthy();
     fireEvent.click(within(panel).getByLabelText(/Wise/));
     expect(prompts(calls)).toEqual([]);
     expect(port.signed).toEqual([]);

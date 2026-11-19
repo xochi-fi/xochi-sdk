@@ -187,9 +187,8 @@ const seedActivity = (...items: SwapActivityItem[]): void => {
   );
 };
 
-/** Open the activity strip, then expand its single row. */
+/** Expand the single row in the Activity tab. */
 const expandActivityRow = async (): Promise<void> => {
-  fireEvent.click(await screen.findByRole("button", { name: /^Activity/ }, WAIT));
   const row = await waitFor(() => {
     const found = document.querySelector(".activity-row");
     if (!found) throw new Error("activity row not rendered");

@@ -219,7 +219,10 @@ export function IntentTimeline({
     >
       {/* Progress bar */}
       <div className="timeline-progress">
-        <div className="timeline-progress-fill" style={{ width: `${progress}%` }} />
+        <div
+          className="timeline-progress-fill"
+          style={{ transform: `scaleX(${progress / 100})` }}
+        />
       </div>
 
       {/* Stage indicators */}

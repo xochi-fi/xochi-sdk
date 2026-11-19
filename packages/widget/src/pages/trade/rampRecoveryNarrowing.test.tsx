@@ -114,7 +114,7 @@ describe("a host that drops Peer", () => {
       connected: true,
     });
     fireEvent.click(tab("Activity"));
-    await screen.findByRole("region", { name: "Purchases" }, WAIT);
+    await screen.findByText("Received", {}, WAIT);
     expect(screen.queryByRole("region", { name: "Purchase to recover" })).toBeNull();
   });
 

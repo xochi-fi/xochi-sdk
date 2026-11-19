@@ -156,7 +156,8 @@
   height: 100%;
   background: var(--muted-gold);
   border-radius: 3px;
-  transition: width 0.3s ease;
+  transform-origin: left;
+  transition: transform 0.3s ease;
 }
 
 .tier-progress-fill[data-tier="standard"] {

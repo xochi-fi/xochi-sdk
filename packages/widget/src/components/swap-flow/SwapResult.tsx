@@ -394,7 +394,7 @@ export function SwapResult({
           {isStealth && stealthPayee === "other"
             ? stealthDelivered
               ? "The funds landed at a one-time private address only the recipient can spend from. They claim it with their own stealth keys; there is nothing to do. Safe to close this."
-              : "Private payouts route to a one-time address only the recipient controls. When it lands, they claim it with their own stealth keys. Safe to close this."
+              : "Stealth payouts route to a one-time address only the recipient controls. When it lands, they claim it with their own stealth keys. Safe to close this."
             : isStealth
               ? stealthDelivered
                 ? tabsShown
@@ -403,10 +403,10 @@ export function SwapResult({
                     ? `The funds landed at a one-time private address that only the connected wallet can spend from. The claim is still being set up; there is nothing to do. Safe to close this. When it is ready: ${CLAIM_IN_XOCHI_APP}`
                     : "The funds landed at a one-time private address that only the connected wallet can spend from. The claim is still being set up; there is nothing to do. Safe to close this, then claim it on the full widget when it is ready."
                 : tabsShown
-                  ? "Private swaps route to a one-time address only the connected wallet controls. When it lands, claim it in the Claims tab to move it into the wallet. The funds are safe -- safe to close this."
+                  ? "Stealth swaps route to a one-time address only the connected wallet controls. When it lands, claim it in the Claims tab to move it into the wallet. The funds are safe -- safe to close this."
                   : claimInXochiApp
-                    ? `Private swaps route to a one-time address only the connected wallet controls. When it lands: ${CLAIM_IN_XOCHI_APP} The funds are safe -- safe to close this.`
-                    : "Private swaps route to a one-time address only the connected wallet controls. When it lands, claim it on the full widget, which opens in a new tab, to move it into the wallet. The funds are safe -- safe to close this."
+                    ? `Stealth swaps route to a one-time address only the connected wallet controls. When it lands: ${CLAIM_IN_XOCHI_APP} The funds are safe -- safe to close this.`
+                    : "Stealth swaps route to a one-time address only the connected wallet controls. When it lands, claim it on the full widget, which opens in a new tab, to move it into the wallet. The funds are safe -- safe to close this."
               : useReceipt
                 ? tabsShown
                   ? "Funds arrived. Finalizing the last step. Safe to close this and check Activity."
