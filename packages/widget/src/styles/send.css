@@ -425,7 +425,6 @@
     .input-row input,
     .send-input--recipient > input
   ):focus-visible,
-.send-input--recipient:has(> input:focus-visible),
 .send-destination:has(:focus-visible),
 .ramp-tile:has(:focus-visible) {
   outline: 2px solid var(--pearl-cream);
@@ -439,7 +438,6 @@
       .input-row input,
       .send-input--recipient > input
     ):focus-visible,
-  .send-input--recipient:has(> input:focus-visible),
   .send-destination:has(:focus-visible),
   .ramp-tile:has(:focus-visible) {
     outline-color: Highlight;

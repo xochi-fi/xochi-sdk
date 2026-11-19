@@ -1,4 +1,4 @@
-export const SHIELDED_DESCRIPTION = "Amounts and participants hidden inside zk.money.";
+export { SHIELDED_DESCRIPTION } from "../trade/settlementCopy.js";
 
 export interface SendRecipientDisplay {
   mode: "Stealth" | "Shielded";

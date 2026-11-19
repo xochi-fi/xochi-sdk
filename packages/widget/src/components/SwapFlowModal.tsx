@@ -730,7 +730,7 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
             request. Point the user to a browser/wallet that signs reliably. */}
         {(phase === "awaiting-wallet" || awaitingPull) && shouldOfferInAppBrowser() && (
           <p className="swap-flow-inapp-hint">
-            No wallet prompt? Some private browsers (DuckDuckGo) block it. Open Xochi in Safari, or
+            No wallet prompt? Some browsers (such as DuckDuckGo) block it. Open Xochi in Safari, or
             connect with Coinbase Wallet.
           </p>
         )}

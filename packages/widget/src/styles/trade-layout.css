@@ -193,9 +193,13 @@
   }
 }
 
-.input-row:focus-within {
+.input-row:focus-within,
+.send-input--recipient:has(> input:focus-visible) {
   outline: 2px solid var(--trade-field-focus-color);
   outline-offset: 2px;
+}
+
+.input-row:focus-within {
   background: var(--inset-bg-heavy);
 }
 
