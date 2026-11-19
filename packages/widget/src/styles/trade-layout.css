@@ -1141,8 +1141,16 @@
   margin-bottom: 0.25rem;
 }
 
+.trade-settlement .header-actions {
+  flex: none;
+  gap: 0.25rem;
+  margin-inline-start: 0.25rem;
+}
+
 .type-btn--privacy {
-  padding: 0.5rem 0.35rem;
+  flex: 1 1 auto;
+  padding: 0.5rem 0.2rem;
+  font-size: 0.75rem;
   letter-spacing: 0;
   min-width: 0;
 }
