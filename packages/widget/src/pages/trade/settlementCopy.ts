@@ -26,15 +26,6 @@ export const MODE_META: Record<SettlementType, string> = {
   shielded: "Recipient hidden on Aztec, amount visible",
 };
 
-/** What a tap on Stealth without a wallet says, beside the connect action. */
-export const STEALTH_NEEDS_WALLET_CAPTION =
-  "Stealth derives its one-time address from a connected wallet.";
-
-/**
- * What a tap on Shielded says while it is not offered (SPEC §5.1: reserved and
- * unavailable). No launch promise: "coming soon" was dropped with the spec's
- * "launch-pending".
- */
 /**
  * What Stealth does and does not hide, stated wherever someone else is paid.
  * The venue derives the one-time address from the meta-address in the quote
@@ -42,14 +33,14 @@ export const STEALTH_NEEDS_WALLET_CAPTION =
  * cannot link sender and recipient.
  */
 export const STEALTH_PRIVACY_LIMITS =
-  "Stealth hides the link between this payment and the recipient's address from public view. Xochi sees the recipient's meta-address, because it derives the one-time address from it, so Xochi can link this payment to them. It does not hide your funding transaction, the amount or when you send it.";
+  "Stealth hides the recipient from public view. Xochi sees the recipient's meta-address and uses it to derive the one-time address, so it can link the payment to them. Stealth does not hide your funding transaction, amount or timing.";
 
 export const SHIELDED_UNAVAILABLE_CAPTION =
   "Shielded is unavailable. It hides the recipient; the amount, token, solver and timing stay public.";
 
 /** The one fix an unavailable mode shows, in place of its meta line. */
 export const SETTLEMENT_FIX_LINE: Record<SettlementFix, string> = {
-  wallet: "Uses wallet keys",
+  wallet: "Wallet required",
   setup: "Set up Stealth",
   quote: "Updating quote",
   destination: "Choose a Stealth chain",

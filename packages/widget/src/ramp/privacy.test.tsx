@@ -352,16 +352,19 @@ describe("Send to a payment app through a current host", () => {
   });
 });
 
-describe("Send privately to someone else", () => {
+describe("Send with Stealth to someone else", () => {
   it("keeps the recipient's meta-address out of storage, messages, logs and reports", async () => {
     channels.frame = frameWidget();
     channels.frame.pinCurrent();
     const recipient = vectors[0];
     const META = `st:eth:0x${recipient.spending_pub.slice(2)}${recipient.viewing_pub.slice(2)}`;
+    const requests: unknown[] = [];
     recordFetch({
       "/api/intent/quote": {
-        answer: () =>
-          quoteWire({ can_solve: false, error: "No fill", error_category: "no_liquidity" }),
+        answer: (request) => {
+          requests.push(request);
+          return quoteWire({ can_solve: false, error: "No fill", error_category: "no_liquidity" });
+        },
       },
     });
     await renderTrade(<Trade look={FULL_LOOK} />, { connected: true, tokenBalance: 10_000_000n });
@@ -387,13 +390,18 @@ describe("Send privately to someone else", () => {
     fireEvent.change(panel.getByLabelText("To"), { target: { value: name } });
     await panel.findByText(resolvedName, {}, WAIT);
     expect(resolve).toHaveBeenCalledWith(name, expect.anything(), expect.anything());
-    expect(panel.getByRole("button", { name: /Privacy: Private/ })).toBeTruthy();
+    expect(panel.getByText("Stealth")).toBeTruthy();
     fireEvent.click(panel.getByRole("button", { name: "Send" }));
-    const review = screen.getByRole("region", { name: "Review send" });
-    expect(review.textContent).toMatch(/Xochi sees the recipient's meta-address/);
-    fireEvent.click(within(review).getByRole("button", { name: "Continue to quote" }));
+    expect(screen.queryByRole("region", { name: "Review send" })).toBeNull();
     const card = screen.getByRole("region", { name: "Send quote" });
-    await within(card).findByRole("region", { name: "Stealth recipient" }, WAIT);
+    const payee = await within(card).findByRole("region", { name: "Stealth recipient" }, WAIT);
+    expect(within(payee).getByText(resolvedName)).toBeTruthy();
+    expect(payee.textContent).toMatch(/Xochi sees the recipient's meta-address/);
+    await waitFor(() => expect(requests.length).toBeGreaterThan(0), WAIT);
+    const quoteWireText = JSON.stringify(requests);
+    expect(quoteWireText).not.toContain(name);
+    expect(quoteWireText).not.toContain(resolvedName);
+    expect(quoteWireText).not.toContain(META);
 
     expectClean([
       name,

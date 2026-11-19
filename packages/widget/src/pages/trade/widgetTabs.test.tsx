@@ -262,7 +262,7 @@ describe("tablist", () => {
     expect(selectedTab()).toBe("Trade");
     key("End");
     expect(selectedTab()).toBe("Claims");
-    expect(visiblePanel().querySelector('[aria-label="Private receiving"]')).toBeTruthy();
+    expect(visiblePanel().querySelector('[aria-label="Stealth receiving"]')).toBeTruthy();
 
     // One tab stop: only the selected tab is in the Tab order.
     expect(topTabs().map((t) => t.tabIndex)).toEqual([-1, -1, -1, 0]);
@@ -462,7 +462,7 @@ describe("claim paths land on the Claims tab", () => {
 
     fireEvent.click(nudge);
     expect(selectedTab()).toBe("Claims");
-    expect(visiblePanel().querySelector('[aria-label="Private receiving"]')).toBeTruthy();
+    expect(visiblePanel().querySelector('[aria-label="Stealth receiving"]')).toBeTruthy();
   });
 
   it("lands the activity row's claim action on Claims", async () => {

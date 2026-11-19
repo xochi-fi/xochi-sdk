@@ -109,6 +109,7 @@ export interface SwapPrefill {
   fromToken: string;
   toToken: string;
   fromAmount: string;
+  fromSend?: true;
   /**
    * Settlement mode of the original order, restored on retry (Phase 6).
    * Absent on rows captured before the field existed, which reads as public.
@@ -363,7 +364,13 @@ export function useSwapFlow({
       zkMoneyDestination: recipientTag !== undefined,
     });
     try {
-      setAmount(formatTokenAmount(BigInt(prefill.fromAmount), nextFromToken.decimals, 6));
+      setAmount(
+        formatTokenAmount(
+          BigInt(prefill.fromAmount),
+          nextFromToken.decimals,
+          prefill.fromSend ? nextFromToken.decimals : 6,
+        ),
+      );
     } catch {
       setAmount("");
     }

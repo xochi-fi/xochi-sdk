@@ -240,13 +240,13 @@ describe("frame URL parameters", () => {
   });
 
   it.each([false, true])(
-    "defaults an eligible route to Stealth without a prompt (connected: %s)",
+    "defaults an eligible route based on wallet connection (connected: %s)",
     async (connected) => {
       const prompts: string[] = [];
       await openFrame("", [], connected, (method) => prompts.push(method));
-      await waitFor(() => expect(pressed(/^Stealth/)).toBe("true"), WAIT);
+      await waitFor(() => expect(pressed(connected ? /^Stealth/ : /^Public/)).toBe("true"), WAIT);
       expect(window.location.search).toBe("");
-      expect(chains()).toEqual(["Base", "Ethereum"]);
+      await waitFor(() => expect(chains()).toEqual(["Base", "Ethereum"]), WAIT);
       expect(
         prompts.filter((method) => method === "personal_sign" || method === "eth_sign"),
       ).toEqual([]);
@@ -280,7 +280,7 @@ describe("frame URL parameters", () => {
   });
 
   it("defaults a newly selected eligible route to Stealth until Public is chosen", async () => {
-    await openFrame("?toChain=42161", []);
+    await openFrame("?toChain=42161", [], true);
     const chooseDestination = async (current: string, next: string): Promise<void> => {
       fireEvent.click(screen.getByRole("button", { name: `On ${current} - Change network` }));
       const dialog = await screen.findByRole("dialog", { name: "Select network" }, WAIT);

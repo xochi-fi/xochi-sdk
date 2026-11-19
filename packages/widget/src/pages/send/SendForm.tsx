@@ -22,21 +22,18 @@ import type { SendDestinationKind } from "../trade/WidgetTabs.js";
 import { useCapabilities } from "../../hooks/useCapabilities.js";
 import { useLocalSends } from "../../hooks/useLocalSends.js";
 import { useSendRecipient } from "./useSendRecipient.js";
-import { abbreviateMetaAddress, parseStealthMetaAddress } from "./stealthRecipient.js";
-import { STEALTH_PRIVACY_LIMITS } from "../trade/settlementCopy.js";
+import { RecipientChip } from "./RecipientChip.js";
+import { parseStealthMetaAddress } from "./stealthRecipient.js";
+import { MODE_META } from "../trade/settlementCopy.js";
+import { TokenIcon } from "../../components/TokenIcon.js";
+import { PrivacyBars } from "../../components/PrivacyBars.js";
+import { SITE_URL } from "../../config.js";
 import { stealthSendDestinations } from "./stealthSend.js";
 import { Receive } from "./Receive.js";
 import { ScanRecipient } from "./ScanRecipient.js";
 import type { ResolvedRecipient } from "../../lib/recipient/index.js";
 
 type SettlementOrder = Omit<SwapPrefill, "nonce">;
-type RoutedReview = {
-  order: SettlementOrder;
-  recipient: ResolvedRecipient;
-  privacy: "Private" | "Shielded";
-  amount: string;
-};
-
 const LAST_ASSET_KEY = "xochi:send:last-asset";
 
 function lastAsset(chainId: number) {
@@ -50,39 +47,13 @@ function lastAsset(chainId: number) {
   }
 }
 
-function RecipientChip({ recipient }: { recipient: ResolvedRecipient }) {
-  const value =
-    recipient.address ?? recipient.stealthMetaAddress ?? recipient.shieldedAlias ?? recipient.input;
-  const short = value.startsWith("0x")
-    ? `${value.slice(0, 6)}…${value.slice(-4)}`
-    : value.startsWith("st:eth:")
-      ? abbreviateMetaAddress(value)
-      : value;
-  const hue = [...value].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) % 360, 0);
-  return (
-    <span className="send-recipient">
-      <span
-        className="send-identicon"
-        aria-hidden="true"
-        style={{
-          background: `conic-gradient(from ${hue}deg, hsl(${hue} 60% 45%) 25%, hsl(${(hue + 100) % 360} 65% 68%) 0 50%, hsl(${hue} 60% 45%) 0 75%, hsl(${(hue + 100) % 360} 65% 68%) 0)`,
-        }}
-      />
-      <span>
-        {recipient.name && <strong>{recipient.name}</strong>}
-        <small>{short}</small>
-      </span>
-    </span>
-  );
-}
-
 interface SendFormProps {
   initialChain?: number;
   active?: boolean;
   /** Hosted wallet UI delegates the connect prompt to the embedding page. */
   onConnectRequest?: () => void;
   destinations: readonly SendDestinationKind[];
-  onStealthContinue: (order: SettlementOrder) => void;
+  onQuote: (order: SettlementOrder, recipient: ResolvedRecipient) => void;
 }
 
 /** Every digit the token has: review shows the amount exactly, never rounded. */
@@ -99,7 +70,7 @@ function WalletSendForm({
   initialChain: requestedChain,
   active = true,
   destinations,
-  onStealthContinue,
+  onQuote,
 }: SendFormProps) {
   const id = useId();
   const [recoveryHash, setRecoveryHash] = useState<string | null>(null);
@@ -126,7 +97,6 @@ function WalletSendForm({
     () => new URLSearchParams(location.search).get("receive") === "1",
   );
   const [reviewedRecipient, setReviewedRecipient] = useState<ResolvedRecipient>();
-  const [routedReview, setRoutedReview] = useState<RoutedReview>();
   const [selectedDestination, setSelectedDestination] = useState<number>();
   const [inviteStatus, setInviteStatus] = useState("");
   const history = useLocalSends();
@@ -140,16 +110,16 @@ function WalletSendForm({
   const privacy = recipient?.shieldedAlias
     ? "Shielded"
     : recipient?.stealthMetaAddress && publicChoice !== input
-      ? "Private"
+      ? "Stealth"
       : "Public";
   const networkMismatch =
     privacy === "Public" && lookup.status === "resolved" && lookup.networkMismatch;
   const isZero = recipient?.address === "0x0000000000000000000000000000000000000000";
   const contract =
     recipient?.address && token && recipient.address.toLowerCase() === token.address.toLowerCase();
-  const permitted = destinations.includes(privacy === "Private" ? "stealth" : "address");
-  const privateChains =
-    privacy === "Private" && token
+  const permitted = destinations.includes(privacy === "Stealth" ? "stealth" : "address");
+  const stealthChains =
+    privacy === "Stealth" && token
       ? stealthSendDestinations(capabilities, capabilityState, draft.chainId, token.symbol)
       : [];
   const destination =
@@ -157,14 +127,14 @@ function WalletSendForm({
       ? 1
       : privacy === "Public"
         ? draft.chainId
-        : selectedDestination !== undefined && privateChains.includes(selectedDestination)
+        : selectedDestination !== undefined && stealthChains.includes(selectedDestination)
           ? selectedDestination
-          : privateChains.includes(draft.chainId)
+          : stealthChains.includes(draft.chainId)
             ? draft.chainId
-            : privateChains[0];
+            : stealthChains[0];
   const canRoute =
     privacy === "Public" ||
-    (privacy === "Private"
+    (privacy === "Stealth"
       ? destination !== undefined
       : capabilityState === "live" &&
         capabilities.routes?.some(
@@ -186,7 +156,6 @@ function WalletSendForm({
 
   const onChain = (next: number): void => {
     const same = sendTokens(next).find((t) => t.symbol === token?.symbol) ?? defaultSendToken(next);
-    setPublicChoice(undefined);
     update({ chainId: next, tokenAddress: same?.address ?? "" });
   };
   const onInput = useCallback((next: string) => {
@@ -203,8 +172,11 @@ function WalletSendForm({
     }
   };
   const copyInvite = async () => {
-    const link = new URL(location.pathname, location.origin);
-    link.searchParams.set("initialTab", "send");
+    const embedded = window.parent !== window;
+    const link = embedded
+      ? new URL("/trade", SITE_URL)
+      : new URL(location.pathname, location.origin);
+    link.searchParams.set(embedded ? "tab" : "initialTab", "send");
     link.searchParams.set("receive", "1");
     try {
       await navigator.clipboard.writeText(link.href);
@@ -251,23 +223,21 @@ function WalletSendForm({
     const destinationToken = sendTokens(destination).find(
       (candidate) => candidate.symbol === (privacy === "Shielded" ? "DAI" : token.symbol),
     );
-    if (!destinationToken || (privacy === "Private" && !meta.ok)) return;
-    setRoutedReview({
-      privacy,
-      recipient,
-      amount: `${exact(amountCheck.amount, token.decimals)} ${token.symbol}`,
-      order: {
+    if (!destinationToken || (privacy === "Stealth" && !meta.ok)) return;
+    onQuote(
+      {
         fromChainId: draft.chainId as SelectableChainId,
         toChainId: destination as SelectableChainId,
         fromToken: token.address,
         toToken: destinationToken.address,
         fromAmount: amountCheck.amount.toString(),
-        settlement: privacy === "Private" ? "stealth" : "public",
-        ...(privacy === "Private" && meta.ok
+        settlement: privacy === "Stealth" ? "stealth" : "public",
+        ...(privacy === "Stealth" && meta.ok
           ? { stealthRecipient: meta.recipient }
           : { recipientTag: recipient.shieldedAlias }),
       },
-    });
+      recipient,
+    );
   };
 
   if (phase.step === "edit" && receive) {
@@ -283,70 +253,12 @@ function WalletSendForm({
     );
   }
 
-  if (phase.step === "edit" && routedReview) {
-    const { order, privacy: reviewedPrivacy, recipient: payee, amount } = routedReview;
-    return (
-      <section className="send-review" aria-label="Review send">
-        <RecipientChip recipient={payee} />
-        <dl className="send-review__facts">
-          <div>
-            <dt>To</dt>
-            <dd className="send-review__mono">
-              {order.stealthRecipient?.encoded ?? payee.address ?? payee.input}
-            </dd>
-          </div>
-          {payee.address && order.stealthRecipient && (
-            <div>
-              <dt>Wallet</dt>
-              <dd className="send-review__mono">{payee.address}</dd>
-            </div>
-          )}
-          <div>
-            <dt>Network</dt>
-            <dd>
-              {order.fromChainId !== order.toChainId && `${chainName(order.fromChainId)} → `}
-              {chainName(order.toChainId)}
-            </dd>
-          </div>
-          <div>
-            <dt>Amount</dt>
-            <dd>{amount}</dd>
-          </div>
-          <div>
-            <dt>Privacy</dt>
-            <dd>{reviewedPrivacy}</dd>
-          </div>
-        </dl>
-        {reviewedPrivacy === "Private" && <p className="send-note">{STEALTH_PRIVACY_LIMITS}</p>}
-        <div className="send-review__actions">
-          <button
-            type="button"
-            className="send-secondary"
-            onClick={() => setRoutedReview(undefined)}
-          >
-            Back
-          </button>
-          <button
-            type="button"
-            className="submit-btn send-cta"
-            onClick={() => {
-              setRoutedReview(undefined);
-              onStealthContinue(order);
-            }}
-          >
-            Continue to quote
-          </button>
-        </div>
-      </section>
-    );
-  }
-
   if (phase.step === "edit") {
     const status = {
       empty: attempted ? "Enter a recipient" : "",
       looking: "Looking up…",
       resolved: "",
-      not_found: "Not found",
+      not_found: "Not found. Try a 0x address, .eth, .gwei, .wei, or zk.money name",
       unsupported: "Not a supported name",
       unavailable: "Lookup unavailable",
       invalid: /^0x/i.test(input.trim()) ? "Check this address" : "Check this stealth address",
@@ -393,7 +305,7 @@ function WalletSendForm({
             autoComplete="off"
             autoCapitalize="off"
             spellCheck={false}
-            placeholder="Name, address, or stealth address"
+            placeholder="Name or address"
             value={input}
             onChange={(e) => onInput(e.target.value)}
             onPaste={(e) => {
@@ -402,8 +314,24 @@ function WalletSendForm({
             }}
             aria-invalid={isZero || contract || lookup.status === "invalid" ? true : undefined}
           />
-          <button type="button" className="send-secondary" onClick={() => void paste()}>
-            Paste
+          <button
+            type="button"
+            className="send-secondary send-icon-button"
+            aria-label="Paste"
+            onClick={() => void paste()}
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              aria-hidden="true"
+            >
+              <path d="M8 5H6a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M8 12h8M8 16h6" />
+              <rect x="8" y="2" width="8" height="6" rx="2" />
+            </svg>
           </button>
           {active && <ScanRecipient onScan={onInput} />}
         </div>
@@ -414,41 +342,56 @@ function WalletSendForm({
         )}
         <div className="send-recipient-row">
           {recipient && <RecipientChip recipient={recipient} />}
-          {privacy === "Private" && destination !== undefined ? (
-            <select
-              aria-label="Destination network"
-              className="send-field__control send-chip"
-              value={destination}
-              onChange={(event) => setSelectedDestination(Number(event.target.value))}
-            >
-              {privateChains.map((chain) => (
-                <option key={chain} value={chain}>
-                  {chainName(chain)}
-                </option>
-              ))}
-            </select>
-          ) : privacy === "Shielded" ? (
-            <span className="send-chip">Ethereum</span>
-          ) : (
-            network
-          )}
           {recipient &&
-            (recipient.address &&
-            recipient.stealthMetaAddress &&
-            destinations.includes("address") &&
-            (privacy === "Private" || destinations.includes("stealth")) ? (
-              <button
-                type="button"
-                className="send-secondary send-chip"
-                aria-label={`Privacy: ${privacy}. Switch to ${privacy === "Private" ? "Public" : "Private"}`}
-                onClick={() => setPublicChoice(privacy === "Private" ? input : undefined)}
+            (privacy === "Stealth" && destination !== undefined ? (
+              <select
+                aria-label="Destination network"
+                className="send-field__control send-chip"
+                value={destination}
+                onChange={(event) => setSelectedDestination(Number(event.target.value))}
               >
-                {privacy}
-              </button>
+                {stealthChains.map((chain) => (
+                  <option key={chain} value={chain}>
+                    {chainName(chain)}
+                  </option>
+                ))}
+              </select>
+            ) : privacy === "Shielded" ? (
+              <span className="send-chip">Ethereum</span>
             ) : (
-              <span className="send-chip">{privacy}</span>
+              network
             ))}
         </div>
+        {recipient && (
+          <div className="send-mode">
+            <strong>
+              <PrivacyBars
+                count={privacy === "Stealth" ? 2 : privacy === "Shielded" ? 3 : 1}
+                active
+              />
+              {privacy}
+            </strong>
+            <p className="send-note">
+              {privacy === "Stealth"
+                ? `${recipient.name ?? "This recipient"} receives at a stealth address. ${MODE_META.stealth}.`
+                : privacy === "Shielded"
+                  ? `${recipient.name ?? recipient.shieldedAlias} receives in the zk.money shielded pool.`
+                  : `${MODE_META.public}.`}
+            </p>
+            {recipient.address &&
+              recipient.stealthMetaAddress &&
+              destinations.includes("address") &&
+              (privacy === "Stealth" || destinations.includes("stealth")) && (
+                <button
+                  type="button"
+                  className="send-secondary send-mode__action"
+                  onClick={() => setPublicChoice(privacy === "Stealth" ? input : undefined)}
+                >
+                  {privacy === "Stealth" ? "Send publicly instead" : "Send with Stealth"}
+                </button>
+              )}
+          </div>
+        )}
         {networkMismatch && (
           <p className="send-note">
             This name points to another address on {chainName(draft.chainId)}
@@ -467,7 +410,7 @@ function WalletSendForm({
           !recipient.stealthMetaAddress &&
           !recipient.shieldedAlias && (
             <p className="send-note send-invite">
-              <span>{recipient.name ?? "This wallet"} hasn't set up private receiving</span>
+              <span>{recipient.name ?? "This wallet"} hasn't set up stealth receiving</span>
               <button type="button" className="send-secondary" onClick={() => void copyInvite()}>
                 Copy invite link
               </button>
@@ -478,7 +421,7 @@ function WalletSendForm({
         <label className="send-field__label" htmlFor={`${id}-amount`}>
           Amount
         </label>
-        <div className="send-field__with-action send-input">
+        <div className="send-field__with-action send-input send-input--amount">
           <input
             id={`${id}-amount`}
             className="send-field__control"
@@ -489,30 +432,32 @@ function WalletSendForm({
             aria-invalid={errors.amount ? true : undefined}
             onChange={(e) => update({ amount: e.target.value })}
           />
-          <select
-            aria-label="Asset"
-            className="send-field__control send-chip"
-            value={token?.address ?? ""}
-            onChange={(e) => update({ tokenAddress: e.target.value })}
-          >
-            {tokens.map((asset) => (
-              <option key={asset.address} value={asset.address}>
-                {asset.symbol}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            className="send-secondary"
-            disabled={balance === null || !token}
-            onClick={() => {
-              if (balance !== null && token) update({ amount: exact(balance, token.decimals) });
-            }}
-          >
-            Max
-          </button>
+          <div className="send-asset">
+            {token && <TokenIcon symbol={token.symbol} className="token-icon" />}
+            <select
+              aria-label="Asset"
+              className="send-field__control send-chip"
+              value={token?.address ?? ""}
+              onChange={(e) => update({ tokenAddress: e.target.value })}
+            >
+              {tokens.map((asset) => (
+                <option key={asset.address} value={asset.address}>
+                  {asset.symbol}
+                </option>
+              ))}
+            </select>
+          </div>
+          {balance !== null && token && (
+            <button
+              type="button"
+              className="send-secondary"
+              onClick={() => update({ amount: exact(balance, token.decimals) })}
+            >
+              Max
+            </button>
+          )}
         </div>
-        {(privacy === "Shielded" || (privacy === "Private" && destination !== undefined)) && (
+        {(privacy === "Shielded" || (privacy === "Stealth" && destination !== undefined)) && (
           <div className="send-recipient-row">
             <span>Pay from</span>
             {network}

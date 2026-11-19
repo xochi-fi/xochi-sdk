@@ -1,3 +1,4 @@
+import type { ResolvedRecipient } from "../../lib/recipient/index.js";
 import type { Ref } from "react";
 import type { SwapPrefill } from "../trade/SwapPanel.js";
 import { SEND_DESTINATION_KINDS, type SendDestinationKind } from "../trade/WidgetTabs.js";
@@ -10,7 +11,7 @@ interface SendPanelProps {
   showQuote: boolean;
   quoteMount: Ref<HTMLDivElement>;
   onCloseQuote: () => void;
-  onStealthContinue: (order: Omit<SwapPrefill, "nonce">) => void;
+  onQuote: (order: Omit<SwapPrefill, "nonce">, recipient: ResolvedRecipient) => void;
   onConnectRequest?: () => void;
 }
 

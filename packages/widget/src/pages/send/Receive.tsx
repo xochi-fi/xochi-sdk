@@ -109,9 +109,12 @@ export function Receive({ onConnect }: { onConnect?: () => void }) {
 
   if (!address)
     return (
-      <button type="button" className="submit-btn send-cta" onClick={onConnect}>
-        Connect wallet
-      </button>
+      <>
+        <p className="send-note">Share your wallet or stealth address to receive funds.</p>
+        <button type="button" className="submit-btn send-cta" onClick={onConnect}>
+          Connect wallet
+        </button>
+      </>
     );
   return (
     <section className="send-review" aria-label="Receive">
@@ -130,7 +133,7 @@ export function Receive({ onConnect }: { onConnect?: () => void }) {
                 <p className="send-note">
                   Your stealth address becomes public and linked to this wallet.
                 </p>
-                <p className="send-note">{chainName(chainId)}</p>
+                <p className="send-note">On {chainName(chainId)}</p>
                 {submission === "failed" && <p role="alert">Registration could not be confirmed</p>}
                 <div className="send-review__actions">
                   <button
@@ -154,20 +157,26 @@ export function Receive({ onConnect }: { onConnect?: () => void }) {
                 </div>
               </>
             ) : (
-              <button
-                type="button"
-                className="send-secondary"
-                onClick={() => {
-                  setSubmission("idle");
-                  setReview({ address, chainId, meta });
-                }}
-              >
-                Let people find me privately
-              </button>
+              <>
+                <p className="send-note">
+                  Publish your stealth address so people can find it from your wallet address.
+                </p>
+                <button
+                  type="button"
+                  className="send-secondary"
+                  onClick={() => {
+                    setSubmission("idle");
+                    setReview({ address, chainId, meta });
+                  }}
+                >
+                  Publish stealth address
+                </button>
+              </>
             ))}
         </>
       ) : (
         <>
+          <p className="send-note">Sign a message in your wallet to set up your stealth keys.</p>
           <button
             type="button"
             className="send-secondary"
@@ -181,9 +190,9 @@ export function Receive({ onConnect }: { onConnect?: () => void }) {
       )}
       <p className="send-note" role="status">
         {status === "published"
-          ? "Private receiving published"
+          ? "Stealth address published"
           : status === "not_published"
-            ? "Private receiving unpublished"
+            ? "Stealth address unpublished"
             : status === "unknown" || !deps
               ? "Registration status unavailable"
               : "Checking registration…"}

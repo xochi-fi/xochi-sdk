@@ -18,6 +18,7 @@ import { createPortal } from "react-dom";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useAccount, useConfig } from "wagmi";
 import { watchAccount } from "wagmi/actions";
+import type { ResolvedRecipient } from "../lib/recipient/index.js";
 import { useOrderHistory } from "../hooks/useOrderHistory.js";
 import { useWalletSession } from "../hooks/useWalletSession.js";
 import { useLocalActivity } from "../hooks/useLocalActivity.js";
@@ -342,7 +343,8 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
   // distinct so re-clicking the same row re-applies (SwapPanel keys off it).
   const [retryPrefill, setRetryPrefill] = useState<SwapPrefill | null>(null);
   const retryNonce = useRef(0);
-  const [showSendQuote, setShowSendQuote] = useState(false);
+  const [sendQuoteRecipient, setSendQuoteRecipient] = useState<ResolvedRecipient>();
+  const showSendQuote = sendQuoteRecipient !== undefined;
   const tradeSwapMount = useRef<HTMLDivElement>(null);
   const sendSwapMount = useRef<HTMLDivElement>(null);
   const [swapSurface] = useState(() => {
@@ -480,17 +482,17 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
         recipientTag: item.data.recipientTag,
         refundAddress: item.data.deposit?.attested.refund_address ?? undefined,
       });
-      setShowSendQuote(false);
+      setSendQuoteRecipient(undefined);
       setTradeMode("swap");
       selectTab("trade");
     },
     [selectTab],
   );
 
-  const handleSendQuote = (order: Omit<SwapPrefill, "nonce">) => {
+  const handleSendQuote = (order: Omit<SwapPrefill, "nonce">, recipient: ResolvedRecipient) => {
     retryNonce.current += 1;
-    setRetryPrefill({ ...order, nonce: retryNonce.current });
-    setShowSendQuote(true);
+    setRetryPrefill({ ...order, nonce: retryNonce.current, fromSend: true });
+    setSendQuoteRecipient(recipient);
   };
 
   // Report: assemble a failure reference from the history row and fire the same
@@ -637,8 +639,8 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
                 destinations={surfaces.destinations}
                 showQuote={showSendQuote}
                 quoteMount={sendSwapMount}
-                onStealthContinue={handleSendQuote}
-                onCloseQuote={() => setShowSendQuote(false)}
+                onQuote={handleSendQuote}
+                onCloseQuote={() => setSendQuoteRecipient(undefined)}
                 onConnectRequest={hostOwnsWalletUi ? requestHostConnect : undefined}
               />
             </div>
@@ -648,6 +650,7 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
             createPortal(
               <SwapPanel
                 prefill={retryPrefill}
+                sendRecipient={selectedTab === "send" ? sendQuoteRecipient : undefined}
                 onStealthSettled={handleStealthSettled}
                 onGoToClaims={tabsShown || claimInXochiApp ? undefined : openClaims}
                 howItWorks={look.howItWorks && !(selectedTab === "send" && showSendQuote)}
@@ -720,7 +723,7 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
           notices) carry the education. */}
           {claimsAvailable && (
             <div {...panelProps("claims")}>
-              <section className="launch-stealth" aria-label="Private receiving">
+              <section className="launch-stealth" aria-label="Stealth receiving">
                 <PrivacyPanel
                   trustScore={trustScore}
                   disclosuresLive={features.verificationBetaLive}

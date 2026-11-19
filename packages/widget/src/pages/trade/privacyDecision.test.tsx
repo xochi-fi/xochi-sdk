@@ -248,9 +248,7 @@ describe("stealth blockers are triaged, not collapsed", () => {
     expect(mode("Stealth").getAttribute("aria-describedby")).toBe("stealth-destinations");
     fireEvent.click(mode("Stealth"));
     expect(captionNotice()).toBeNull();
-    expect(document.querySelector(".settlement-caption[aria-live]")?.textContent).toContain(
-      "Stealth derives its one-time address from a connected wallet.",
-    );
+    expect(document.querySelector(".settlement-caption[aria-live]")?.textContent).toBe("");
     // The picker's exact-route guidance replaces the network hint, never stacks on it.
     expect(document.querySelector("#stealth-destinations")).toBeNull();
     expect(mode("Stealth").hasAttribute("aria-describedby")).toBe(false);
@@ -392,8 +390,8 @@ describe("stealth blockers are triaged, not collapsed", () => {
     );
     await waitFor(
       () =>
-        expect(mode("Stealth").querySelector(".type-btn__meta--fix")?.textContent).toBe(
-          "Uses wallet keys",
+        expect(mode("Stealth").querySelector(".type-btn__meta")?.textContent).toBe(
+          "Recipient hidden, amount visible",
         ),
       WAIT,
     );
@@ -526,11 +524,11 @@ describe("the guidance slot holds at most one notice", () => {
 describe("standalone privacy UI only when relevant", () => {
   it("gates the private receiving section on a connected wallet", async () => {
     const anonymous = await renderTrade(<Trade look={FULL_LOOK} />);
-    expect(anonymous.container.querySelector('[aria-label="Private receiving"]')).toBeNull();
+    expect(anonymous.container.querySelector('[aria-label="Stealth receiving"]')).toBeNull();
     cleanup();
 
     const connected = await renderTrade(<Trade look={FULL_LOOK} />, { connected: true });
-    expect(connected.container.querySelector('[aria-label="Private receiving"]')).toBeTruthy();
+    expect(connected.container.querySelector('[aria-label="Stealth receiving"]')).toBeTruthy();
   });
 });
 

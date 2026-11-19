@@ -772,31 +772,23 @@ describe("zk.money destination", () => {
     expect(tagField()?.value).toBe("");
   });
 
-  it("returns to automatic Stealth after tag navigation without a Public opt-in", async () => {
+  it("keeps the guest Public default and drops the tag after leaving zk.money", async () => {
     const bodies = await quoteToTag(taggedQuote);
     await waitFor(() => expect(document.querySelector(".quote-details")).toBeTruthy(), WAIT);
     const tagQuoteCount = bodies.length;
-    expect(bodies.every((body) => body.settlement_preference === "public")).toBe(true);
+
     fireEvent.click(screen.getByRole("button", { name: "On zk.money - Change network" }));
     const dialog = await screen.findByRole("dialog", { name: "Select network" }, WAIT);
-    const ethereum = within(dialog).getByRole("button", { name: /^Ethereum/ });
-    fireEvent.click(ethereum);
-    await waitFor(
-      () =>
-        expect(screen.getByRole("button", { name: /^Stealth/ }).getAttribute("aria-pressed")).toBe(
-          "true",
-        ),
-      WAIT,
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Ethereum/ }));
+
+    expect(screen.getByRole("button", { name: /^Public/ }).getAttribute("aria-pressed")).toBe(
+      "true",
     );
     expect(tagField()).toBeNull();
-    vi.useFakeTimers();
-    try {
-      await act(() => vi.advanceTimersByTimeAsync(QUOTE_DEBOUNCE_MS * 2));
-      // The tag's Public wire mode was not an opt-in, and missing Stealth keys
-      // must not fall back to another Public quote after leaving the tag rail.
-      expect(bodies).toHaveLength(tagQuoteCount);
-    } finally {
-      vi.useRealTimers();
+    await waitFor(() => expect(bodies.length).toBeGreaterThan(tagQuoteCount), WAIT);
+    for (const body of bodies.slice(tagQuoteCount)) {
+      expect(body.settlement_preference).toBe("public");
+      expect(body).not.toHaveProperty("recipient_tag");
     }
   });
 

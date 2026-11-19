@@ -70,13 +70,29 @@ export function ScanRecipient({ onScan }: { onScan: (value: string) => void }) {
     <>
       <button
         type="button"
-        className="send-secondary"
+        className="send-secondary send-icon-button"
+        aria-label={open ? "Close camera" : "Scan QR"}
+        aria-expanded={open}
         onClick={() => {
           setError(false);
           setOpen(!open);
         }}
       >
-        {open ? "Close camera" : "Scan QR"}
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          {open ? (
+            <path d="m6 6 12 12M18 6 6 18" />
+          ) : (
+            <path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6M3 12h18" />
+          )}
+        </svg>
       </button>
       {open && (
         <div className="send-scan">
