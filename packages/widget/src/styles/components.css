@@ -1098,3 +1098,7 @@
     transition: none;
   }
 }
+
+.swap-recipient-sheet .recipient-field__label {
+  font-size: 0.75rem;
+}

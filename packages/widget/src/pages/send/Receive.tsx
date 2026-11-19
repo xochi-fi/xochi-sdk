@@ -9,6 +9,7 @@ import {
 import { chainName } from "./addressSend.js";
 import { useRecipientDeps } from "./useSendRecipient.js";
 import { buildQrSvg } from "../../lib/qr.js";
+import { StealthInvite } from "./StealthInvite.js";
 import { useStealth } from "../../hooks/useStealth.js";
 
 function ReceiveValue({ label, value }: { label: string; value: string }) {
@@ -114,15 +115,17 @@ export function Receive({ onConnect }: { onConnect?: () => void }) {
         <button type="button" className="submit-btn send-cta" onClick={onConnect}>
           Connect wallet
         </button>
+        <StealthInvite />
       </>
     );
   return (
     <section className="send-review" aria-label="Receive">
+      <StealthInvite />
       <ReceiveValue key={address} label="Wallet address" value={address} />
       {meta ? (
         <>
           <p className="send-note">Share this so people can send to you with Stealth.</p>
-          <ReceiveValue key={meta} label="Stealth meta-address" value={meta} />
+          <ReceiveValue key={meta} label="Stealth address" value={meta} />
           {status !== "published" &&
             chainId &&
             tx &&

@@ -420,7 +420,12 @@
 }
 
 .launch-screen
-  :is(button, input, select, textarea, summary):not(.amount-input, .input-row input):focus-visible,
+  :is(button, input, select, textarea, summary):not(
+    .amount-input,
+    .input-row input,
+    .send-input--recipient > input
+  ):focus-visible,
+.send-input--recipient:has(> input:focus-visible),
 .send-destination:has(:focus-visible),
 .ramp-tile:has(:focus-visible) {
   outline: 2px solid var(--pearl-cream);
@@ -431,8 +436,10 @@
   .launch-screen
     :is(button, input, select, textarea, summary):not(
       .amount-input,
-      .input-row input
+      .input-row input,
+      .send-input--recipient > input
     ):focus-visible,
+  .send-input--recipient:has(> input:focus-visible),
   .send-destination:has(:focus-visible),
   .ramp-tile:has(:focus-visible) {
     outline-color: Highlight;
@@ -452,6 +459,10 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.send-invite > button {
+  padding-inline: 0.65rem;
 }
 
 .send-toolbar {
@@ -703,4 +714,78 @@
   .swap-flow-modal--send .modal-actions {
     flex-direction: column-reverse;
   }
+}
+
+.send-input--recipient > input.send-field__control:focus-visible {
+  box-shadow: none;
+}
+
+.send-stealth-help {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+.send-stealth-help summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.send-stealth-help summary::-webkit-details-marker {
+  display: none;
+}
+
+.send-stealth-help summary span {
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.send-stealth-help ol {
+  margin-block: 0.35rem 0;
+  padding-inline-start: 1.25rem;
+}
+
+.recent-recipients {
+  display: grid;
+  justify-items: start;
+  gap: 0.25rem;
+  min-width: 0;
+  font-size: 0.75rem;
+  text-align: start;
+}
+
+.swap-recipient-sheet .recent-recipients {
+  padding: 0 1rem 0.75rem;
+}
+
+.recent-recipients p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.recent-recipients__pick {
+  padding: 0.35rem 0.5rem;
+  min-height: 44px;
+  max-width: 100%;
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-control);
+  background: var(--inset-bg);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.recent-recipients__pick:hover {
+  border-color: var(--line-strong);
+}
+
+.recent-recipients__pick:focus-visible {
+  outline: 2px solid var(--pearl-cream);
+  outline-offset: 2px;
+}
+
+.recent-recipients__pick small {
+  color: var(--text-secondary);
+  font-size: inherit;
 }

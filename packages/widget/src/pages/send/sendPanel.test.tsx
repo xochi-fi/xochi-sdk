@@ -157,6 +157,20 @@ afterEach(() => {
 });
 
 describe("send to an address", () => {
+  it("shows Stealth help for an empty To field and hides it when a recipient resolves", async () => {
+    stubWallet();
+    await openSend({ tokenBalance: 10_000_000n });
+    const form = sendForm();
+    const help = form.getByText(/Send with Stealth/).closest("details");
+    expect(help?.open).toBe(false);
+    expect(help?.querySelector("summary")?.textContent).toContain("How");
+    expect(help?.querySelectorAll("li")).toHaveLength(2);
+
+    await fillAddressForm("1", RECIPIENT);
+    await form.findByText("Public", {}, WAIT);
+    expect(form.queryByText(/Send with Stealth/)).toBeNull();
+  });
+
   it("keeps an address invalid for the chain out of review, asking the wallet nothing", async () => {
     const calls = stubWallet();
     await openSend({ tokenBalance: 10_000_000n });
@@ -204,13 +218,14 @@ describe("send to an address", () => {
     expect(within(review).getByText(getAddress(RECIPIENT))).toBeTruthy();
     // Reviewing is not approving: the wallet has been asked for nothing.
     expect(prompts(calls)).toEqual([]);
+    expect(readRecentRecipients()).toEqual([]);
 
     fireEvent.click(within(review).getByRole("button", { name: "Confirm in wallet" }));
 
     const sent = await screen.findByRole("region", { name: "Send submitted" }, WAIT);
     expect(within(sent).getByText(TX_HASH)).toBeTruthy();
-    await within(sent).findByRole("heading", { name: "Sent" }, WAIT);
     expect(readRecentRecipients()).toContain(RECIPIENT);
+    await within(sent).findByRole("heading", { name: "Sent" }, WAIT);
 
     // Exactly one transaction, and it is the reviewed transfer.
     const txs = calls.filter((c) => c.method === "eth_sendTransaction");
@@ -279,6 +294,26 @@ describe("Receive", () => {
     await screen.findByRole("img", { name: "Wallet address QR code" }, WAIT);
   });
 
+  it("copies a Stealth invitation with setup instructions", async () => {
+    stubWallet();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const original = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    try {
+      await renderTrade(<Trade look={FULL_LOOK} />);
+      fireEvent.click(topTab("Send"));
+      fireEvent.click(sendForm().getByRole("button", { name: "Receive" }));
+      fireEvent.click(screen.getByRole("button", { name: "Invite to Stealth" }));
+      await screen.findByText("Invite copied", {}, WAIT);
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringMatching(/receive=1, connect your wallet and select Set up Stealth\.$/),
+      );
+    } finally {
+      if (original) Object.defineProperty(navigator, "clipboard", original);
+      else Reflect.deleteProperty(navigator, "clipboard");
+    }
+  });
+
   it("opens without wallet prompts and initializes keys on request", async () => {
     const calls = stubWallet();
     await openSend({ tokenBalance: 10_000_000n });
@@ -291,7 +326,7 @@ describe("Receive", () => {
     });
     await waitFor(() => expect(setup.disabled).toBe(false), WAIT);
     fireEvent.click(setup);
-    await within(receive).findByRole("img", { name: "Stealth meta-address QR code" }, WAIT);
+    await within(receive).findByRole("img", { name: "Stealth address QR code" }, WAIT);
     expect(prompts(calls)).toHaveLength(1);
     fireEvent.click(within(receive).getByRole("button", { name: "Publish Stealth details" }));
     expect(

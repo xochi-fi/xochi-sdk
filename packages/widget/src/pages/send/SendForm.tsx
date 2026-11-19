@@ -29,12 +29,12 @@ import { TokenIcon } from "../../components/TokenIcon.js";
 import type { SendRetryDraft } from "./sendRetry.js";
 import { SHIELDED_DESCRIPTION } from "./sendCopy.js";
 import { PrivacyBars } from "../../components/PrivacyBars.js";
-import { SITE_URL } from "../../config.js";
 import { stealthSendDestinations } from "./stealthSend.js";
 import { Receive } from "./Receive.js";
 import { ScanRecipient } from "./ScanRecipient.js";
-import { recipientLabel } from "../trade/RecipientSheet.js";
-import { readRecentRecipients, rememberRecipient } from "../../lib/recipient/recent.js";
+import { RecentRecipients } from "./RecentRecipients.js";
+import { StealthInvite } from "./StealthInvite.js";
+import { rememberRecipient } from "../../lib/recipient/recent.js";
 import type { ResolvedRecipient } from "../../lib/recipient/index.js";
 
 type SettlementOrder = Omit<SwapPrefill, "nonce">;
@@ -125,7 +125,6 @@ function WalletSendForm({
   const [selectedDestination, setSelectedDestination] = useState<number | undefined>(
     retry?.toChainId,
   );
-  const [inviteStatus, setInviteStatus] = useState("");
   const history = useLocalSends();
   const { capabilities, state: capabilityState } = useCapabilities();
 
@@ -190,10 +189,10 @@ function WalletSendForm({
     setDraft((d) => ({ ...d, ...patch }));
   };
   const { phase } = send;
-  const confirmed = phase.step === "sent" && phase.outcome === "confirmed";
+  const dispatchedHash = phase.step === "sent" ? phase.hash : undefined;
   useEffect(() => {
-    if (confirmed && reviewedRecipient) rememberRecipient(reviewedRecipient);
-  }, [confirmed, reviewedRecipient]);
+    if (dispatchedHash && reviewedRecipient) rememberRecipient(reviewedRecipient);
+  }, [dispatchedHash, reviewedRecipient]);
 
   const onChain = (next: number): void => {
     const same = sendTokens(next).find((t) => t.symbol === token?.symbol) ?? defaultSendToken(next);
@@ -205,7 +204,6 @@ function WalletSendForm({
       setInput(next);
       setPublicChoice(undefined);
       setPasteError("");
-      setInviteStatus("");
     },
     [onEditRetry],
   );
@@ -216,21 +214,6 @@ function WalletSendForm({
       setPasteError("Paste into To directly");
     }
   };
-  const copyInvite = async () => {
-    const embedded = window.parent !== window;
-    const link = embedded
-      ? new URL("/trade", SITE_URL)
-      : new URL(location.pathname, location.origin);
-    link.searchParams.set(embedded ? "tab" : "initialTab", "send");
-    link.searchParams.set("receive", "1");
-    try {
-      await navigator.clipboard.writeText(link.href);
-      setInviteStatus("Invite copied");
-    } catch {
-      setInviteStatus("Could not copy invite");
-    }
-  };
-
   const onSubmit = (e: FormEvent): void => {
     e.preventDefault();
     if (!isConnected) {
@@ -331,7 +314,6 @@ function WalletSendForm({
           item.status !== "failed" &&
           item.data.recipient.toLowerCase() === recipient.address?.toLowerCase(),
       );
-    const recent = input ? [] : readRecentRecipients();
     return (
       <form
         className="send-form send-form--recipient"
@@ -385,26 +367,28 @@ function WalletSendForm({
               strokeWidth="1.5"
               aria-hidden="true"
             >
-              <path d="M8 5H6a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M8 12h8M8 16h6" />
-              <rect x="8" y="2" width="8" height="6" rx="2" />
+              <rect x="8" y="2" width="8" height="4" rx="1" />
+              <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
             </svg>
           </button>
           {active && <ScanRecipient onScan={onInput} />}
         </div>
-        {recent.length > 0 && (
-          <section className="swap-recipient-recent" aria-label="Recent recipients">
-            <p>Recent</p>
-            {recent.map((value) => (
-              <button
-                className="btn btn--ghost"
-                key={value}
-                type="button"
-                onClick={() => onInput(value)}
-              >
-                {recipientLabel(value)}
-              </button>
-            ))}
-          </section>
+        {!input.trim() && !recipient && (
+          <>
+            <details className="send-stealth-help">
+              <summary>
+                Send with Stealth. Use a name or stealth address. <span>How</span>
+              </summary>
+              <ol>
+                <li>
+                  They open Receive to share their stealth address or publish it so their name
+                  works.
+                </li>
+                <li>Paste the address or type their name here.</li>
+              </ol>
+            </details>
+            <RecentRecipients onSelect={onInput} />
+          </>
         )}
         {(pasteError || status) && (
           <p className="send-note" role="status">
@@ -501,10 +485,7 @@ function WalletSendForm({
           !recipient.shieldedAlias && (
             <p className="send-note send-invite">
               <span>{recipient.name ?? "This wallet"} hasn't set up stealth receiving</span>
-              <button type="button" className="send-secondary" onClick={() => void copyInvite()}>
-                Copy invite
-              </button>
-              {inviteStatus && <span role="status">{inviteStatus}</span>}
+              <StealthInvite key={input} />
             </p>
           )}
         {!contract && firstTime && <p className="send-note">First time sending here</p>}
