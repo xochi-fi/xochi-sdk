@@ -1,3 +1,4 @@
+import { sentToRecipient, type SendRecipientDisplay } from "../../pages/send/sendCopy.js";
 /**
  * SwapResult
  *
@@ -53,6 +54,7 @@ interface SwapResultProps {
    * recipient claims it with their own keys, so no ending offers a claim here.
    */
   stealthPayee?: "self" | "other";
+  sendRecipientDisplay?: SendRecipientDisplay;
   /**
    * The zk.money tag the DAI was sent for. Our side ends at the confirmed L1
    * transfer; the credit shows up in zk.money, so the ending links there.
@@ -130,6 +132,7 @@ export function SwapResult({
   variant,
   isStealth,
   stealthPayee,
+  sendRecipientDisplay,
   recipientTag,
   substatus,
   fromChainId,
@@ -248,13 +251,15 @@ export function SwapResult({
           </svg>
         </div>
         <h3 className="swap-result__title">
-          {isStealth
-            ? stealthPayee === "other"
-              ? "Landed at the recipient's private address"
-              : "Landed at the private address"
-            : recipientTag !== undefined
-              ? `Sent to @${recipientTag}`
-              : "Swap complete"}
+          {sendRecipientDisplay
+            ? sentToRecipient(sendRecipientDisplay)
+            : isStealth
+              ? stealthPayee === "other"
+                ? "Landed at the recipient's one-time stealth address"
+                : "Landed at the one-time stealth address"
+              : recipientTag !== undefined
+                ? `Sent to @${recipientTag}`
+                : "Swap complete"}
         </h3>
         {receivedAmount && (
           <p className="swap-result__amount">
@@ -281,8 +286,9 @@ export function SwapResult({
           <div className="swap-result__claim-step">
             <h4 className="swap-result__claim-title">Next: the recipient claims it</h4>
             <p className="swap-result__claim-note">
-              The funds wait at a one-time address derived from the recipient's meta-address. They
-              find and claim it with their own stealth keys; there is nothing left for you to do.
+              The funds wait at a one-time stealth address derived from the recipient's stealth
+              meta-address. They find and claim it with their own stealth keys; there is nothing
+              left for you to do.
             </p>
           </div>
         )}
@@ -374,34 +380,38 @@ export function SwapResult({
             held by the server completion guard (#257). Surface delivered, not an
             open-ended "still confirming". */}
         {/* A stealth swap that has DELIVERED is a different state from one still
-            settling, and the app used to show both as "Settling privately". The
+            settling, and the app used to show both as "Settling with Stealth". The
             money is at the one-time address at that point, so say so -- but do
             not say "claim it now": the claim needs the settlement to be
             announced, which can lag the delivery (xochi#376). Promising a claim
             the user cannot make is worse than saying we are still preparing it. */}
         <h3 className="swap-result__title">
-          {isStealth
-            ? stealthDelivered
-              ? stealthPayee === "other"
-                ? "Delivered privately"
-                : "Preparing the claim"
-              : "Settling privately"
-            : useReceipt
-              ? "Funds delivered"
-              : "Still confirming"}
+          {sendRecipientDisplay
+            ? stealthDelivered || useReceipt
+              ? sentToRecipient(sendRecipientDisplay)
+              : `Settling ${sendRecipientDisplay.mode} send`
+            : isStealth
+              ? stealthDelivered
+                ? stealthPayee === "other"
+                  ? "Delivered with Stealth"
+                  : "Preparing the claim"
+                : "Settling with Stealth"
+              : useReceipt
+                ? "Funds delivered"
+                : "Still confirming"}
         </h3>
         <p className="swap-result__desc">
           {isStealth && stealthPayee === "other"
             ? stealthDelivered
-              ? "The funds landed at a one-time private address only the recipient can spend from. They claim it with their own stealth keys; there is nothing to do. Safe to close this."
+              ? "The funds landed at a one-time stealth address only the recipient can spend from. They claim it with their own stealth keys; there is nothing to do. Safe to close this."
               : "Stealth payouts route to a one-time address only the recipient controls. When it lands, they claim it with their own stealth keys. Safe to close this."
             : isStealth
               ? stealthDelivered
                 ? tabsShown
-                  ? "The funds landed at a one-time private address that only the connected wallet can spend from. The claim is still being set up; there is nothing to do. Safe to close this. It will show up in Stealth Payments when it is ready."
+                  ? "The funds landed at a one-time stealth address that only the connected wallet can spend from. The claim is still being set up; there is nothing to do. Safe to close this. It will show up in Claims when it is ready."
                   : claimInXochiApp
-                    ? `The funds landed at a one-time private address that only the connected wallet can spend from. The claim is still being set up; there is nothing to do. Safe to close this. When it is ready: ${CLAIM_IN_XOCHI_APP}`
-                    : "The funds landed at a one-time private address that only the connected wallet can spend from. The claim is still being set up; there is nothing to do. Safe to close this, then claim it on the full widget when it is ready."
+                    ? `The funds landed at a one-time stealth address that only the connected wallet can spend from. The claim is still being set up; there is nothing to do. Safe to close this. When it is ready: ${CLAIM_IN_XOCHI_APP}`
+                    : "The funds landed at a one-time stealth address that only the connected wallet can spend from. The claim is still being set up; there is nothing to do. Safe to close this, then claim it on the full widget when it is ready."
                 : tabsShown
                   ? "Stealth swaps route to a one-time address only the connected wallet controls. When it lands, claim it in the Claims tab to move it into the wallet. The funds are safe -- safe to close this."
                   : claimInXochiApp
@@ -539,7 +549,9 @@ export function SwapResult({
           <path d="M11 11l10 10M21 11L11 21" />
         </svg>
       </div>
-      <h3 className="swap-result__title">{info?.message ?? "Swap failed"}</h3>
+      <h3 className="swap-result__title">
+        {info?.message ?? (sendRecipientDisplay ? "Send failed" : "Swap failed")}
+      </h3>
       {info?.suggestion && <p className="swap-result__desc">{info.suggestion}</p>}
 
       {failureRef && !tagLookupFailure && (

@@ -20,6 +20,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { SIMPLE_ACCOUNT_FACTORY } from "@xochi/client";
 import { connect } from "@wagmi/core";
 import { decodeFunctionData, erc20Abi, getAddress, isAddress } from "viem";
 import {
@@ -158,7 +159,7 @@ describe("send to an address", () => {
     const calls = stubWallet();
     await openSend({ tokenBalance: 10_000_000n });
     const panel = sendForm();
-    expect(panel.queryByLabelText("Network")).toBeNull();
+    expect(panel.getByLabelText("Pay from")).toBeTruthy();
 
     // A mixed-case address whose EIP-55 checksum is wrong.
     await fillAddressForm("1", "0xaBcdef0123456789abcdef0123456789abcdef01");
@@ -189,7 +190,7 @@ describe("send to an address", () => {
     harnessReceipts.set(TX_HASH, "success");
     await openSend({ tokenBalance: 10_000_000n });
     await fillAddressForm("1.234567", RECIPIENT);
-    fireEvent.change(await sendForm().findByLabelText("Network", {}, WAIT), {
+    fireEvent.change(await sendForm().findByLabelText("Pay from", {}, WAIT), {
       target: { value: "1" },
     });
     await sendForm().findByText("Public", {}, WAIT);
@@ -232,7 +233,7 @@ describe("send to an address", () => {
     harnessReceipts.set(TX_HASH, "success");
     await openSend({ tokenBalance: 10_000_000n, hostWallet: true });
     await fillAddressForm("1", RECIPIENT);
-    fireEvent.change(await sendForm().findByLabelText("Network", {}, WAIT), {
+    fireEvent.change(await sendForm().findByLabelText("Pay from", {}, WAIT), {
       target: { value: "1" },
     });
     await sendForm().findByText("Public", {}, WAIT);
@@ -247,7 +248,7 @@ describe("send to an address", () => {
     const calls = stubWallet();
     await openSend({ tokenBalance: 10_000_000n });
     await fillAddressForm("2", RECIPIENT);
-    fireEvent.change(await sendForm().findByLabelText("Network", {}, WAIT), {
+    fireEvent.change(await sendForm().findByLabelText("Pay from", {}, WAIT), {
       target: { value: "1" },
     });
     await sendForm().findByText("Public", {}, WAIT);
@@ -267,7 +268,9 @@ describe("Receive", () => {
     const { config } = await renderTrade(<Trade look={FULL_LOOK} />);
     fireEvent.click(topTab("Send"));
     fireEvent.click(sendForm().getByRole("button", { name: "Receive" }));
-    expect(screen.getByText("Share your wallet or stealth address to receive funds.")).toBeTruthy();
+    expect(
+      screen.getByText("Share your wallet or stealth meta-address to receive funds."),
+    ).toBeTruthy();
 
     await connect(config, { connector: config.connectors[0], chainId: 8453 });
     await screen.findByRole("img", { name: "Wallet address QR code" }, WAIT);
@@ -281,15 +284,17 @@ describe("Receive", () => {
     expect(within(receive).getByRole("img", { name: "Wallet address QR code" })).toBeTruthy();
     expect(prompts(calls)).toEqual([]);
     const setup = within(receive).getByRole<HTMLButtonElement>("button", {
-      name: "Set up stealth address",
+      name: "Set up stealth meta-address",
     });
     await waitFor(() => expect(setup.disabled).toBe(false), WAIT);
     fireEvent.click(setup);
-    await within(receive).findByRole("img", { name: "Stealth address QR code" }, WAIT);
+    await within(receive).findByRole("img", { name: "Stealth meta-address QR code" }, WAIT);
     expect(prompts(calls)).toHaveLength(1);
-    fireEvent.click(within(receive).getByRole("button", { name: "Publish stealth address" }));
+    fireEvent.click(within(receive).getByRole("button", { name: "Publish stealth meta-address" }));
     expect(
-      within(receive).getByText("Your stealth address becomes public and linked to this wallet."),
+      within(receive).getByText(
+        "Your stealth meta-address becomes public and linked to this wallet.",
+      ),
     ).toBeTruthy();
     expect(within(receive).getByRole("button", { name: "Confirm in wallet" })).toBeTruthy();
     expect(prompts(calls)).toHaveLength(1);
@@ -336,7 +341,7 @@ describe("send with Stealth to someone else", () => {
     };
   }
 
-  async function openOther(asset: "USDC" | "WETH" = "USDC") {
+  async function openOther(asset: "USDC" | "WETH" = "USDC", signable = false) {
     const bodies: Record<string, unknown>[] = [];
     const calls = stubWallet(
       {},
@@ -345,6 +350,39 @@ describe("send with Stealth to someone else", () => {
         "/api/intent/quote": {
           answer: (request) => {
             bodies.push(request as Record<string, unknown>);
+            if (signable) {
+              const r = request as Record<string, unknown>;
+              const tag = r.recipient_tag;
+              const payout = tag ? "4990000000000000000" : "4990000";
+              return quoteWire({
+                to_amount: payout,
+                min_to_amount: payout,
+                recipient_tag: tag,
+                recipient_address: tag ? RECIPIENT : undefined,
+                claim_info:
+                  r.settlement_preference === "stealth"
+                    ? { factory_address: SIMPLE_ACCOUNT_FACTORY, salt: 0 }
+                    : undefined,
+                settlement_options: [{ type: "stealth", available: true }],
+                eip712: {
+                  domain: { name: "Xochi", version: "3", chainId: r.from_chain_id },
+                  types: { XochiIntent: [{ name: "toAmount", type: "uint256" }] },
+                  primaryType: "XochiIntent",
+                  message: {
+                    wallet: r.wallet,
+                    fromChainId: r.from_chain_id,
+                    toChainId: r.to_chain_id,
+                    fromToken: r.from_token,
+                    toToken: r.to_token,
+                    fromAmount: r.from_amount,
+                    toAmount: payout,
+                    recipient: tag ? RECIPIENT : r.wallet,
+                    settlementPreference: r.settlement_preference,
+                    deadline: Math.floor(Date.now() / 1000) + 300,
+                  },
+                },
+              });
+            }
             return quoteWire({
               can_solve: false,
               error: "No fill",
@@ -354,7 +392,10 @@ describe("send with Stealth to someone else", () => {
         },
       },
     );
-    await openSend({ tokenBalance: asset === "WETH" ? 10n ** 19n : 10_000_000n });
+    await openSend({
+      tokenBalance: asset === "WETH" ? 10n ** 19n : 10_000_000n,
+      walletChainId: 8453,
+    });
     const panel = sendForm();
     return { bodies, calls, panel };
   }
@@ -408,6 +449,41 @@ describe("send with Stealth to someone else", () => {
     }
     // Nothing was signed on the way: no key setup, no quote signature yet.
     expect(prompts(calls)).toEqual([]);
+  });
+
+  it.each([
+    ["published.gwei", "Stealth"],
+    ["mira.zk.money", "Shielded"],
+  ])("uses Send wording through confirmation for %s", async (recipient, mode) => {
+    const { panel, calls } = await openOther("USDC", true);
+    await fillAddressForm("5", recipient);
+    expect(panel.getByText(mode).closest('[aria-live="polite"]')).toBeTruthy();
+    expect(panel.getByText("Arrives on Ethereum")).toBeTruthy();
+    expect(panel.queryByLabelText("Destination network")).toBeNull();
+    fireEvent.click(panel.getByRole("button", { name: "Send" }));
+    const card = within(screen.getByRole("region", { name: "Send quote" }));
+    fireEvent.click(await card.findByRole("button", { name: `Send 5 USDC with ${mode}` }, WAIT));
+    const modal = await screen.findByRole("dialog", { name: `Confirm ${mode} send` }, WAIT);
+    expect(within(modal).getByRole("button", { name: `Confirm ${mode} send` })).toBeTruthy();
+    expect(
+      within(modal).getByText(
+        mode === "Stealth"
+          ? "Lands at a one-time stealth address controlled by published.gwei’s keys."
+          : "Amounts and participants hidden inside zk.money.",
+      ),
+    ).toBeTruthy();
+    expect(within(modal).queryByText(/only the connected wallet controls/)).toBeNull();
+    expect(prompts(calls)).toEqual([]);
+
+    fireEvent.click(within(modal).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(card.getByRole("button", { name: "Back to Send" }));
+    fireEvent.click(topTab("Trade"));
+    fireEvent.change(document.querySelector("#swap-pay-amount")!, { target: { value: "5" } });
+
+    fireEvent.click(await screen.findByRole("button", { name: /^Swap USDC → / }, WAIT));
+    const swapModal = await screen.findByRole("dialog", { name: "Confirm swap" }, WAIT);
+    expect(within(swapModal).getByRole("button", { name: "Confirm swap" })).toBeTruthy();
+    expect(within(swapModal).queryByText(/controlled by published\.gwei/)).toBeNull();
   });
 
   it("locks settlement and the payee in the quote and preserves the Send draft", async () => {

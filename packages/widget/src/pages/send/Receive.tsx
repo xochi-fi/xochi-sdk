@@ -110,7 +110,7 @@ export function Receive({ onConnect }: { onConnect?: () => void }) {
   if (!address)
     return (
       <>
-        <p className="send-note">Share your wallet or stealth address to receive funds.</p>
+        <p className="send-note">Share your wallet or stealth meta-address to receive funds.</p>
         <button type="button" className="submit-btn send-cta" onClick={onConnect}>
           Connect wallet
         </button>
@@ -121,7 +121,10 @@ export function Receive({ onConnect }: { onConnect?: () => void }) {
       <ReceiveValue key={address} label="Wallet address" value={address} />
       {meta ? (
         <>
-          <ReceiveValue key={meta} label="Stealth address" value={meta} />
+          <ReceiveValue key={meta} label="Stealth meta-address" value={meta} />
+          <p className="send-note">
+            Share this meta-address. Each payment arrives at a one-time stealth address.
+          </p>
           {status !== "published" &&
             chainId &&
             tx &&
@@ -131,7 +134,7 @@ export function Receive({ onConnect }: { onConnect?: () => void }) {
             review.meta === meta ? (
               <>
                 <p className="send-note">
-                  Your stealth address becomes public and linked to this wallet.
+                  Your stealth meta-address becomes public and linked to this wallet.
                 </p>
                 <p className="send-note">On {chainName(chainId)}</p>
                 {submission === "failed" && <p role="alert">Registration could not be confirmed</p>}
@@ -159,7 +162,7 @@ export function Receive({ onConnect }: { onConnect?: () => void }) {
             ) : (
               <>
                 <p className="send-note">
-                  Publish your stealth address so people can find it from your wallet address.
+                  Publish your stealth meta-address so people can find it from your wallet address.
                 </p>
                 <button
                   type="button"
@@ -169,7 +172,7 @@ export function Receive({ onConnect }: { onConnect?: () => void }) {
                     setReview({ address, chainId, meta });
                   }}
                 >
-                  Publish stealth address
+                  Publish stealth meta-address
                 </button>
               </>
             ))}
@@ -183,16 +186,16 @@ export function Receive({ onConnect }: { onConnect?: () => void }) {
             disabled={walletStatus !== "connected" || stealth.isLoading}
             onClick={() => void stealth.initializeKeys()}
           >
-            Set up stealth address
+            Set up stealth meta-address
           </button>
           {stealth.error && <p role="alert">Stealth setup could not finish</p>}
         </>
       )}
       <p className="send-note" role="status">
         {status === "published"
-          ? "Stealth address published"
+          ? "Stealth meta-address published"
           : status === "not_published"
-            ? "Stealth address unpublished"
+            ? "Stealth meta-address unpublished"
             : status === "unknown" || !deps
               ? "Registration status unavailable"
               : "Checking registration…"}

@@ -210,7 +210,9 @@ describe("a resumed order ends as the order it was dispatched", () => {
     await resumeToCompletion("stealth");
     await waitFor(
       () =>
-        expect(screen.getByRole("heading", { name: "Landed at the private address" })).toBeTruthy(),
+        expect(
+          screen.getByRole("heading", { name: "Landed at the one-time stealth address" }),
+        ).toBeTruthy(),
       WAIT,
     );
     expect(screen.getByRole("button", { name: "Claim payment" })).toBeTruthy();

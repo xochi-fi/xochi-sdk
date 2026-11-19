@@ -22,6 +22,7 @@ import type {
   OriginApproval,
   SettlementType,
 } from "../types/intent.js";
+import { SHIELDED_DESCRIPTION } from "../pages/send/sendCopy.js";
 import { paysNoGas, resolvePaymentMethod } from "../types/intent.js";
 import { formatTokenAmount, payoutDisplayDecimals, safeBigInt } from "../utils/format.js";
 import { EXTENDED_CHAIN_NAMES, QUOTE_REFRESH_BUFFER_MS } from "@xochi/client";
@@ -444,9 +445,11 @@ export function QuoteDetails({
           already say -- the quote confirms private settlement, or stealth was
           requested but this route can only settle public. */}
       {sendMode === "Shielded" ? (
-        <p className="quote-meta">Shielded</p>
+        <p className="quote-meta">{SHIELDED_DESCRIPTION}</p>
       ) : sendMode === "Stealth" ? (
-        privateConfirmed && <p className="quote-meta">Goes to the recipient's stealth address.</p>
+        privateConfirmed && (
+          <p className="quote-meta">Goes to the recipient's one-time stealth address.</p>
+        )
       ) : (
         <>
           {settlementState !== "public" && (

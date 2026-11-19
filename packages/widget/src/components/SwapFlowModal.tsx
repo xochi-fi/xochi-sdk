@@ -44,6 +44,7 @@ import { DepositInstructions } from "./swap-flow/DepositInstructions.js";
 import { buildDepositScreen } from "./swap-flow/depositScreen.js";
 import type { StoredDepositAttestation, DepositAttestationFields } from "@xochi/client";
 import { useWidgetTabsShown } from "./widgetTabsContext.js";
+import { confirmSend, type SendRecipientDisplay } from "../pages/send/sendCopy.js";
 import { APP_VERSION } from "../config.js";
 
 const PHASE_TITLES: Record<SwapPhase, string> = {
@@ -169,7 +170,7 @@ interface SwapFlowModalProps {
   receivedAmount?: string;
   fromChainId: SelectableChainId;
   toChainId: SelectableChainId;
-  destination: IntentDestination;
+  destination: IntentDestination & { sendRecipientDisplay?: SendRecipientDisplay };
   /** On a Stealth destination: `"other"` paid someone else's keys, so the ending has no claim. */
   stealthPayee?: "self" | "other";
   isCrossChain: boolean;
@@ -260,6 +261,15 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
   const errorMessage = typeof error === "string" ? error : (error?.message ?? null);
   const structuredError = typeof error === "object" && error !== null ? error : null;
   const phase = receipt.phase;
+  const sendRecipientDisplay = props.destination.sendRecipientDisplay;
+  const title =
+    phase === "confirm" && sendRecipientDisplay
+      ? confirmSend(sendRecipientDisplay)
+      : sendRecipientDisplay && phase === "failed"
+        ? "Send failed"
+        : sendRecipientDisplay && phase === "may-have-moved"
+          ? "Send did not complete"
+          : PHASE_TITLES[phase];
   // A Canton order past signing renders its escrow (the lock, Riddler's
   // attested delivery, the claim or the refund), never the phase's success or
   // delivered copy: a gateway-reported completion is not a delivery.
@@ -390,12 +400,12 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
     >
       <div
         ref={contentRef}
-        className={`modal-content swap-flow-modal swap-flow-modal--${phase}`}
+        className={`modal-content swap-flow-modal swap-flow-modal--${phase}${sendRecipientDisplay ? " swap-flow-modal--send" : ""}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-header">
           <h3 id="swap-flow-title" className="modal-title">
-            {cantonEscrowPhase ? "Canton delivery" : PHASE_TITLES[phase]}
+            {cantonEscrowPhase ? "Canton delivery" : title}
           </h3>
           <button className="modal-close" onClick={onClose} aria-label="Close">
             <svg
@@ -414,7 +424,7 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
 
         {/* Polite announcement of phase changes for screen readers */}
         <span className="sr-only" aria-live="polite">
-          {cantonEscrowPhase ? "Canton delivery" : PHASE_TITLES[phase]}
+          {cantonEscrowPhase ? "Canton delivery" : title}
         </span>
 
         {props.destination.recipientTag &&
@@ -474,6 +484,7 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
               fromChainId={props.fromChainId}
               toChainId={props.toChainId}
               destination={props.destination}
+              sendRecipientDisplay={sendRecipientDisplay}
               onConfirm={props.onConfirm}
               onCancel={onClose}
               isLoading={isSigning}
@@ -639,6 +650,7 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
               substatus={substatus}
               isStealth={props.destination.type === "stealth"}
               stealthPayee={props.stealthPayee}
+              sendRecipientDisplay={sendRecipientDisplay}
               // Same signal DepositInstructions branches on, so both surfaces
               // agree about whether a signature was ever part of this route.
               // Reads `depositView` rather than the quote directly: a RESUMED
@@ -719,6 +731,7 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
                 variant={phase}
                 isStealth={props.destination.type === "stealth"}
                 stealthPayee={props.stealthPayee}
+                sendRecipientDisplay={sendRecipientDisplay}
                 recipientTag={props.destination.recipientTag}
                 fromChainId={props.fromChainId}
                 toChainId={props.toChainId}
