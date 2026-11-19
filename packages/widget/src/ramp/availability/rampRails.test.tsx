@@ -54,7 +54,7 @@ describe("Buy rails", () => {
     renderRails(port, <RampRails direction="onramp" account={ACCOUNT} active />);
     const facts = screen.getByRole("region", { name: "Before you choose" });
     expect(
-      within(facts).getByText("Public on Base. The seller sees your payment name."),
+      within(facts).getByText("Public on Base. The seller sees your payment details and name."),
     ).toBeTruthy();
     const info = within(facts).getByRole("button", { name: "Buy disclosures" });
     expect(info.getAttribute("aria-expanded")).toBe("false");
@@ -84,26 +84,18 @@ describe("Buy rails", () => {
     }
   });
 
-  it("shows branded and text-only catalog rails with no selection authority", () => {
+  it("summarizes the catalog without offering guest selection", () => {
     const port = recordedPort({ account: ACCOUNT, clock: { t: RECORDED_AT } });
     const connect = vi.fn();
     renderRails(
       port,
       <RampRails direction="onramp" account={undefined} active onConnectRequest={connect} />,
     );
-    const venue = screen.getByText("Venmo").closest("[aria-disabled=true]")!;
-    expect(within(venue as HTMLElement).queryByText("Not checked")).toBeNull();
+    expect(screen.getByText("14 payment apps")).toBeTruthy();
+    expect(screen.queryByText("Venmo")).toBeNull();
     expect(
       screen.getByText("Connect a wallet and enter an amount to check availability."),
     ).toBeTruthy();
-    expect(
-      screen.getByText("Chime").closest(".ramp-tile")?.querySelector(".ramp-tile__icon-slot"),
-    ).toBeTruthy();
-    expect(venue.querySelector("input, button")).toBeNull();
-    expect(venue.querySelector(".ramp-tile__logo")).toBeTruthy();
-    expect(
-      screen.getByText("Chime").closest(".ramp-tile")?.querySelector(".ramp-tile__logo"),
-    ).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Connect wallet" }));
     expect(connect).toHaveBeenCalledOnce();
     expect(port.calls).toEqual([]);

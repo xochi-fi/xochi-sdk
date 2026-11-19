@@ -4,7 +4,7 @@ import { InfoButton } from "../../components/InfoButton.js";
 import { rampFacts } from "./model.js";
 
 const summaries = {
-  onramp: "Public on Base. The seller sees your payment name.",
+  onramp: "Public on Base. The seller sees your payment details and name.",
   offramp: "Your own account. Base deposit is public.",
 } satisfies Record<RampDirection, string>;
 

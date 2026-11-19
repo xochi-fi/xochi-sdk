@@ -334,18 +334,20 @@ function EditStep({
                 </span>
               )}
             </label>
-            <button
-              type="button"
-              className="send-secondary"
-              disabled={!max}
-              onClick={() => {
-                if (!max) return;
-                setAmountText(usdcDecimal(max.toString()));
-                setSelected(undefined);
-              }}
-            >
-              Max
-            </button>
+            {account && (
+              <button
+                type="button"
+                className="send-secondary"
+                disabled={!max}
+                onClick={() => {
+                  if (!max) return;
+                  setAmountText(usdcDecimal(max.toString()));
+                  setSelected(undefined);
+                }}
+              >
+                Max
+              </button>
+            )}
             {currencies.length > 1 && (
               <label className="send-field">
                 <span className="send-field__label">Receive in</span>
@@ -379,7 +381,7 @@ function EditStep({
             <OverallCard {...overallCard(state.availability, "offramp")} />
           )}
 
-          <RailTiles title="Your account" untested={state.status !== "done"}>
+          <RailTiles title="Your account" guest={!account} untested={state.status !== "done"}>
             {selectable.map(({ card, offer }) => {
               const est = estimateFor(offer);
               return (

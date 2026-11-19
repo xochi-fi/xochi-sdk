@@ -92,7 +92,7 @@ it("uses the real Swap quote interpreter, requests fresh on review and sends no 
     () =>
       expect(
         screen.getByRole<HTMLButtonElement>("button", {
-          name: "Approve wallet: route Base USDC with Xochi",
+          name: "Route to Base",
         }).disabled,
       ).toBe(false),
     WAIT,

@@ -1130,57 +1130,54 @@
   box-shadow: 0 1px 4px var(--sky-10);
 }
 
-/* Privacy-legible settlement toggle: each option stacks its depth (bars) +
-   label over a one-line "what it exposes" caption, so the ordering and the
-   trade-off read at a glance (and on touch, where the old hover title was
-   invisible). */
+/* Size the segment against the widget, including narrow embeds. */
+.trade-settlement {
+  container-type: inline-size;
+}
+
+.trade-settlement .trade-header {
+  align-items: flex-start;
+  flex-wrap: nowrap;
+  margin-bottom: 0.25rem;
+}
+
 .type-btn--privacy {
-  flex-direction: column;
-  gap: 0.2rem;
-  /* Horizontal padding is tight because three options share the card width.
-     At 0.6rem the "what it exposes" captions wrapped to a second line and
-     orphaned their last word. */
   padding: 0.5rem 0.35rem;
-  text-align: center;
-  /* `flex: 1` alone does not make these shrink: the default min-width:auto
-     floors every button at its own content width, so three of them add up to
-     more than the card and the row overflows instead of dividing the space. */
+  letter-spacing: 0;
   min-width: 0;
 }
 
 .type-btn__head {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  max-width: 100%;
-  flex-wrap: wrap;
   gap: 0.25rem;
 }
 
-/* 0.7rem (11.2px), up from 0.58rem, so the captions stay legible in the 460px
-   embed. A caption wraps instead of shrinking ("Recipient and amount visible"
-   takes three lines at 390px and 320px). No word may be wider than the button:
-   at 320px about 11 monospace characters fit. */
+@container (width < 300px) {
+  .order-type-toggle--privacy {
+    flex-direction: column;
+  }
+}
+
 .type-btn__meta {
-  font-size: 0.7rem;
+  margin: 0 0 0.5rem;
+  font-family: system-ui, sans-serif;
+  font-size: 0.75rem;
   font-weight: 500;
-  line-height: 1.25;
-  letter-spacing: 0;
+  line-height: 1.35;
   color: var(--text-secondary);
 }
 
-.type-btn--privacy.active .type-btn__meta {
-  color: var(--pearl-cream);
+.type-btn__meta:empty {
+  margin: 0;
 }
 
-.type-btn--privacy:disabled .type-btn__meta {
-  color: var(--text-faint);
-}
-
-/* The one fix for an unavailable mode. Gold on a live button (the tap acts on
-   it); the disabled rule above still greys it when nothing can be done. */
 .type-btn__meta--fix {
   color: var(--muted-gold);
+}
+
+[data-theme="light"] .type-btn__meta--fix {
+  color: #6b5e4a;
 }
 
 .type-btn--privacy .privacy-bars {
@@ -1278,6 +1275,11 @@
   text-transform: uppercase;
   color: var(--text-faint);
   padding: 0 0.25rem;
+}
+
+.recipient-field__label--tag {
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 /* Deliberately quiet: this is a convenience, not the primary action on the

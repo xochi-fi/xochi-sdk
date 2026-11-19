@@ -247,13 +247,11 @@ export function SwapPanel({
       stealthFix === "route_loading" ||
       stealthFix === "route_unavailable");
   const stealthFixLine =
-    destinationFixExplained || stealthFix === "wallet"
-      ? MODE_META.stealth
+    destinationFixExplained || stealthFix === "wallet" || stealthFix === null
+      ? null
       : stealthFix === "destination"
         ? `Choose ${stealthChainNames}`
-        : stealthFix === null
-          ? MODE_META.stealth
-          : SETTLEMENT_FIX_LINE[stealthFix];
+        : SETTLEMENT_FIX_LINE[stealthFix];
   // A host-wallet frame without tabs claims in the Xochi app: no Claim payment.
   const claimInXochiApp = useClaimInXochiApp();
   const locked = (field: EmbedLock): boolean => !!sendRecipient || policy.locks.includes(field);
@@ -319,15 +317,19 @@ export function SwapPanel({
     cantonDestination && intent.error ? cantonDecline(quoteErrorCategory) : null;
 
   const explainerId = useId();
+  const settlementCaptionId = useId();
+  const shieldedBlockedId = useId();
+  const selectedMode = zkMoneyDestination ? "shielded" : settlement;
+  const selectedModeFix = selectedMode === "stealth" ? stealthFixLine : null;
+  const submitLabel =
+    sendRecipient && cta.label.startsWith("Swap ")
+      ? `Send ${formatTokenAmount(amountBigInt, fromToken.decimals, fromToken.decimals)} ${fromToken.symbol} with ${sendMode}`
+      : cta.label;
 
   return (
     <div className="trade-card">
       <div className={`trade-card__body ${showReceipt ? "trade-card__body--split" : ""}`}>
         <div className="trade-card__form">
-          {/* Header: settlement toggle + settings. Each option shows its privacy
-          depth (bars) and what it exposes, so a first-time user can tell at a
-          glance which is more private -- the info used to hide in a hover title,
-          invisible on touch. */}
           {sendRecipient ? (
             <section className="stealth-payee-note" aria-label={`${sendMode} recipient`}>
               <RecipientChip recipient={sendRecipient} />
@@ -339,113 +341,114 @@ export function SwapPanel({
                   From {EXTENDED_CHAIN_NAMES[fromChainId]} to {EXTENDED_CHAIN_NAMES[toChainId]}
                 </p>
               )}
-              {sendMode === "Stealth" && <p>{STEALTH_PRIVACY_LIMITS}</p>}
+              <p>{sendMode === "Stealth" ? STEALTH_PRIVACY_LIMITS : ZKMONEY_PRIVACY_COPY}</p>
             </section>
           ) : (
-            <div className="trade-header">
-              <div
-                className="order-type-toggle order-type-toggle--privacy"
-                role="group"
-                aria-label="Settlement privacy"
-              >
-                <button
-                  className={`type-btn type-btn--privacy ${!zkMoneyDestination && settlement === "public" ? "active" : ""}`}
-                  onClick={() => handleSettlementChange("public")}
-                  aria-pressed={!zkMoneyDestination && settlement === "public"}
+            <div className="trade-settlement">
+              <div className="trade-header">
+                <div
+                  className="order-type-toggle order-type-toggle--privacy"
+                  role="group"
+                  aria-label="Settlement privacy"
+                  aria-describedby={settlementCaptionId}
                 >
-                  <span className="type-btn__head">
-                    <PrivacyBars
-                      count={1}
-                      active={!zkMoneyDestination && settlement === "public"}
-                    />
-                    Public
-                  </span>
-                  <span className="type-btn__meta">{MODE_META.public}</span>
-                </button>
-                <button
-                  className={`type-btn type-btn--privacy ${!zkMoneyDestination && settlement === "stealth" ? "active" : ""}`}
-                  onClick={() => handleSettlementChange("stealth")}
-                  aria-pressed={!zkMoneyDestination && settlement === "stealth"}
-                  /* Selecting Stealth opens live destination browsing, even before
+                  <button
+                    className={`type-btn type-btn--privacy ${!zkMoneyDestination && settlement === "public" ? "active" : ""}`}
+                    onClick={() => handleSettlementChange("public")}
+                    aria-pressed={!zkMoneyDestination && settlement === "public"}
+                  >
+                    <span className="type-btn__head">
+                      <PrivacyBars
+                        count={1}
+                        active={!zkMoneyDestination && settlement === "public"}
+                      />
+                      Public
+                    </span>
+                  </button>
+                  <button
+                    className={`type-btn type-btn--privacy ${!zkMoneyDestination && settlement === "stealth" ? "active" : ""}`}
+                    onClick={() => handleSettlementChange("stealth")}
+                    aria-pressed={!zkMoneyDestination && settlement === "stealth"}
+                    /* Selecting Stealth opens live destination browsing, even before
                 route data, wallet connection or key setup. Only the feature
                 gate or zk.money navigation disables this control; quote and
                 execution authorization remain separately guarded. */
-                  disabled={!stealthClickable}
-                  aria-describedby={stealthHintChainNames ? "stealth-destinations" : undefined}
-                  title={
-                    stealthFix === "route" && stealthRefusalReason
-                      ? // The solver's own sentence for the refusal (R16), capped
-                        // like every surface that renders upstream prose.
-                        truncateServedReason(stealthRefusalReason)
-                      : stealthFix === "route_unavailable"
-                        ? "Stealth route data could not be loaded"
-                        : stealthFix === "route_loading"
-                          ? "Loading Stealth routes"
-                          : undefined
-                  }
-                >
-                  <span className="type-btn__head">
-                    <PrivacyBars
-                      count={2}
-                      active={!zkMoneyDestination && settlement === "stealth"}
+                    disabled={!stealthClickable}
+                    aria-describedby={stealthHintChainNames ? "stealth-destinations" : undefined}
+                    title={
+                      stealthFix === "route" && stealthRefusalReason
+                        ? // The solver's own sentence for the refusal (R16), capped
+                          // like every surface that renders upstream prose.
+                          truncateServedReason(stealthRefusalReason)
+                        : stealthFix === "route_unavailable"
+                          ? "Stealth route data could not be loaded"
+                          : stealthFix === "route_loading"
+                            ? "Loading Stealth routes"
+                            : undefined
+                    }
+                  >
+                    <span className="type-btn__head">
+                      <PrivacyBars
+                        count={2}
+                        active={!zkMoneyDestination && settlement === "stealth"}
+                      />
+                      Stealth
+                    </span>
+                  </button>
+                  <button
+                    className={`type-btn type-btn--privacy ${zkMoneyDestination ? "active" : ""}`}
+                    onClick={handleZkMoneySelect}
+                    aria-pressed={zkMoneyDestination}
+                    disabled={!zkMoneyOffered}
+                    aria-describedby={!zkMoneyOffered ? shieldedBlockedId : undefined}
+                  >
+                    <span className="type-btn__head">
+                      <PrivacyBars count={3} active={zkMoneyDestination} />
+                      <span>Shielded</span>
+                    </span>
+                  </button>
+                </div>
+                <div className="header-actions">
+                  {howItWorks && (
+                    <InfoButton
+                      label="How it works"
+                      expanded={showExplainer}
+                      controls={explainerId}
+                      onClick={() => setShowExplainer((open) => !open)}
                     />
-                    Stealth
-                  </span>
-                  {/* Exactly one line: what the mode does when it is available,
-                otherwise the one fix. Never both, and never a badge on top. */}
-                  <span
-                    className={`type-btn__meta${stealthFix !== null && !destinationFixExplained ? " type-btn__meta--fix" : ""}`}
+                  )}
+                  <button
+                    className={`settings-btn ${showSettings ? "active" : ""}`}
+                    onClick={() => setShowSettings(!showSettings)}
+                    aria-label="Settings"
+                    title="Settings"
                   >
-                    {stealthFixLine}
-                  </span>
-                </button>
-                <button
-                  className={`type-btn type-btn--privacy ${zkMoneyDestination ? "active" : ""}`}
-                  onClick={handleZkMoneySelect}
-                  aria-pressed={zkMoneyDestination}
-                  disabled={!zkMoneyOffered}
-                  aria-describedby={!zkMoneyOffered ? "zk-money-blocked-reason" : undefined}
-                >
-                  <span className="type-btn__head">
-                    <PrivacyBars count={3} active={zkMoneyDestination} />
-                    <span>Shielded</span>
-                  </span>
-                  <span
-                    id={!zkMoneyOffered ? "zk-money-blocked-reason" : undefined}
-                    className={`type-btn__meta${!zkMoneyOffered ? " type-btn__meta--fix" : ""}`}
-                  >
-                    {zkMoneyOffered ? "zk.money" : (zkMoneyBlockedReason ?? "Unavailable")}
-                  </span>
-                </button>
+                    <svg
+                      viewBox="0 0 16 16"
+                      width="14"
+                      height="14"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                    >
+                      <circle cx="8" cy="8" r="2.5" />
+                      <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" />
+                    </svg>
+                  </button>
+                </div>
               </div>
-              <div className="header-actions">
-                {howItWorks && (
-                  <InfoButton
-                    label="How it works"
-                    expanded={showExplainer}
-                    controls={explainerId}
-                    onClick={() => setShowExplainer((open) => !open)}
-                  />
-                )}
-                <button
-                  className={`settings-btn ${showSettings ? "active" : ""}`}
-                  onClick={() => setShowSettings(!showSettings)}
-                  aria-label="Settings"
-                  title="Settings"
-                >
-                  <svg
-                    viewBox="0 0 16 16"
-                    width="14"
-                    height="14"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                  >
-                    <circle cx="8" cy="8" r="2.5" />
-                    <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" />
-                  </svg>
-                </button>
-              </div>
+              <p
+                id={settlementCaptionId}
+                className={`type-btn__meta${selectedModeFix ? " type-btn__meta--fix" : ""}`}
+                role="status"
+              >
+                {selectedModeFix ?? MODE_META[selectedMode]}
+              </p>
+              {!zkMoneyOffered && (
+                <span id={shieldedBlockedId} className="sr-only">
+                  {zkMoneyBlockedReason ?? "Unavailable"}
+                </span>
+              )}
             </div>
           )}
 
@@ -458,12 +461,9 @@ export function SwapPanel({
             </div>
           )}
 
-          {zkMoneyDestination && (
+          {zkMoneyDestination && (!sendRecipient || isTronChainId(fromChainId)) && (
             <div className="zkmoney-privacy">
-              <p>
-                {isTronChainId(fromChainId) && "Your TRON send is public. "}
-                {ZKMONEY_PRIVACY_COPY}
-              </p>
+              {isTronChainId(fromChainId) && <p>Your TRON send is public.</p>}
               <a
                 hidden={!!sendRecipient}
                 href={ZKMONEY_ACCOUNT_URL}
@@ -725,13 +725,18 @@ export function SwapPanel({
                 </span>
               )}
             </div>
+            {!sendRecipient && (
+              <p className="type-btn__meta" role="status">
+                {zkMoneyDestination ? "Receive changes to DAI on zk.money." : null}
+              </p>
+            )}
             {stealthDestinationGuidance && (!sendRecipient || stealthDestinationIssue) && (
               <div id="stealth-destination-guidance" className="settlement-caption" role="status">
                 {stealthDestinationGuidance.status === "checking" ? (
-                  "Checking live Stealth destinations..."
+                  "Checking Stealth routes…"
                 ) : stealthDestinationGuidance.status === "unavailable" ? (
                   <>
-                    Live Stealth destinations couldn't be verified.
+                    Stealth routes couldn't be verified.
                     {routeCheck.status === "unknown" && (
                       <div className="settlement-caption__notice">
                         <button
@@ -758,7 +763,7 @@ export function SwapPanel({
                         pair.{" "}
                       </>
                     )}
-                    {!sendRecipient && <>Live Stealth destinations: {liveStealthChainNames}.</>}
+                    {!sendRecipient && <>Stealth is available on {liveStealthChainNames}.</>}
                   </>
                 )}
               </div>
@@ -998,7 +1003,10 @@ export function SwapPanel({
             {!sendRecipient && zkMoneyDestination && (
               <div className="recipient-field">
                 <div className="recipient-field__head">
-                  <label className="recipient-field__label" htmlFor="swap-recipient-tag">
+                  <label
+                    className="recipient-field__label recipient-field__label--tag"
+                    htmlFor="swap-recipient-tag"
+                  >
                     zk.money tag
                   </label>
                 </div>
@@ -1367,7 +1375,7 @@ export function SwapPanel({
                 : stealthSetupError
                   ? "Retry Stealth setup"
                   : "Set up Stealth"
-              : cta.label}
+              : submitLabel}
           </button>
 
           {howItWorks && (
