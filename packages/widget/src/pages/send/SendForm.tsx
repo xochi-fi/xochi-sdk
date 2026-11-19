@@ -1,4 +1,4 @@
-import { useCallback, useId, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import { useAccount, useConfig } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { getExplorerTxUrl, type SelectableChainId } from "@xochi/client";
@@ -33,6 +33,8 @@ import { SITE_URL } from "../../config.js";
 import { stealthSendDestinations } from "./stealthSend.js";
 import { Receive } from "./Receive.js";
 import { ScanRecipient } from "./ScanRecipient.js";
+import { recipientLabel } from "../trade/RecipientSheet.js";
+import { readRecentRecipients, rememberRecipient } from "../../lib/recipient/recent.js";
 import type { ResolvedRecipient } from "../../lib/recipient/index.js";
 
 type SettlementOrder = Omit<SwapPrefill, "nonce">;
@@ -188,6 +190,10 @@ function WalletSendForm({
     setDraft((d) => ({ ...d, ...patch }));
   };
   const { phase } = send;
+  const confirmed = phase.step === "sent" && phase.outcome === "confirmed";
+  useEffect(() => {
+    if (confirmed && reviewedRecipient) rememberRecipient(reviewedRecipient);
+  }, [confirmed, reviewedRecipient]);
 
   const onChain = (next: number): void => {
     const same = sendTokens(next).find((t) => t.symbol === token?.symbol) ?? defaultSendToken(next);
@@ -325,6 +331,7 @@ function WalletSendForm({
           item.status !== "failed" &&
           item.data.recipient.toLowerCase() === recipient.address?.toLowerCase(),
       );
+    const recent = input ? [] : readRecentRecipients();
     return (
       <form
         className="send-form send-form--recipient"
@@ -384,6 +391,21 @@ function WalletSendForm({
           </button>
           {active && <ScanRecipient onScan={onInput} />}
         </div>
+        {recent.length > 0 && (
+          <section className="swap-recipient-recent" aria-label="Recent recipients">
+            <p>Recent</p>
+            {recent.map((value) => (
+              <button
+                className="btn btn--ghost"
+                key={value}
+                type="button"
+                onClick={() => onInput(value)}
+              >
+                {recipientLabel(value)}
+              </button>
+            ))}
+          </section>
+        )}
         {(pasteError || status) && (
           <p className="send-note" role="status">
             {pasteError || status}

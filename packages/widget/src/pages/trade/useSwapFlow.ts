@@ -49,6 +49,8 @@ import {
   type SelectableChainId,
 } from "@xochi/client";
 import { findTokenBySymbol } from "./config.js";
+import type { ResolvedRecipient } from "../../lib/recipient/index.js";
+import { rememberRecipient } from "../../lib/recipient/recent.js";
 import { rememberSendIntent } from "../send/sendRetry.js";
 import { planResume, shouldCaptureToActivity } from "./resumeSwap.js";
 import type { ResumedSwap } from "./resumeSwap.js";
@@ -132,7 +134,7 @@ export interface SwapPrefill {
 
 export interface UseSwapFlowParams {
   prefill: SwapPrefill | null | undefined;
-  hasSendRecipient?: boolean;
+  sendRecipient?: ResolvedRecipient;
   intent: UseIntentReturn;
   isConnected: boolean;
   address: string | undefined;
@@ -189,7 +191,10 @@ export interface ActivityRecipientDisplay {
   swapRecipientLabel?: string;
 }
 
-type FlowDestination = IntentDestination & ActivityRecipientDisplay;
+type FlowDestination = IntentDestination &
+  ActivityRecipientDisplay & {
+    sendRecipient?: ResolvedRecipient;
+  };
 
 export interface UseSwapFlowResult {
   handleMarketSubmit: () => Promise<void>;
@@ -212,7 +217,7 @@ export interface UseSwapFlowResult {
 
 export function useSwapFlow({
   prefill,
-  hasSendRecipient,
+  sendRecipient,
   intent,
   isConnected,
   address,
@@ -276,11 +281,11 @@ export function useSwapFlow({
   // Tag labels on a held quote describe its accepted recipient, not edits to
   // the form behind the modal. The quote remains the funding authority.
   const sendRecipientDisplay =
-    hasSendRecipient && prefill?.fromSend ? prefill.sendRecipientDisplay : undefined;
+    sendRecipient && prefill?.fromSend ? prefill.sendRecipientDisplay : undefined;
   const quotedDestination: FlowDestination = {
     ...destination,
     recipientTag: intent.quote ? intent.quote.recipientTag : destination.recipientTag,
-    ...(sendRecipientDisplay && { sendRecipientDisplay }),
+    ...(sendRecipientDisplay && { sendRecipientDisplay, sendRecipient }),
     ...(swapRecipientLabel && { swapRecipientLabel }),
   };
 
@@ -588,6 +593,9 @@ export function useSwapFlow({
     // leave the browser for a Tron wallet to send at all.
     if (intent.intentId && executedDestination?.sendRecipientDisplay) {
       rememberSendIntent(intent.intentId, executedDestination.sendRecipientDisplay);
+      if (intent.status === "completed" && executedDestination.sendRecipient) {
+        rememberRecipient(executedDestination.sendRecipient);
+      }
     }
     upsertLocalSwap(owner, {
       id: intent.intentId,

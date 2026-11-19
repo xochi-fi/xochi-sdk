@@ -151,7 +151,7 @@ export function TokenSelector({
                 zkMoneySelected
                   ? "On zk.money - Change network"
                   : isShieldedChain
-                    ? "On Aztec - Change network"
+                    ? "On zk.money - Change network"
                     : `On ${EXTENDED_CHAIN_NAMES[chainId]} - Change network`
               }
             >

@@ -19,6 +19,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readRecentRecipients } from "../../lib/recipient/recent.js";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { SIMPLE_ACCOUNT_FACTORY } from "@xochi/client";
 import { connect } from "@wagmi/core";
@@ -209,6 +210,7 @@ describe("send to an address", () => {
     const sent = await screen.findByRole("region", { name: "Send submitted" }, WAIT);
     expect(within(sent).getByText(TX_HASH)).toBeTruthy();
     await within(sent).findByRole("heading", { name: "Sent" }, WAIT);
+    expect(readRecentRecipients()).toContain(RECIPIENT);
 
     // Exactly one transaction, and it is the reviewed transfer.
     const txs = calls.filter((c) => c.method === "eth_sendTransaction");
@@ -481,7 +483,7 @@ describe("send with Stealth to someone else", () => {
     fireEvent.click(topTab("Trade"));
     fireEvent.change(document.querySelector("#swap-pay-amount")!, { target: { value: "5" } });
 
-    fireEvent.click(await screen.findByRole("button", { name: /^Swap USDC → / }, WAIT));
+    fireEvent.click(await screen.findByRole("button", { name: "Bridge USDC" }, WAIT));
     const swapModal = await screen.findByRole("dialog", { name: "Confirm swap" }, WAIT);
     expect(within(swapModal).getByRole("button", { name: "Confirm swap" })).toBeTruthy();
     expect(within(swapModal).queryByText(/controlled by published\.gwei/)).toBeNull();

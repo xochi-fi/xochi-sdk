@@ -23,7 +23,7 @@ export function readRecentRecipients(): string[] {
 }
 
 export function rememberRecipient(recipient: ResolvedRecipient): void {
-  const input = recipient.input;
+  const input = recipient.shieldedAlias ? `${recipient.shieldedAlias}.zk.money` : recipient.input;
   if (!input || input.length > 255) return;
   const recent = readRecentRecipients().filter(
     (value) => value.toLowerCase() !== input.toLowerCase(),

@@ -294,7 +294,7 @@ function useStealthState(): UseStealthReturn {
       } catch {
         // stealthMetaAddressOf reverts when no keys registered for this address
         debugLog(
-          "[useStealth] No stealth keys registered on-chain for this wallet. Register via Settings to enable private receiving.",
+          "[useStealth] No stealth keys registered on-chain for this wallet. Register via Settings to enable Stealth receiving.",
         );
         setIsRegistered(false);
       }

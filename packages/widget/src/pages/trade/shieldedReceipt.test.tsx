@@ -31,7 +31,7 @@ const USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 /** Oxide DAI on Aztec (corridor manifest), 18 decimals. */
 const OXDAI = "0x11d2bed21a36289fd6f6a6af93a546b5be7115caf957f0f700f42d56e25fe0a3";
 const COMMAND = `xochi-recipient receipt ${INTENT_ID}`;
-const AWAITING = "Paid on Aztec. Waiting for the recipient to confirm receipt.";
+const AWAITING = "Shielded payout sent. Waiting for the recipient to confirm receipt.";
 
 /** A shielded order as the owner's history serves it, two hours after submit. */
 const historyRow = (over: Record<string, unknown> = {}): Record<string, unknown> => ({

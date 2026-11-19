@@ -214,7 +214,7 @@ export function SwapPanel({
     classifyDestinationToken,
     originChainBlockedReason,
     destinationChainBlockedReason,
-  } = useSwapPanel(prefill, onStealthSettled, !!sendRecipient);
+  } = useSwapPanel(prefill, onStealthSettled, sendRecipient);
   const [recipientSheetOpen, setRecipientSheetOpen] = useState(false);
   const recipientTrigger = useRef<HTMLButtonElement>(null);
   const { features } = useCapabilities();

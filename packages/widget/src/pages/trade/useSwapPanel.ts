@@ -54,7 +54,7 @@ export function useSwapPanel(
   prefill: SwapPrefill | null | undefined,
   /** Fired once when a stealth swap settles, so the receive panel can auto-scan. */
   onStealthSettled?: () => void,
-  hasSendRecipient = false,
+  sendRecipient?: ResolvedRecipient,
 ) {
   // The wallet's ACTUAL chain, from the connection. Not `useChainId()`: wagmi
   // does not sync a connector chain it has no config for, so on an unlisted
@@ -194,7 +194,7 @@ export function useSwapPanel(
     address,
     trustScore,
     slippageBps: DEFAULT_SLIPPAGE_BPS,
-    swapRecipient: hasSendRecipient ? null : swapRecipient,
+    swapRecipient: sendRecipient ? null : swapRecipient,
     flowOpen,
     onStealthSettled,
     initialSettlement: embed.settlementPreference,
@@ -295,7 +295,7 @@ export function useSwapPanel(
 
   const flow = useSwapFlow({
     prefill: admittedPrefill,
-    hasSendRecipient,
+    sendRecipient,
     intent: gating.intent,
     isConnected,
     address,
@@ -321,7 +321,7 @@ export function useSwapPanel(
     restoreSettlement: gating.restoreSettlement,
     clearRecipient: clearSwapRecipient,
     swapRecipientLabel:
-      !hasSendRecipient && !route.isNonEvmDest && swapRecipient
+      !sendRecipient && !route.isNonEvmDest && swapRecipient
         ? (swapRecipient.name ?? recipientLabel(swapRecipient.input))
         : undefined,
     restoreRecipientTag: gating.setRecipientTag,
