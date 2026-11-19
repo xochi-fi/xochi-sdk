@@ -14,6 +14,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { RampClient, RampSnapshot } from "@xochi/client";
+import { formatRampTime } from "../availability/model.js";
 import type { PeerOnrampRuntime } from "./onramp.js";
 
 export interface OnrampStepsProps {
@@ -114,8 +115,8 @@ export function OnrampSteps({
   let status: string;
   if (peer.payout_state === "held")
     status = `Peer is holding this payout, for up to 14 days. ${
-      release ? `Estimated release around ${release.toISOString().slice(0, 10)} (UTC); ` : ""
-    }this is an estimate, not a guarantee. Base USDC is not yet confirmed in your wallet, and routing cannot start while it is held.`;
+      release ? `Estimated release around ${formatRampTime(release, true)} (UTC); ` : ""
+    }this is an estimate, not a guarantee. Check the existing purchase status before routing Base USDC.`;
   else if (peer.state === "completed") status = "Confirmed Base USDC received.";
   else if (peer.state === "in_doubt")
     status =
@@ -123,15 +124,23 @@ export function OnrampSteps({
   else if (peer.state === "failed")
     status =
       peer.failure_code === "quote_expired" && !submitted
-        ? "The quote expired before submission. No transfer was submitted."
+        ? "The quote expired before submission. No transfer was submitted. Review a new quote to continue."
         : peer.failure_code === "quote_expired"
-          ? "The Peer intent expired before it was fulfilled. Fiat sent for an expired intent is not refundable by the protocol."
+          ? "The Peer intent expired before it was fulfilled. If you already paid, contact Peer support before making another payment. Fiat sent for an expired intent is not refundable by the protocol."
           : peer.recoverable
             ? "This purchase failed but can be recovered. Check its status or recover it; do not start another transfer."
             : submitted
-              ? "This purchase did not complete."
+              ? "This purchase did not complete. Contact Peer support before starting another transfer."
               : "Purchase did not start. No transfer was submitted. Review a fresh quote after completing any required setup.";
-  else status = `Peer purchase: ${peer.state.replaceAll("_", " ")}.`;
+  else if (peer.state === "action_required")
+    status =
+      phase === "capture"
+        ? "Peer is checking the payment."
+        : phase === "finalize"
+          ? "Confirm the verified payment in your wallet."
+          : "Follow the payment instructions to continue.";
+  else if (peer.state === "refunded") status = "Funds returned.";
+  else status = "Waiting for Peer to update this purchase.";
 
   return (
     <section className="onramp-steps" aria-label="Peer purchase progress">
@@ -162,8 +171,8 @@ export function OnrampSteps({
           )}
           {expiresAt !== undefined && (
             <p>
-              Intent expires: {new Date(expiresAt).toISOString()}. Fiat for an expired or
-              unverifiable intent is not refundable.
+              Intent expires: {formatRampTime(expiresAt)}. Fiat for an expired or unverifiable
+              intent is not refundable.
             </p>
           )}
           {recipient && (
@@ -190,7 +199,7 @@ export function OnrampSteps({
           disabled={!canAct}
           onClick={() => void run(async () => onSnapshot(await client.interact(id, {}, context())))}
         >
-          Approve wallet: verify payment and fulfill Peer intent
+          Confirm payment
         </button>
       )}
       {(snapshot.allowed_actions.includes("check_status") ||

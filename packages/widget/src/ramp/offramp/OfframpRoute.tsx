@@ -184,7 +184,7 @@ export function OfframpRoute({
       render((n) => n + 1);
     } catch {
       setNote(
-        "The route could not be checked. After wallet approval, check Xochi Activity before starting another transfer.",
+        "The route could not be checked. If you approved in your wallet, check Xochi Activity. Otherwise, get a fresh quote.",
       );
     } finally {
       lock.current = false;
@@ -202,7 +202,11 @@ export function OfframpRoute({
       busy={busy}
       authorized={authorized}
       onAction={(action) => void act(action)}
-      note={checkpoint === null ? "Route recovery storage is unavailable." : note}
+      note={
+        checkpoint === null
+          ? "Route recovery storage is unavailable. Enable browser storage and reload."
+          : note
+      }
     >
       <fieldset
         disabled={!!checkpoint || !!route || busy}
@@ -234,7 +238,7 @@ export function OfframpRoute({
       </fieldset>
       {!source && (
         <p className="send-note" role="status">
-          No live supported route into Base USDC is available.
+          No route into Base USDC is available. Use USDC on Base to cash out directly.
         </p>
       )}
       {intent.awaitingPull && (
@@ -244,7 +248,7 @@ export function OfframpRoute({
           disabled={intent.isSigningPull}
           onClick={intent.signPull}
         >
-          Approve wallet: sign source authorization
+          Authorize
         </button>
       )}
     </OfframpRouteReview>

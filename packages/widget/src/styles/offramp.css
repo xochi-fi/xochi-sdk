@@ -72,13 +72,11 @@
 }
 
 .ramp-order__headline--done {
-  border-left-width: 4px;
-  border-left-color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 12%, var(--panel-bg));
 }
 
 .ramp-order__headline--attention {
-  border-left-width: 4px;
-  border-left-color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 12%, var(--panel-bg));
 }
 
 .ramp-order__steps {

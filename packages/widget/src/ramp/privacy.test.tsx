@@ -209,9 +209,7 @@ describe("Buy (onramp) through a current host", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Review exact Peer quote" }));
     fireEvent.click(await screen.findByRole("checkbox"));
-    fireEvent.click(
-      screen.getByRole("button", { name: "Approve wallet: signal Peer purchase on Base" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Confirm purchase" }));
   }
 
   it("completes a purchase and leaks nothing Peer or the payer holds", async () => {
@@ -229,7 +227,7 @@ describe("Buy (onramp) through a current host", () => {
     h.setPayout("released");
     fireEvent.click(
       await screen.findByRole("button", {
-        name: "Approve wallet: verify payment and fulfill Peer intent",
+        name: "Confirm payment",
       }),
     );
     await screen.findByText("Confirmed Base USDC received.", {}, WAIT);
@@ -275,10 +273,7 @@ describe("Buy (onramp) through a current host", () => {
     h.setSignalError(new Error(raw));
     await review(h);
     await waitFor(
-      () =>
-        expect(
-          screen.queryByRole("button", { name: "Approve wallet: signal Peer purchase on Base" }),
-        ).toBeNull(),
+      () => expect(screen.queryByRole("button", { name: "Confirm purchase" })).toBeNull(),
       WAIT,
     );
     expect(document.body.textContent).not.toContain(raw);
@@ -482,9 +477,7 @@ describe("interruptions keep one lifecycle and leak nothing", () => {
     render(<BuyOnramp intent={h.intent} offer={h.offer} runtime={h.runtime} store={store} />);
     fireEvent.click(screen.getByRole("button", { name: "Review exact Peer quote" }));
     fireEvent.click(await screen.findByRole("checkbox"));
-    fireEvent.click(
-      screen.getByRole("button", { name: "Approve wallet: signal Peer purchase on Base" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Confirm purchase" }));
     await screen.findByText(/Do not start another transfer and do not pay again/, {}, WAIT);
 
     // The reload: page and provider gone, storage and the host's frame remain.

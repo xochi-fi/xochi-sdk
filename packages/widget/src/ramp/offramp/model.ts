@@ -187,13 +187,14 @@ function failureText(code: string | undefined, reason: MakerReason | undefined):
   if (reason === "active_intent_blocks_withdrawal")
     return "A buyer is mid-payment, so the whole deposit cannot be withdrawn now. You can withdraw the unmatched part.";
   if (reason === "setup_required" || code === "capability_unavailable")
-    return "Peer needs a setup step for your account on this rail first. No deposit was created.";
+    return "Finish setting up this account in Peer before trying again. No deposit was created.";
   if (reason === "quote_expired" || code === "quote_expired")
     return "The estimate expired before the wallet step. Get a new estimate; no deposit was created.";
   if (reason === "quote_changed" || code === "quote_changed")
     return "Peer's terms changed. Review a new estimate; no deposit was created.";
-  if (code === "approval_rejected") return "You declined in your wallet. Nothing was sent.";
-  return "Peer declined this step. Nothing new was sent from your wallet.";
+  if (code === "approval_rejected")
+    return "You declined in your wallet. Review the cash-out again when you’re ready.";
+  return "Peer declined this step. Check the order status before trying again.";
 }
 
 export const WALLET_ACTION_LABELS: Record<MakerWalletAction, string> = {

@@ -148,9 +148,7 @@ function reasonFor(
     const known = availability.requirement_codes
       .map((c) => REQUIREMENTS[c]?.reason)
       .filter((r): r is string => r !== undefined);
-    return known.length
-      ? known.join(" ")
-      : `Peer needs a setup step first (${availability.requirement_codes.join(", ") || "unspecified"}).`;
+    return known.length ? known.join(" ") : "Peer needs a setup step first.";
   }
   const code = availability.reason_code;
   switch (availability.state) {
@@ -169,7 +167,7 @@ function reasonFor(
         return "Peer could not be reached, so availability is unknown.";
       if (code === "invalid_request")
         return "Peer cannot quote this request; only USD to Base USDC is supported now.";
-      return `Availability could not be confirmed (${code}).`;
+      return "Availability could not be confirmed.";
   }
 }
 
@@ -194,11 +192,13 @@ function nextFor(
   }
 }
 
-export function formatRampTime(iso: string): string {
-  const date = new Date(iso);
+export function formatRampTime(value: string | number | Date, dateOnly = false): string {
+  const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime())
-    ? iso
-    : date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    ? "Time unavailable"
+    : dateOnly
+      ? date.toLocaleDateString(undefined, { dateStyle: "medium", timeZone: "UTC" })
+      : date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 }
 
 /** One card per offer, at `now`. Only `checkRampOffer` can make a card selectable. */

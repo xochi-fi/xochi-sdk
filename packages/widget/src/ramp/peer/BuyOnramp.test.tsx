@@ -27,7 +27,7 @@ it("reviews exact economics, names wallet actions and waits for receipt confirma
     within(facts).getByText(/Expired or unverifiable purchases have no protocol refund/),
   ).toBeTruthy();
   const approve = screen.getByRole<HTMLButtonElement>("button", {
-    name: "Approve wallet: signal Peer purchase on Base",
+    name: "Confirm purchase",
   });
   expect(approve.disabled).toBe(true);
   fireEvent.click(screen.getByRole("checkbox"));
@@ -43,7 +43,7 @@ it("reviews exact economics, names wallet actions and waits for receipt confirma
     h.extension.deliver(h.goodCapture());
   });
   const finalize = await screen.findByRole("button", {
-    name: "Approve wallet: verify payment and fulfill Peer intent",
+    name: "Confirm payment",
   });
   expect(h.counts().fulfills).toBe(0);
   h.setPayout("held");
@@ -97,7 +97,7 @@ it("expires a reviewed quote and clears disclosure approval before any wallet ac
   expect(screen.getByRole<HTMLInputElement>("checkbox").checked).toBe(false);
   expect(
     screen.getByRole<HTMLButtonElement>("button", {
-      name: "Approve wallet: signal Peer purchase on Base",
+      name: "Confirm purchase",
     }).disabled,
   ).toBe(true);
   expect(h.counts().signals).toBe(0);

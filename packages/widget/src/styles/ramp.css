@@ -3,6 +3,7 @@
    colour only repeats what the status label already says. */
 
 .ramp-rails .send-field__label {
+  font-size: 0.75rem;
   text-transform: none;
   letter-spacing: normal;
 }
@@ -117,7 +118,7 @@
 
 .ramp-rail__status {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   letter-spacing: 0.05em;
   color: var(--text-secondary);
 }
@@ -359,7 +360,10 @@
   }
 }
 
+/* Keep these surfaces in sync with the contrast inputs in RailTiles. */
 .ramp-tile {
+  --rail-tile-bg: #12121a;
+  --rail-selected-icon: var(--rail-icon-dim, currentColor);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -372,11 +376,21 @@
   padding: 2px 6px;
   container-type: inline-size;
   color: inherit;
-  background: var(--panel-bg-subtle);
+  background: var(--rail-tile-bg);
   border: 2px solid var(--panel-border);
   border-radius: var(--radius-card);
   font: inherit;
   text-align: left;
+}
+
+[data-theme="dark"] .ramp-tile {
+  --rail-tile-bg: #080808;
+  --rail-selected-icon: var(--rail-icon-dark, currentColor);
+}
+
+[data-theme="light"] .ramp-tile {
+  --rail-tile-bg: #f5f3ef;
+  --rail-selected-icon: var(--rail-icon-light, currentColor);
 }
 
 label.ramp-tile,
@@ -385,7 +399,7 @@ button.ramp-tile {
 }
 
 .ramp-tile:has(:checked) {
-  border-color: var(--muted-gold);
+  border-color: var(--rail-brand, var(--muted-gold));
 }
 
 .ramp-tile__text {
@@ -399,9 +413,11 @@ button.ramp-tile {
 .ramp-tile__name,
 .ramp-tile__status small {
   display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+}
+
+.ramp-tile__status small {
+  font-size: 0.75rem;
 }
 
 .ramp-tile__status {
@@ -415,17 +431,20 @@ button.ramp-tile {
   inset-inline-end: 6px;
 }
 
-.ramp-tile__logo {
-  display: block;
+.ramp-tile__icon-slot {
+  display: inline-block;
   width: 20px;
   height: 20px;
   flex: none;
+}
+
+.ramp-tile__logo {
   background: currentColor;
   mask: var(--rail-logo) center / contain no-repeat;
 }
 
 .ramp-tile:has(:checked) .ramp-tile__logo {
-  background: var(--rail-brand, currentColor);
+  background: var(--rail-selected-icon);
 }
 
 @media (forced-colors: active) {
@@ -450,6 +469,19 @@ button.ramp-tile {
 
 .ramp-unavailable summary {
   cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.ramp-unavailable__reason {
+  display: block;
+  color: var(--text-secondary);
+}
+
+.ramp-unavailable__reason,
+.ramp-unavailable p,
+.ramp-unavailable li {
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
 }
 
 .ramp-unavailable summary > * {
