@@ -20,6 +20,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { connect } from "@wagmi/core";
 import { decodeFunctionData, erc20Abi, getAddress, isAddress } from "viem";
 import {
   apiStub,
@@ -261,6 +262,17 @@ describe("send to an address", () => {
 });
 
 describe("Receive", () => {
+  it("keeps Receive open as the guest connects a wallet", async () => {
+    stubWallet();
+    const { config } = await renderTrade(<Trade look={FULL_LOOK} />);
+    fireEvent.click(topTab("Send"));
+    fireEvent.click(sendForm().getByRole("button", { name: "Receive" }));
+    expect(screen.getByText("Share your wallet or stealth address to receive funds.")).toBeTruthy();
+
+    await connect(config, { connector: config.connectors[0], chainId: 8453 });
+    await screen.findByRole("img", { name: "Wallet address QR code" }, WAIT);
+  });
+
   it("opens without wallet prompts and initializes keys on request", async () => {
     const calls = stubWallet();
     await openSend({ tokenBalance: 10_000_000n });

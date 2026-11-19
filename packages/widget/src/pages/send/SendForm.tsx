@@ -62,7 +62,17 @@ const exact = (amount: bigint, decimals: number): string =>
 
 export function SendForm(props: SendFormProps) {
   const { address } = useAccount();
-  return <WalletSendForm key={address?.toLowerCase()} {...props} />;
+  const [receive, setReceive] = useState(
+    () => new URLSearchParams(location.search).get("receive") === "1",
+  );
+  return (
+    <WalletSendForm
+      key={address?.toLowerCase()}
+      {...props}
+      receive={receive}
+      setReceive={setReceive}
+    />
+  );
 }
 
 function WalletSendForm({
@@ -71,7 +81,9 @@ function WalletSendForm({
   active = true,
   destinations,
   onQuote,
-}: SendFormProps) {
+  receive,
+  setReceive,
+}: SendFormProps & { receive: boolean; setReceive: (receive: boolean) => void }) {
   const id = useId();
   const [recoveryHash, setRecoveryHash] = useState<string | null>(null);
   const config = useConfig();
@@ -93,9 +105,6 @@ function WalletSendForm({
   const [input, setInput] = useState("");
   const [pasteError, setPasteError] = useState("");
   const [publicChoice, setPublicChoice] = useState<string>();
-  const [receive, setReceive] = useState(
-    () => new URLSearchParams(location.search).get("receive") === "1",
-  );
   const [reviewedRecipient, setReviewedRecipient] = useState<ResolvedRecipient>();
   const [selectedDestination, setSelectedDestination] = useState<number>();
   const [inviteStatus, setInviteStatus] = useState("");
