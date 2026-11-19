@@ -97,5 +97,5 @@ export function parseStealthMetaAddress(input: string): StealthRecipientCheck {
 /** `st:eth:0x` and the first and last six hex characters. */
 export function abbreviateMetaAddress(encoded: string): string {
   const body = encoded.slice(PREFIX.length);
-  return body.length <= 12 ? encoded : `${PREFIX}${body.slice(0, 6)}...${body.slice(-6)}`;
+  return body.length <= 12 ? encoded : `${PREFIX}${body.slice(0, 6)}…${body.slice(-6)}`;
 }

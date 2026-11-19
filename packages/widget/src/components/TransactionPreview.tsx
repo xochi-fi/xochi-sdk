@@ -26,6 +26,11 @@ import { usePrices } from "../hooks/usePrices.js";
 import { quoteExpiryLabel } from "../lib/quoteCountdown.js";
 import { servedFees } from "../lib/feesLabel.js";
 import { paymentSummary } from "../lib/paymentSummary.js";
+import {
+  confirmSend,
+  SHIELDED_DESCRIPTION,
+  type SendRecipientDisplay,
+} from "../pages/send/sendCopy.js";
 import { TokenIcon } from "./TokenIcon.js";
 import { useClaimInXochiApp, useWidgetTabsShown } from "./widgetTabsContext.js";
 import { CHAIN_ICONS, AZTEC_ICON } from "../assets/chains/index.js";
@@ -47,6 +52,7 @@ interface TransactionPreviewProps {
   fromChainId: SelectableChainId;
   toChainId: SelectableChainId;
   destination: IntentDestination;
+  sendRecipientDisplay?: SendRecipientDisplay;
   onConfirm: () => void;
   onCancel: () => void;
   isLoading: boolean;
@@ -78,6 +84,7 @@ export function TransactionPreview({
   fromChainId,
   toChainId,
   destination,
+  sendRecipientDisplay,
   onConfirm,
   onCancel,
   isLoading,
@@ -285,7 +292,14 @@ export function TransactionPreview({
           {/* Stealth claim info (shown for stealth/shielded settlements). The
             settlement venue is already on the arrives line, so this is just the
             claim mechanics, kept to one line. */}
-          {quote.claimInfo && (
+          {sendRecipientDisplay?.mode === "Shielded" && (
+            <p className="tx-preview-claim-note">{SHIELDED_DESCRIPTION}</p>
+          )}
+          {sendRecipientDisplay?.mode === "Stealth" ? (
+            <p className="tx-preview-claim-note">
+              Lands at a one-time stealth address controlled by {sendRecipientDisplay.label}’s keys.
+            </p>
+          ) : !sendRecipientDisplay && quote.claimInfo ? (
             <div className="tx-preview-claim-info">
               <span className="tx-preview-claim-value">Gasless claim (ERC-4337)</span>
               <span className="tx-preview-claim-note">
@@ -297,7 +311,7 @@ export function TransactionPreview({
                     : "Claim anytime on the full widget, which opens in a new tab, no gas."}
               </span>
             </div>
-          )}
+          ) : null}
 
           {/* The panel's payment vocabulary. The signature count is left to the
             note below, which is read off the same pull authorization. */}
@@ -319,7 +333,13 @@ export function TransactionPreview({
         </button>
         <button className="modal-btn modal-btn--confirm" onClick={onConfirm} disabled={isLoading}>
           {isLoading && <span className="spinner spinner--small" />}
-          {isDepositRoute ? "Continue" : isLoading ? "Signing..." : "Confirm swap"}
+          {isDepositRoute
+            ? "Continue"
+            : isLoading
+              ? "Signing..."
+              : sendRecipientDisplay
+                ? confirmSend(sendRecipientDisplay)
+                : "Confirm swap"}
         </button>
       </div>
 

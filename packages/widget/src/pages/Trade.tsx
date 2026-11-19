@@ -43,6 +43,8 @@ import { PaymentAppSend } from "../ramp/offramp/PaymentAppSend.js";
 import { RAMP_HOST_GATE_COPY, useRampHostGate } from "../lib/rampHostGate.js";
 import { BuyPanel } from "./trade/BuyPanel.js";
 import { CashOutRecovery, PurchaseRecovery } from "./trade/RampRecovery.js";
+import { abbreviateMetaAddress } from "./send/stealthRecipient.js";
+import { truncateAddress } from "../utils/format.js";
 import { SendPanel } from "./send/SendPanel.js";
 import {
   WidgetTabs,
@@ -296,6 +298,10 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
   const selectTab = useCallback((tab: WidgetTabId): void => {
     setClaimsWanted(false);
     setSelectedTab(tab);
+    if (tab !== "send") {
+      setSendQuoteRecipient(undefined);
+      setRetryPrefill((prefill) => (prefill?.fromSend ? null : prefill));
+    }
   }, []);
   const tabs: WidgetTab[] = [
     { id: "trade" as const, label: "Trade" },
@@ -489,7 +495,18 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
 
   const handleSendQuote = (order: Omit<SwapPrefill, "nonce">, recipient: ResolvedRecipient) => {
     retryNonce.current += 1;
-    setRetryPrefill({ ...order, nonce: retryNonce.current, fromSend: true });
+    const label = recipient.shieldedAlias
+      ? `@${recipient.shieldedAlias}`
+      : (recipient.name ??
+        (recipient.address
+          ? truncateAddress(recipient.address)
+          : abbreviateMetaAddress(recipient.stealthMetaAddress ?? "")));
+    setRetryPrefill({
+      ...order,
+      nonce: retryNonce.current,
+      fromSend: true,
+      sendRecipientDisplay: { mode: recipient.shieldedAlias ? "Shielded" : "Stealth", label },
+    });
     setSendQuoteRecipient(recipient);
   };
 
@@ -601,8 +618,8 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
                       // The host's wallet: no claim here or in a tab of the widget's own.
                       <p className="claims-nudge" role="note">
                         {claimableCount > 0
-                          ? `${claimableCount} private ${claimableCount === 1 ? "payment is" : "payments are"} ready. `
-                          : "Your private payment landed. "}
+                          ? `${claimableCount} ${claimableCount === 1 ? "payment is" : "payments are"} ready to claim. `
+                          : "Your Stealth payment landed. "}
                         {CLAIM_IN_XOCHI_APP}
                       </p>
                     ) : (
@@ -617,7 +634,7 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
                             {claimableCount === 1 ? "payment is" : "payments are"} ready to claim
                           </>
                         ) : (
-                          "Claim your private payment"
+                          "Open Claims"
                         )}
                         <span className="claims-nudge__arrow" aria-hidden="true">
                           {"→"}
@@ -638,7 +655,10 @@ export function Trade({ look, hostConnection = hostBridge, embed }: TradeProps) 
                 showQuote={showSendQuote}
                 quoteMount={sendSwapMount}
                 onQuote={handleSendQuote}
-                onCloseQuote={() => setSendQuoteRecipient(undefined)}
+                onCloseQuote={() => {
+                  setSendQuoteRecipient(undefined);
+                  setRetryPrefill(null);
+                }}
                 onConnectRequest={hostOwnsWalletUi ? requestHostConnect : undefined}
               />
             </div>

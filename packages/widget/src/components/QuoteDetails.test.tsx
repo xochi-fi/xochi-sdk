@@ -54,19 +54,19 @@ it("keeps the Swap receipt's route, own-wallet description and Public guidance",
   expect(screen.getByRole("timer")).toBeTruthy();
 });
 
-it("uses the recipient's stealth address and sends edits back to Send", () => {
+it("uses the recipient's one-time stealth address and sends edits back to Send", () => {
   const { container } = receipt("Stealth");
   expect(container.querySelector(".quote-route")).toBeNull();
-  expect(screen.getByText("Goes to the recipient's stealth address.")).toBeTruthy();
+  expect(screen.getByText("Goes to the recipient's one-time stealth address.")).toBeTruthy();
   expect(screen.getByText(/Back to Send.*Send publicly instead/)).toBeTruthy();
   expect(screen.getByRole("button", { name: "Cost details" })).toBeTruthy();
   expect(screen.getByRole("timer")).toBeTruthy();
 });
 
-it("labels a zk.money receipt Shielded", () => {
+it("explains what a Shielded send hides inside zk.money", () => {
   const { container } = receipt("Shielded");
   expect(container.querySelector(".quote-route")).toBeNull();
-  expect(screen.getByText("Shielded")).toBeTruthy();
+  expect(screen.getByText("Amounts and participants hidden inside zk.money.")).toBeTruthy();
   expect(screen.getByText(/@mira receives/)).toBeTruthy();
   expect(screen.queryByText(/Public/)).toBeNull();
 });

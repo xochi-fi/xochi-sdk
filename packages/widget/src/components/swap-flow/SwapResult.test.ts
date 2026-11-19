@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { IntentTimeline } from "../IntentTimeline.js";
 import { SwapResult } from "./SwapResult.js";
 import { buildFailureRef, type SwapFailureRef } from "../../lib/swapFlowPhase.js";
 
@@ -138,5 +139,42 @@ describe("SwapResult pending (in-doubt downgrade)", () => {
     const out = renderPending();
     expect(out).not.toContain("Try again");
     expect(out).not.toMatch(/onRetry|Retry/);
+  });
+});
+
+describe("Send and Swap receipts", () => {
+  const route = { fromChainId: 8453, toChainId: 1, isCrossChain: true, txHash: null } as const;
+
+  it.each([
+    ["Stealth", "mira.gwei", "Landed at the recipient&#x27;s one-time stealth address"],
+    ["Shielded", "@mira", "Sent to @mira"],
+  ] as const)("uses the %s recipient label only for Send", (mode, label, swapTitle) => {
+    const delivery = {
+      ...route,
+      substatus: "filled",
+      isStealth: mode === "Stealth",
+      stealthPayee: "other",
+    } as const;
+    const result = {
+      ...delivery,
+      variant: "success",
+      recipientTag: mode === "Shielded" ? "mira" : undefined,
+      toSymbol: "USDC",
+      onRetry: () => {},
+      onClose: () => {},
+    } as const;
+    const sendRecipientDisplay = { mode, label };
+    const sent = `Sent with ${mode} to ${label}`;
+    expect(
+      renderToStaticMarkup(createElement(SwapResult, { ...result, sendRecipientDisplay })),
+    ).toContain(sent);
+    expect(renderToStaticMarkup(createElement(SwapResult, result))).toContain(swapTitle);
+    const timeline = { ...delivery, status: "settling", startTime: 1 } as const;
+    expect(
+      renderToStaticMarkup(createElement(IntentTimeline, { ...timeline, sendRecipientDisplay })),
+    ).toContain(sent);
+    expect(renderToStaticMarkup(createElement(IntentTimeline, timeline))).toContain(
+      mode === "Stealth" ? "one-time stealth address" : "Funds delivered. Finalizing the swap.",
+    );
   });
 });

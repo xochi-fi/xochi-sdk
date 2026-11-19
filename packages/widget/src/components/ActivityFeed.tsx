@@ -23,7 +23,6 @@ import {
   EXTENDED_CHAIN_NAMES,
   getExplorerTxUrl,
   CHAIN_SHORT_NAMES,
-  settlementDisclosure,
   getTokenInfoForChain,
 } from "@xochi/client";
 import { swapExplorerLinks } from "../lib/explorerLinks.js";
@@ -41,6 +40,7 @@ import { usePrices } from "../hooks/usePrices.js";
 import { swapUsd, estimatedFeeUsd } from "../lib/activityValue.js";
 import { phaseFromStatus } from "@xochi/client";
 import { isTerminalIntentStatus } from "@xochi/client";
+import { PrivacyBars } from "./PrivacyBars.js";
 import { TokenIcon } from "./TokenIcon.js";
 import { Chevron } from "./Chevron.js";
 import { AuthorizedAgents } from "./AuthorizedAgents.js";
@@ -54,6 +54,10 @@ import type { OfframpActivityItem } from "../ramp/offramp/localOfframps.js";
 import { formatMixedCashOut, formatUsdc } from "../ramp/offramp/model.js";
 import { heldReleaseEstimate, type RampOperationSummary } from "../ramp/recovery/summaries.js";
 import { DEPOSIT_ATTESTATION_PIN } from "../config.js";
+
+function activityAddress(address: string): string {
+  return truncateAddress(address).replace("...", "…");
+}
 
 /** USD helper: null when the swapped token is outside the priced set (avoids a
  *  misleading $1 par fallback). Takes raw smallest-unit amount + decimals. */
@@ -210,8 +214,8 @@ function SwapRow({
   const { data, timestamp, intentStatus } = item;
   const fromToken = getTokenInfo(data.fromToken, data.fromChainId);
   const toToken = getTokenInfo(data.toToken, data.toChainId);
-  const fromSymbol = fromToken?.symbol ?? truncateAddress(data.fromToken);
-  const toSymbol = toToken?.symbol ?? truncateAddress(data.toToken);
+  const fromSymbol = fromToken?.symbol ?? activityAddress(data.fromToken);
+  const toSymbol = toToken?.symbol ?? activityAddress(data.toToken);
   const normalizedTag =
     typeof data.recipientTag === "string" ? normalizeZkMoneyTag(data.recipientTag) : "";
   const recipientTag =
@@ -226,7 +230,7 @@ function SwapRow({
     ? toToken
       ? formatRawAmount(data.toAmount, toToken.decimals)
       : "--"
-    : "...";
+    : "…";
   // Two legs, two explorers: the deposit hash on the source chain, the fill hash
   // on the destination chain. A same-chain swap has no fill link.
   const { source: explorerUrl, destination: fillExplorerUrl } = swapExplorerLinks({
@@ -305,12 +309,12 @@ function SwapRow({
     : data.destinationType === "aztec"
       ? "Aztec"
       : CHAIN_SHORT_NAMES[data.toChainId];
-  const aztecPrivacyLabel =
-    data.destinationType === "aztec" &&
-    data.settlementType !== undefined &&
-    data.settlementType !== "public"
-      ? settlementDisclosure(data.settlementType).label
-      : null;
+  const mode =
+    recipientTag || data.settlementType === "shielded"
+      ? "Shielded"
+      : data.settlementType === "stealth"
+        ? "Stealth"
+        : "Public";
 
   return (
     <div className={`activity-row-wrapper ${isExpanded ? "expanded" : ""}`}>
@@ -325,16 +329,14 @@ function SwapRow({
             <span className="activity-chain-route">
               <ChainIcon chainId={data.fromChainId} />
               {CHAIN_SHORT_NAMES[data.fromChainId]}
-              <span className="chain-arrow"> -&gt; </span>
+              <span className="chain-arrow"> → </span>
               {data.destinationType === "aztec" ? (
                 <img src={AZTEC_ICON} alt="" className="inline-chain-icon" />
               ) : (
                 <ChainIcon chainId={data.toChainId} />
               )}
               {destinationLabel}
-              {data.destinationType === "aztec" && aztecPrivacyLabel && (
-                <span className="destination-tag-inline aztec">{aztecPrivacyLabel}</span>
-              )}
+              {data.destinationType === "aztec" && <ActivityMode mode={mode} />}
             </span>
           </div>
           <div className="activity-tokens">
@@ -342,7 +344,7 @@ function SwapRow({
               <TokenIcon symbol={fromSymbol} className="inline-token-icon" />
               {fromAmount} {fromSymbol}
             </span>
-            <span className="swap-arrow"> -&gt; </span>
+            <span className="swap-arrow"> → </span>
             <span className="to-token">
               <TokenIcon symbol={toSymbol} className="inline-token-icon" />
               {toAmount} {toSymbol}
@@ -351,7 +353,7 @@ function SwapRow({
           {inUsd != null && outUsd != null && (
             <div className="activity-usd">
               <span className="activity-usd__flow">
-                {fmtUsd(inUsd)} <span className="chain-arrow">-&gt;</span> {fmtUsd(outUsd)}
+                {fmtUsd(inUsd)} <span className="chain-arrow">→</span> {fmtUsd(outUsd)}
               </span>
               {feeUsd != null && (
                 <span className="activity-usd__fee">est. fee ~{fmtFeeUsd(feeUsd)}</span>
@@ -360,6 +362,7 @@ function SwapRow({
           )}
           {live && <PhaseLine status={intentStatus} />}
           <div className="activity-meta">
+            {data.destinationType !== "aztec" && <ActivityMode mode={mode} />}
             <span className={`activity-status-badge ${badge.className}`}>{badge.label}</span>
             <time className="activity-time" dateTime={new Date(timestamp).toISOString()}>
               {formatTimeAgo(timestamp)}
@@ -390,7 +393,7 @@ function SwapRow({
                 recipientTag
                   ? `@${recipientTag} on zk.money (public Ethereum DAI deposit)`
                   : data.destinationType === "aztec"
-                    ? `Aztec Network${aztecPrivacyLabel ? ` (${aztecPrivacyLabel})` : ""}`
+                    ? `Aztec Network${mode !== "Public" ? ` (${mode})` : ""}`
                     : `${CHAIN_FULL_NAMES[data.toChainId]} (${toSymbol})`
               }
             />
@@ -415,7 +418,7 @@ function SwapRow({
               {fillExplorerUrl && data.receivingTxHash && (
                 <DetailRow
                   label="Receipt"
-                  value={truncateAddress(data.receivingTxHash)}
+                  value={activityAddress(data.receivingTxHash)}
                   mono
                   link={fillExplorerUrl}
                 />
@@ -423,7 +426,7 @@ function SwapRow({
               {data.txHash && (
                 <DetailRow
                   label={fillExplorerUrl ? "Deposit" : "Hash"}
-                  value={truncateAddress(data.txHash)}
+                  value={activityAddress(data.txHash)}
                   mono
                   link={explorerUrl || undefined}
                 />
@@ -506,14 +509,14 @@ function SwapRow({
 function SummaryPreview({ item }: { item: SwapActivityItem }) {
   const fromToken = getTokenInfo(item.data.fromToken, item.data.fromChainId);
   const toToken = getTokenInfo(item.data.toToken, item.data.toChainId);
-  const fromSymbol = fromToken?.symbol ?? truncateAddress(item.data.fromToken);
-  const toSymbol = toToken?.symbol ?? truncateAddress(item.data.toToken);
+  const fromSymbol = fromToken?.symbol ?? activityAddress(item.data.fromToken);
+  const toSymbol = toToken?.symbol ?? activityAddress(item.data.toToken);
   const badge = getSwapStatusBadge(item.intentStatus);
   return (
     <span className="activity-strip__latest">
       <TokenIcon symbol={fromSymbol} className="inline-token-icon" />
       {fromSymbol}
-      <span className="chain-arrow"> -&gt; </span>
+      <span className="chain-arrow"> → </span>
       <TokenIcon symbol={toSymbol} className="inline-token-icon" />
       {toSymbol}
       <span className={`activity-status-badge ${badge.className}`}>{badge.label}</span>
@@ -592,7 +595,7 @@ function localRows(history: LocalHistory, wallet?: string): LocalRow[] {
         key: `send:${id}`,
         timestamp,
         amount: `Send ${formatTokenAmount(BigInt(data.amount), data.decimals, data.decimals)} ${data.symbol}`,
-        detail: `To ${truncateAddress(data.recipient)} on ${chainName(data.chainId)}`,
+        detail: `To ${activityAddress(data.recipient)} on ${chainName(data.chainId)}`,
         status: SEND_STATUS[status],
         transaction: explorer ? { href: explorer, hash: data.txHash } : undefined,
       };
@@ -623,18 +626,27 @@ function localRows(history: LocalHistory, wallet?: string): LocalRow[] {
   ];
 }
 
+function ActivityMode({ mode }: { mode: "Public" | "Stealth" | "Shielded" }) {
+  return (
+    <span className="activity-mode">
+      <PrivacyBars count={mode === "Shielded" ? 3 : mode === "Stealth" ? 2 : 1} active /> {mode}
+    </span>
+  );
+}
+
 function LocalActivityRow({ row }: { row: LocalRow }) {
   return (
     <div className="send-activity__row">
       <span className="send-activity__amount">{row.amount}</span>
       <span className="send-activity__meta">{row.detail}</span>
       <span className="send-activity__status">
+        <ActivityMode mode="Public" />
         {row.status}
         <time dateTime={new Date(row.timestamp).toISOString()}>{formatTimeAgo(row.timestamp)}</time>
       </span>
       {row.transaction && (
         <a href={row.transaction.href} target="_blank" rel="noopener noreferrer">
-          Transaction {truncateAddress(row.transaction.hash)}
+          Transaction {activityAddress(row.transaction.hash)}
         </a>
       )}
     </div>
@@ -887,7 +899,7 @@ export function ActivityFeed({
               <span className="activity-strip__claim-chip">{claimableCount} claimable</span>
               <span className="activity-strip__claimable-text">
                 {claimableCount === 1 ? "settlement is" : "settlements are"} ready to claim.
-                {onClaimNudge ? " Claim in Stealth Payments." : ""}
+                {onClaimNudge ? " Open Claims." : ""}
               </span>
             </button>
           )}
@@ -1000,7 +1012,7 @@ export function ActivityFeed({
                     onClick={onLoadMore}
                     disabled={isLoading}
                   >
-                    {isLoading ? "Loading..." : "Load more"}
+                    {isLoading ? "Loading…" : "Load more"}
                   </button>
                 )}
               </>

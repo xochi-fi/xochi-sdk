@@ -115,8 +115,6 @@ describe("parseStealthMetaAddress", () => {
 
 describe("abbreviateMetaAddress", () => {
   it("keeps the prefix and both ends", () => {
-    expect(abbreviateMetaAddress(ENCODED)).toBe(
-      `st:eth:0x${SPEND.slice(0, 6)}...${VIEW.slice(-6)}`,
-    );
+    expect(abbreviateMetaAddress(ENCODED)).toBe(`st:eth:0x${SPEND.slice(0, 6)}…${VIEW.slice(-6)}`);
   });
 });

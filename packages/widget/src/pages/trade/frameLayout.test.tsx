@@ -217,9 +217,7 @@ describe("layout=swap", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull(), WAIT);
-    fireEvent.click(
-      await screen.findByRole("button", { name: /Claim your private payment/ }, WAIT),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: /Open Claims/ }, WAIT));
     expect(open).toHaveBeenCalledWith("/embed#claims", "_blank", "noopener,noreferrer");
   });
 
@@ -245,7 +243,7 @@ describe("layout=swap", () => {
     // The row after the card says where to claim and opens nothing.
     const note = await screen.findByRole("note", {}, WAIT);
     expect(note.textContent).toContain(CLAIM_IN_XOCHI_APP);
-    expect(screen.queryByRole("button", { name: /Claim your private payment/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Open Claims/ })).toBeNull();
     expect(open).not.toHaveBeenCalled();
   });
 });
