@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useFocusTrap } from "../../hooks/useFocusTrap.js";
 import {
@@ -6,8 +6,8 @@ import {
   type ResolveResult,
   type ResolvedRecipient,
 } from "../../lib/recipient/index.js";
-import { readRecentRecipients, rememberRecipient } from "../../lib/recipient/recent.js";
 import type { SettlementType } from "../../types/index.js";
+import { RecentRecipients } from "../send/RecentRecipients.js";
 import { RecipientChip } from "../send/RecipientChip.js";
 import { abbreviateMetaAddress } from "../send/stealthRecipient.js";
 import { useRecipientDeps } from "../send/useSendRecipient.js";
@@ -48,12 +48,16 @@ export function RecipientSheet({
   useEffect(() => fieldRef.current?.focus(), []);
   const deps = useRecipientDeps();
   const [input, setInput] = useState(selected?.input ?? "");
-  const [recent] = useState(readRecentRecipients);
+  const [recentPick, setRecentPick] = useState(false);
   const [lookup, setLookup] = useState<{ input: string; result: ResolveResult }>();
   const result = lookup?.input === input ? lookup.result : undefined;
   const resolved = result?.status === "resolved" ? result.recipient : undefined;
   const issue = resolved ? recipientIssue(resolved, mode) : null;
   const canUsePublic = !!resolved?.address && mode === "stealth" && !!issue;
+
+  const chooseRecent = useEffectEvent((recipient: ResolvedRecipient) => {
+    if (!recipientIssue(recipient, mode)) choose(recipient);
+  });
 
   useEffect(() => {
     const value = input.trim();
@@ -68,17 +72,18 @@ export function RecipientSheet({
         return;
       }
       void resolveRecipient(value, deps, controller.signal).then((result) => {
-        if (!controller.signal.aborted) setLookup({ input, result });
+        if (controller.signal.aborted) return;
+        setLookup({ input, result });
+        if (recentPick && result.status === "resolved") chooseRecent(result.recipient);
       });
     }, 250);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [input, deps]);
+  }, [input, deps, recentPick]);
 
   function choose(recipient: ResolvedRecipient | null, nextMode?: SettlementType) {
-    if (recipient) rememberRecipient(recipient);
     onSelect(recipient, nextMode);
     onClose();
   }
@@ -106,13 +111,24 @@ export function RecipientSheet({
             To
           </h3>
           <button className="modal-close" type="button" onClick={onClose} aria-label="Close">
-            ×
+            <svg
+              viewBox="0 0 12 12"
+              width="12"
+              height="12"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="M2 2l8 8M10 2l-8 8" />
+            </svg>
           </button>
         </div>
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            if (resolved && !issue) choose(resolved);
+            if (resolved && !issue && !recentPick) choose(resolved);
           }}
         >
           <label className="recipient-field__label" htmlFor={fieldId}>
@@ -124,6 +140,7 @@ export function RecipientSheet({
             className="recipient-field__input"
             value={input}
             onChange={(event) => {
+              setRecentPick(false);
               setLookup(undefined);
               setInput(event.target.value);
             }}
@@ -142,7 +159,7 @@ export function RecipientSheet({
           </div>
           <div className="swap-recipient-actions">
             {resolved && !issue && (
-              <button className="btn btn--primary" type="submit">
+              <button className="btn btn--primary" type="submit" disabled={recentPick}>
                 Use recipient
               </button>
             )}
@@ -160,26 +177,19 @@ export function RecipientSheet({
             </button>
           </div>
         </form>
-        {recent.length > 0 && (
-          <section className="swap-recipient-recent" aria-label="Recent recipients">
-            <p>Recent</p>
-            {recent.map((value) => (
-              <button
-                className="btn btn--ghost"
-                key={value}
-                type="button"
-                onClick={() => {
-                  if (input !== value) {
-                    setLookup(undefined);
-                    setInput(value);
-                  }
-                }}
-              >
-                {recipientLabel(value)}
-              </button>
-            ))}
-          </section>
-        )}
+        <RecentRecipients
+          onSelect={(value) => {
+            if (input === value && resolved && !issue) {
+              choose(resolved);
+              return;
+            }
+            if (input !== value || !recentPick) {
+              setLookup(undefined);
+              setInput(value);
+              setRecentPick(true);
+            }
+          }}
+        />
       </div>
     </div>,
     portalTarget?.ownerDocument.body ?? document.body,

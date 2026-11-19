@@ -160,7 +160,11 @@
   --muted-gold-30: rgba(122, 110, 90, 0.25);
   --muted-coral: rgba(180, 120, 60, 0.5);
 
-  --axol-coral: #b8802e;
+  --axol-coral: #70420f;
+  --coral-10: rgba(184, 128, 46, 0.1);
+  --coral-15: rgba(184, 128, 46, 0.15);
+  --coral-20: rgba(184, 128, 46, 0.2);
+  --coral-30: rgba(184, 128, 46, 0.3);
   --decentralized-coral: #b54e40;
   --cryptowave-sky: #2a7498;
   --node-indigo: #28338b;

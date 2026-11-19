@@ -21,7 +21,7 @@ export function RecipientChip({ recipient }: { recipient: ResolvedRecipient }) {
       />
       <span>
         {recipient.name && <strong>{recipient.name}</strong>}
-        <small title={value}>{short}</small>
+        {short !== recipient.name && <small title={value}>{short}</small>}
       </span>
     </span>
   );
