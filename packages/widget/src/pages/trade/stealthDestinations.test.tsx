@@ -113,7 +113,10 @@ const tokenSymbols = (dialog: HTMLElement): string[] =>
   );
 
 async function waitForLiveGuidance() {
-  await waitFor(() => expect(guidance()?.textContent).toContain("Stealth is available on"), WAIT);
+  await waitFor(() => {
+    expect(stealthSelected()).toBe("true");
+    expect(guidance()?.textContent).not.toMatch(/Checking|couldn.t be verified/);
+  }, WAIT);
 }
 
 function expectNoSignatures(walletMethods: readonly string[]) {
@@ -335,10 +338,10 @@ describe("live Stealth receive choices", () => {
     const networks = await openReceiveNetworks();
     await waitFor(() => expect(networkNames(networks)).toContain("zk.money"), WAIT);
     expect(networkNames(networks)).toEqual(
-      expect.arrayContaining(["Base", "Ethereum", "Arbitrum", "Optimism", "Aztec"]),
+      expect.arrayContaining(["Base", "Ethereum", "Arbitrum", "Optimism"]),
     );
     fireEvent.click(within(networks).getByRole("button", { name: "zk.money" }));
-    expect(await screen.findByLabelText("zk.money tag", {}, WAIT)).toBeTruthy();
+    expect(await screen.findByText("Choose a zk.money alias.", {}, WAIT)).toBeTruthy();
     expect(screen.getByRole("button", { name: /^Shielded/ }).getAttribute("aria-pressed")).toBe(
       "true",
     );

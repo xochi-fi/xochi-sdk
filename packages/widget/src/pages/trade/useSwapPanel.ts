@@ -19,14 +19,16 @@
  * SwapPanel remains JSX-only and never reaches into a child hook.
  *
  * What stays here is what genuinely belongs to no single group: the wallet
- * facts, the trust score, the two disclosure toggles, the slippage setting, and
+ * facts, the trust score, the recipient selection, the help disclosure, and
  * the two cells more than one group reads (`flowOpen`, `resumed` -- see below).
  * Plus the cross-group wiring: the four `on*` transitions a leg change owes the
  * groups downstream of the route, and the one effect whose trigger and whose
  * target sit in different groups.
  */
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import type { ResolvedRecipient } from "../../lib/recipient/index.js";
+import { recipientLabel } from "./RecipientSheet.js";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useAccount } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useTrustScore } from "../../hooks/useTrustScore.js";
@@ -61,12 +63,10 @@ export function useSwapPanel(
   const { isConnected, address, chainId: connectedChainId } = useAccount();
   const { openConnectModal } = useConnectModal();
 
-  // Effective score (0 while trust economics is off). It drives the tier ladder,
-  // the quote's fallback fee anatomy and the tier persisted with each swap.
+  // Effective score (0 while trust economics is off), used for quote fees.
   const { trustScore } = useTrustScore();
 
-  const [slippageBps, setSlippageBps] = useState(DEFAULT_SLIPPAGE_BPS);
-  const [showSettings, setShowSettings] = useState(false);
+  const [swapRecipient, setSwapRecipient] = useState<ResolvedRecipient | null>(null);
   const [showExplainer, setShowExplainer] = useState(false);
 
   // Read by three groups, so it is held here rather than by the flow group that
@@ -171,6 +171,7 @@ export function useSwapPanel(
       // panel fail its own `refundAddressError` check on a value the user never
       // typed for this route.
       gating.clearRecipient();
+      setSwapRecipient(null);
       gating.clearRefund();
       gating.intent.reset();
     },
@@ -192,7 +193,8 @@ export function useSwapPanel(
     isConnected,
     address,
     trustScore,
-    slippageBps,
+    slippageBps: DEFAULT_SLIPPAGE_BPS,
+    swapRecipient: hasSendRecipient ? null : swapRecipient,
     flowOpen,
     onStealthSettled,
     initialSettlement: embed.settlementPreference,
@@ -285,6 +287,12 @@ export function useSwapPanel(
     amountLocked,
   });
 
+  const { clearRecipient } = gating;
+  const clearSwapRecipient = useCallback(() => {
+    clearRecipient();
+    setSwapRecipient(null);
+  }, [clearRecipient]);
+
   const flow = useSwapFlow({
     prefill: admittedPrefill,
     hasSendRecipient,
@@ -311,7 +319,11 @@ export function useSwapPanel(
     recipientMissing: gating.recipientMissing,
     recipientInvalid: gating.recipientInvalid,
     restoreSettlement: gating.restoreSettlement,
-    clearRecipient: gating.clearRecipient,
+    clearRecipient: clearSwapRecipient,
+    swapRecipientLabel:
+      !hasSendRecipient && !route.isNonEvmDest && swapRecipient
+        ? (swapRecipient.name ?? recipientLabel(swapRecipient.input))
+        : undefined,
     restoreRecipientTag: gating.setRecipientTag,
     restoreRefundAddress: gating.setRefundAddress,
     stealthPayee: gating.stealthRecipient ? "other" : "self",
@@ -495,10 +507,6 @@ export function useSwapPanel(
     stealthDestinationSupported: gating.stealthDestinationSupported,
     stealthRouteAvailable: gating.stealthRouteAvailable,
     stealthRefusalReason: gating.stealthRefusalReason,
-    showSettings,
-    setShowSettings,
-    slippageBps,
-    setSlippageBps,
     trustScore,
     intent: gating.intent,
     fromToken: route.fromToken,
@@ -523,6 +531,15 @@ export function useSwapPanel(
     payoutField: amounts.payoutField,
     amountBigInt: amounts.amountBigInt,
     isNonEvmDest: route.isNonEvmDest,
+    swapRecipient,
+    swapRecipientIssue: gating.swapRecipientIssue,
+    selectSwapRecipient: (recipient: ResolvedRecipient | null, mode?: SettlementType) => {
+      setSwapRecipient(recipient);
+      gating.clearRecipient();
+      gating.restoreStealthRecipient(null);
+      gating.intent.reset();
+      if (mode) handleSettlementChange(mode);
+    },
     recipientAddress: gating.recipientAddress,
     setRecipientAddress: gating.setRecipientAddress,
     recipientInvalid: gating.recipientInvalid,

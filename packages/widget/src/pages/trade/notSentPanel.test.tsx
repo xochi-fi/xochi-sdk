@@ -93,7 +93,7 @@ describe("a not-sent order behind a closed modal", () => {
       target: { value: "5" },
     });
     await waitFor(
-      () => expect(document.querySelector(".submit-btn")?.textContent).toBe("Swap USDC → USDC"),
+      () => expect(document.querySelector(".submit-btn")?.textContent).toBe("Bridge USDC"),
       WAIT,
     );
     fireEvent.click(document.querySelector(".submit-btn") as HTMLElement);

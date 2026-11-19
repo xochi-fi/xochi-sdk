@@ -49,6 +49,7 @@ import {
   type SelectableChainId,
 } from "@xochi/client";
 import { findTokenBySymbol } from "./config.js";
+import { rememberSendIntent } from "../send/sendRetry.js";
 import { planResume, shouldCaptureToActivity } from "./resumeSwap.js";
 import type { ResumedSwap } from "./resumeSwap.js";
 import type { RouteCheck, SwapRouteLegs } from "./useSwapRoute.js";
@@ -158,6 +159,7 @@ export interface UseSwapFlowParams {
   /** The selected mode's fix; non-null blocks submit until the user acts. */
   settlementFix: SettlementFix | null;
   destination: IntentDestination;
+  swapRecipientLabel?: string;
   recipientMissing: boolean;
   recipientInvalid: boolean;
   restoreSettlement: (next: SettlementType) => void;
@@ -182,7 +184,12 @@ export interface SwapCta {
   action: "submit" | "useMax";
 }
 
-type FlowDestination = IntentDestination & { sendRecipientDisplay?: SendRecipientDisplay };
+export interface ActivityRecipientDisplay {
+  sendRecipientDisplay?: SendRecipientDisplay;
+  swapRecipientLabel?: string;
+}
+
+type FlowDestination = IntentDestination & ActivityRecipientDisplay;
 
 export interface UseSwapFlowResult {
   handleMarketSubmit: () => Promise<void>;
@@ -226,6 +233,7 @@ export function useSwapFlow({
   settlement,
   settlementFix,
   destination,
+  swapRecipientLabel,
   recipientMissing,
   recipientInvalid,
   restoreSettlement,
@@ -273,6 +281,7 @@ export function useSwapFlow({
     ...destination,
     recipientTag: intent.quote ? intent.quote.recipientTag : destination.recipientTag,
     ...(sendRecipientDisplay && { sendRecipientDisplay }),
+    ...(swapRecipientLabel && { swapRecipientLabel }),
   };
 
   /**
@@ -415,8 +424,12 @@ export function useSwapFlow({
 
     // planResume returns null on a leg it cannot render faithfully, in which
     // case the panel is left alone; the feed still shows and advances the swap.
-    const plan = planResume(findResumableSwap(address));
+    const record = findResumableSwap(address);
+    const plan = planResume(record);
     if (!plan) return;
+    const display = record?.data as ActivityRecipientDisplay | undefined;
+    const send = display?.sendRecipientDisplay;
+    const swapLabel = display?.swapRecipientLabel;
 
     resumedForAddress.current = address;
     applyRoute({
@@ -438,11 +451,22 @@ export function useSwapFlow({
     // gets the same treatment a live one gets rather than being trusted because
     // it was ours once. Starting null also means no unproven address can flash
     // on screen while the check runs.
+    const destination: FlowDestination = {
+      ...plan.destination,
+      sendRecipientDisplay:
+        (send?.mode === "Stealth" || send?.mode === "Shielded") &&
+        typeof send.label === "string" &&
+        send.label.length <= 255
+          ? send
+          : undefined,
+      swapRecipientLabel:
+        typeof swapLabel === "string" && swapLabel.length <= 255 ? swapLabel : undefined,
+    };
     setResumed({
       intentId: plan.intentId,
       toAmount: plan.toAmount,
       deposit: null,
-      destination: plan.destination,
+      destination,
       stealthPayee: plan.stealthPayee,
     });
     // Elapsed counts from the original submit, not from now: a user ten minutes
@@ -562,6 +586,9 @@ export function useSwapFlow({
     // is live, so that was dropping production swaps, and Tron ORIGIN is the
     // flow where losing the tab is the NORMAL case, because the user has to
     // leave the browser for a Tron wallet to send at all.
+    if (intent.intentId && executedDestination?.sendRecipientDisplay) {
+      rememberSendIntent(intent.intentId, executedDestination.sendRecipientDisplay);
+    }
     upsertLocalSwap(owner, {
       id: intent.intentId,
       type: "swap",
@@ -606,6 +633,10 @@ export function useSwapFlow({
             : "public"
           : settlement,
         recipientTag: executedDestination?.recipientTag ?? intent.quote?.recipientTag,
+        ...({
+          sendRecipientDisplay: executedDestination?.sendRecipientDisplay,
+          swapRecipientLabel: executedDestination?.swapRecipientLabel,
+        } satisfies ActivityRecipientDisplay),
         // The marker only, never the keys (see SwapActivity.stealthPayee).
         ...((executedDestination ? executedPayee : stealthPayee) === "other" && {
           stealthPayee: "other" as const,
@@ -687,7 +718,8 @@ export function useSwapFlow({
   const quoteStale =
     intent.quotedFromAmount !== null && intent.quotedFromAmount !== amountBigInt.toString();
 
-  const hasCurrentSettlementAuthority = routeCheck.status === "supported" && settlementFix === null;
+  const hasCurrentSettlementAuthority =
+    routeCheck.status === "supported" && settlementFix === null && !recipientInvalid;
 
   // Invalidate only a quote that is still provably pre-dispatch. During a
   // wallet prompt, cancelSign arbitrates the race with execute: false means the
@@ -755,7 +787,14 @@ export function useSwapFlow({
         );
         return;
       }
-      if (await intent.allocateDepositRoute()) setFlowOpen(true);
+      setExecutedDestination(quotedDestination);
+      setExecutedPayee(stealthPayee);
+      if (await intent.allocateDepositRoute()) {
+        setFlowOpen(true);
+      } else {
+        setExecutedDestination(null);
+        setExecutedPayee(null);
+      }
       return;
     }
     if (!intent.canSign) {
@@ -786,6 +825,8 @@ export function useSwapFlow({
     switchChainAsync,
     intent.canSign,
     quoteStale,
+    quotedDestination,
+    stealthPayee,
     intent.canAllocateDepositRoute,
     intent.allocateDepositRoute,
     insufficientBalance,
@@ -1012,7 +1053,10 @@ export function useSwapFlow({
                                   ? "Updating quote..."
                                   : sendRecipientDisplay
                                     ? `Send ${formatTokenAmount(amountBigInt, fromToken.decimals, fromToken.decimals)} ${fromToken.symbol} with ${sendRecipientDisplay.mode}`
-                                    : `Swap ${fromToken.symbol} ${GLYPH.flow} ${toToken.symbol}`
+                                    : fromChainId !== toChainId &&
+                                        fromToken.symbol === toToken.symbol
+                                      ? `Bridge ${fromToken.symbol}`
+                                      : `Swap ${fromToken.symbol} ${GLYPH.flow} ${toToken.symbol}`
                                 : "Getting quote...";
   const cta: SwapCta =
     typeof ctaChoice === "string" ? { label: ctaChoice, action: "submit" } : ctaChoice;

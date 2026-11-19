@@ -170,6 +170,7 @@ interface SwapFlowModalProps {
   receivedAmount?: string;
   fromChainId: SelectableChainId;
   toChainId: SelectableChainId;
+  swapRecipientLabel?: string;
   destination: IntentDestination & { sendRecipientDisplay?: SendRecipientDisplay };
   /** On a Stealth destination: `"other"` paid someone else's keys, so the ending has no claim. */
   stealthPayee?: "self" | "other";
@@ -421,6 +422,10 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
             </svg>
           </button>
         </div>
+
+        {props.swapRecipientLabel && (
+          <p className="swap-recipient-flow">To: {props.swapRecipientLabel}</p>
+        )}
 
         {/* Polite announcement of phase changes for screen readers */}
         <span className="sr-only" aria-live="polite">

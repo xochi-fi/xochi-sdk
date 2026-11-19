@@ -17,10 +17,12 @@ import { CANTON_PUBLIC_ONLY_LINE } from "./canton.js";
  * The one description of each mode: the line under the segment. Nothing else in
  * the frame restates it.
  */
+export const SHIELDED_DESCRIPTION = ZKMONEY_PRIVACY_COPY;
+
 export const MODE_META: Record<SettlementType, string> = {
   public: "Recipient and amount visible",
   stealth: "Recipient hidden, amount visible",
-  shielded: ZKMONEY_PRIVACY_COPY,
+  shielded: SHIELDED_DESCRIPTION,
 };
 
 /**
@@ -63,3 +65,5 @@ export const payoutHeadline = (payout: string): string =>
 
 /** The same guarantee where no figure is shown (the configurator's preview). */
 export const PAYOUT_GUARANTEE = "Receive exactly the quoted amount, or a full refund.";
+
+export const SHIELDED_DEPOSIT_NOTE = "Deposit is public on Ethereum.";

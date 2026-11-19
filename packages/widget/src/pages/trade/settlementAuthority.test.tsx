@@ -204,7 +204,7 @@ describe("exact settlement authority", () => {
         { connected: true, walletChainId: BASE, tokenBalance: 10n ** 12n },
       );
       fireEvent.change(payAmount(), { target: { value: "5" } });
-      await waitFor(() => expect(submitButton().textContent).toBe("Swap USDC → USDC"), WAIT);
+      await waitFor(() => expect(submitButton().textContent).toBe("Bridge USDC"), WAIT);
       fireEvent.click(submitButton());
       await waitFor(() => expect(screen.getByRole("dialog")).toBeTruthy(), WAIT);
 

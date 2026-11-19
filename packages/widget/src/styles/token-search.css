@@ -104,10 +104,9 @@
 
 .token-search-chains {
   display: flex;
-  flex-direction: row;
+  flex-flow: row wrap;
   gap: var(--space-sm);
   padding: var(--space-md) var(--space-xl);
-  overflow-x: auto;
   flex-shrink: 0;
   border-bottom: 1px solid var(--panel-border);
   scrollbar-width: none;
@@ -180,7 +179,6 @@
 
 .token-search-close:focus-visible,
 .token-search-chain-item:focus-visible,
-.token-search-popular-chip:focus-visible,
 .token-search-row:focus-visible {
   outline: 2px solid var(--muted-gold);
   outline-offset: 2px;
@@ -302,58 +300,13 @@
   min-height: 0;
 }
 
-/* ========================================
-   Popular Tokens (chips)
-   ======================================== */
-
 .token-search-section-label {
   font-family: var(--font-mono);
   font-size: 0.65rem;
   font-weight: 600;
   color: var(--text-faint);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   padding: 0 var(--space-xl);
   margin-bottom: var(--space-sm);
-}
-
-.token-search-popular {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-sm);
-  padding: 0 var(--space-xl);
-  margin-bottom: var(--space-md);
-  flex-shrink: 0;
-}
-
-.token-search-popular-chip {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-  padding: 4px 10px;
-  background: transparent;
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-full);
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  font-weight: 500;
-  min-height: 44px;
-}
-
-.token-search-popular-chip:hover {
-  background: var(--muted-gold-subtle);
-  border-color: var(--muted-gold-15);
-  color: var(--pearl-cream);
-}
-
-.token-search-popular-chip .token-search-chip-icon {
-  width: 16px;
-  height: 16px;
-  border-radius: var(--radius-full);
-  object-fit: contain;
 }
 
 /* ========================================
@@ -463,8 +416,6 @@
   font-family: var(--font-mono);
   font-size: 0.5rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   padding: 2px 6px;
   border-radius: 3px;
   white-space: nowrap;

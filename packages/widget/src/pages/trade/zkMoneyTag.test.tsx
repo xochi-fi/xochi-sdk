@@ -13,6 +13,8 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import type { Config } from "@wagmi/core";
+import { encodeAbiParameters, parseAbiParameters } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { buildDepositAttestationMessage, type DepositAttestationFields } from "@xochi/signer";
 import {
@@ -164,8 +166,44 @@ function recordingStub(
   };
 }
 
-const tagField = (): HTMLInputElement | null =>
-  document.querySelector<HTMLInputElement>("#swap-recipient-tag");
+const walletRecipient = () => screen.getByRole("button", { name: "To: Your wallet" });
+const namedRecipient = () => screen.getByRole("button", { name: `To: ${TAG}.zk.money` });
+
+function openRecipientSheet() {
+  fireEvent.click(screen.getByRole("button", { name: /^To:/ }));
+  return screen.getByRole<HTMLInputElement>("textbox", { name: "Name or address" });
+}
+
+function resetRecipient() {
+  openRecipientSheet();
+  fireEvent.click(screen.getByRole("button", { name: "Use my wallet" }));
+}
+
+async function chooseTag(config: Config) {
+  const mainnetClient = config.getClient({ chainId: 1 });
+  const request = mainnetClient.request;
+  const ensResolution = encodeAbiParameters(parseAbiParameters("bytes, address"), [
+    encodeAbiParameters(parseAbiParameters("address"), [BOUND_ADDRESS]),
+    BOUND_ADDRESS,
+  ]);
+  const calls: unknown[] = [];
+  const resolveAlias = vi.spyOn(mainnetClient, "request").mockImplementation((args, options) => {
+    const { method, params } = args as { method: string; params?: [{ to?: string }] };
+    const call = method === "eth_call" ? params?.[0] : undefined;
+    if (call?.to?.toLowerCase() === "0x64969fb44091a7e5fa1213d30d7a7e8488edf693") {
+      calls.push(call);
+      return Promise.resolve(ensResolution);
+    }
+    return request(args, options);
+  });
+  try {
+    fireEvent.change(openRecipientSheet(), { target: { value: `@${TAG.toUpperCase()}` } });
+    fireEvent.click(await screen.findByRole("button", { name: "Use recipient" }, WAIT));
+    expect(calls).toHaveLength(1);
+  } finally {
+    resolveAlias.mockRestore();
+  }
+}
 
 async function offeredZkMoneyShortcut(): Promise<HTMLButtonElement> {
   return waitFor(() => {
@@ -197,20 +235,18 @@ async function quoteToTag(
 ): Promise<Record<string, unknown>[]> {
   const bodies: Record<string, unknown>[] = [];
   vi.stubGlobal("fetch", recordingStub(quote, bodies, status));
-  await renderTrade(<SwapPanel />, { connected, walletChainId: connected ? 8453 : undefined });
+  const { config } = await renderTrade(<SwapPanel />, {
+    connected,
+    walletChainId: connected ? 8453 : undefined,
+  });
   fireEvent.click(await offeredZkMoneyShortcut());
-  const field = await waitFor(() => {
-    const input = tagField();
-    if (!input) throw new Error("tag field not rendered");
-    return input;
-  }, WAIT);
   const account = screen.getByRole<HTMLAnchorElement>("link", {
     name: "Need a zk.money account? Create one (opens in new tab)",
   });
   expect(account.href).toBe("https://wallet.zk.money/");
   expect(account.target).toBe("_blank");
   expect(account.rel).toBe("noopener noreferrer");
-  fireEvent.change(field, { target: { value: `@${TAG.toUpperCase()}` } });
+  await chooseTag(config);
   fireEvent.change(screen.getByLabelText<HTMLInputElement>("Pay"), {
     target: { value: "1000" },
   });
@@ -223,6 +259,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  localStorage.clear();
   vi.useRealTimers();
   window.history.replaceState({}, "", "/");
   intentAPI.clearQuoteCache();
@@ -345,7 +383,7 @@ describe("zk.money destination", () => {
       );
       await screen.findByText(`@${TAG} receives ≈ 998 DAI`, {}, WAIT);
       expect(screen.getByRole("button", { name: "On zk.money - Change network" })).toBeTruthy();
-      expect(tagField()?.value).toBe(TAG);
+      expect(screen.getByRole("button", { name: `To: @${TAG}` })).toBeTruthy();
       expect(document.querySelector<HTMLInputElement>("#swap-refund")?.value).toBe(refund);
       expect(
         document.querySelector<HTMLInputElement>("#swap-refund")?.getAttribute("aria-invalid"),
@@ -448,7 +486,7 @@ describe("zk.money destination", () => {
     // The Worker's verdict is final: no Retry is offered for it.
     expect(document.querySelector(".error-retry-btn")).toBeNull();
     expect(document.querySelector(".error-suggestion")).toBeNull();
-    expect(tagField()?.value).toBe(`@${TAG.toUpperCase()}`);
+    expect(namedRecipient()).toBeTruthy();
     expect(document.querySelector<HTMLButtonElement>(".submit-btn")?.disabled).toBe(true);
   });
 
@@ -467,7 +505,7 @@ describe("zk.money destination", () => {
     expect(document.querySelector(".error-countdown")).toBeNull();
     expect(document.querySelector(".quote-details")).toBeNull();
     expect(document.querySelector<HTMLButtonElement>(".submit-btn")?.disabled).toBe(true);
-    expect(tagField()?.value).toBe(`@${TAG.toUpperCase()}`);
+    expect(namedRecipient()).toBeTruthy();
     expect(screen.getByLabelText<HTMLInputElement>("Pay").value).toBe("1000");
     expect(screen.getByRole("button", { name: "On zk.money - Change network" })).toBeTruthy();
     expect(bodies).toHaveLength(1);
@@ -499,18 +537,16 @@ describe("zk.money destination", () => {
     vi.stubGlobal("fetch", recordingStub(taggedQuote, bodies));
     await renderTrade(<SwapPanel />, { connected: true });
     fireEvent.click(await offeredZkMoneyShortcut());
-    const field = screen.getByLabelText<HTMLInputElement>("zk.money tag");
+    fireEvent.change(screen.getByLabelText("Pay"), { target: { value: "1000" } });
+    const field = openRecipientSheet();
     vi.useFakeTimers();
     try {
       fireEvent.change(field, { target: { value: "@invalid.tag" } });
-      fireEvent.change(screen.getByLabelText<HTMLInputElement>("Pay"), {
-        target: { value: "1000" },
-      });
       await act(() => vi.advanceTimersByTimeAsync(QUOTE_DEBOUNCE_MS * 2));
-      expect(field.getAttribute("aria-invalid")).toBe("true");
-      expect(document.querySelector(".recipient-field__error")?.textContent).toBe(
-        "Use 1 to 63 letters, numbers or hyphens.",
+      expect(within(screen.getByRole("dialog")).getByRole("status").textContent).toContain(
+        "Invalid zk.money alias",
       );
+      expect(screen.queryByRole("button", { name: "Use recipient" })).toBeNull();
       expect(bodies).toHaveLength(0);
       expect(document.querySelector(".error-display")).toBeNull();
       expect(document.querySelector(".quote-details")).toBeNull();
@@ -520,7 +556,7 @@ describe("zk.money destination", () => {
     }
   });
 
-  it("drops the tag and the pinned pair when the destination moves", async () => {
+  it("unpins the pair when the destination moves and lets the user reset the recipient", async () => {
     await quoteToTag(taggedQuote);
     await waitFor(() => expect(document.querySelector(".quote-details")).toBeTruthy(), WAIT);
 
@@ -534,14 +570,16 @@ describe("zk.money destination", () => {
     }, WAIT);
     fireEvent.click(option);
 
-    await waitFor(() => expect(tagField()).toBeNull(), WAIT);
+    expect(namedRecipient()).toBeTruthy();
+    resetRecipient();
+    expect(walletRecipient()).toBeTruthy();
     expect(screen.getByRole("button", { name: "On Arbitrum - Change network" })).toBeTruthy();
     expect(document.querySelector('[aria-label="Settlement privacy"]')).toBeTruthy();
     expect(screen.getByRole("button", { name: /^Public/ }).getAttribute("aria-pressed")).toBe(
       "true",
     );
     await pickZkMoney();
-    await waitFor(() => expect(tagField()?.value).toBe(""), WAIT);
+    expect(walletRecipient()).toBeTruthy();
   });
 
   it("shows zk.money information only for the selected destination and keeps navigation visible", async () => {
@@ -560,7 +598,7 @@ describe("zk.money destination", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: /^Public/ }));
-    expect(tagField()).toBeNull();
+    expect(screen.queryByLabelText("Name or address")).toBeNull();
     expect(document.querySelector(".zkmoney-privacy")).toBeNull();
     expect(screen.queryByRole("link", { name: /Need a zk.money account/ })).toBeNull();
     expect(screen.getByRole("button", { name: /^Public/ }).getAttribute("aria-pressed")).toBe(
@@ -568,19 +606,20 @@ describe("zk.money destination", () => {
     );
   });
 
-  it("clears the tag and quote when Public is chosen, but not when Shielded is already active", async () => {
+  it("blocks the alias on Public and keeps the quote when Shielded is already active", async () => {
     await quoteToTag(taggedQuote);
     await waitFor(() => expect(document.querySelector(".quote-details")).toBeTruthy(), WAIT);
     fireEvent.click(screen.getByRole("button", { name: /^Shielded/ }));
-    expect(tagField()?.value).toBe(`@${TAG.toUpperCase()}`);
+    expect(namedRecipient()).toBeTruthy();
     expect(document.querySelector(".quote-details")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /^Public/ }));
     expect(screen.getByRole("button", { name: "On Ethereum - Change network" })).toBeTruthy();
-    expect(tagField()).toBeNull();
+    expect(namedRecipient()).toBeTruthy();
+    resetRecipient();
     expect(document.querySelector(".quote-details")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /^Shielded/ }));
-    expect(tagField()?.value).toBe("");
+    expect(walletRecipient()).toBeTruthy();
   });
 
   it.each(["token", "network"] as const)(
@@ -597,7 +636,7 @@ describe("zk.money destination", () => {
         "fetch",
         recordingStub({ ...taggedQuote, preview: false }, bodies, 200, CAPABILITIES, walletMethods),
       );
-      await renderTrade(
+      const { config } = await renderTrade(
         <>
           <CapabilityClient />
           <SwapPanel />
@@ -608,7 +647,7 @@ describe("zk.money destination", () => {
         },
       );
       fireEvent.click(await offeredZkMoneyShortcut());
-      fireEvent.change(screen.getByLabelText("zk.money tag"), { target: { value: TAG } });
+      await chooseTag(config);
       fireEvent.change(screen.getByLabelText("Pay"), { target: { value: "1000" } });
       await waitFor(() => expect(document.querySelector(".quote-details")).toBeTruthy(), WAIT);
       const original = parseWidgetCapabilities(CAPABILITIES.body.capabilities);
@@ -645,7 +684,8 @@ describe("zk.money destination", () => {
       expect(screen.getByRole("button", { name: /^Public/ }).getAttribute("aria-pressed")).toBe(
         "true",
       );
-      expect(tagField()).toBeNull();
+      expect(namedRecipient()).toBeTruthy();
+      resetRecipient();
       expect(document.querySelector(".zkmoney-privacy")).toBeNull();
       expect(document.querySelector(".quote-details")).toBeNull();
       expect(screen.getByLabelText<HTMLInputElement>("Pay").value).toBe("1000");
@@ -670,7 +710,7 @@ describe("zk.money destination", () => {
         }),
       );
       fireEvent.click(await offeredZkMoneyShortcut());
-      expect(tagField()?.value).toBe("");
+      expect(walletRecipient()).toBeTruthy();
       expect(
         walletMethods.filter(
           (method) => method === "personal_sign" || method.startsWith("eth_sign"),
@@ -679,7 +719,7 @@ describe("zk.money destination", () => {
     },
   );
 
-  it("leaves a public-only tag quote for Stealth without retaining the tag", async () => {
+  it("requires a recipient reset before leaving a tag quote for Stealth", async () => {
     const bodies = await quoteToTag(
       QuoteResponseSchema.parse(
         quoteWire({
@@ -699,13 +739,15 @@ describe("zk.money destination", () => {
     expect(stealth.disabled).toBe(false);
     fireEvent.click(stealth);
     await waitFor(() => expect(stealth.getAttribute("aria-pressed")).toBe("true"), WAIT);
-    expect(tagField()).toBeNull();
+    expect(screen.queryByLabelText("Name or address")).toBeNull();
     expect(document.querySelector(".zkmoney-privacy")).toBeNull();
     expect(document.querySelector(".quote-details")).toBeNull();
     expect(screen.getByLabelText<HTMLInputElement>("Pay").value).toBe("1000");
     expect(screen.getByRole("button", { name: "On Base - Change network" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "On Ethereum - Change network" })).toBeTruthy();
     expect(bodies).toHaveLength(taggedQuoteCount);
+    expect(namedRecipient()).toBeTruthy();
+    resetRecipient();
     fireEvent.click(screen.getByRole("button", { name: "Set up Stealth" }));
     await waitFor(
       () =>
@@ -738,9 +780,9 @@ describe("zk.money destination", () => {
       "fetch",
       recordingStub({ ...taggedQuote, preview: false }, bodies, 200, capabilities, walletMethods),
     );
-    await renderTrade(<SwapPanel />, { connected: true, walletChainId: 8453 });
+    const { config } = await renderTrade(<SwapPanel />, { connected: true, walletChainId: 8453 });
     fireEvent.click(await offeredZkMoneyShortcut());
-    fireEvent.change(screen.getByLabelText("zk.money tag"), { target: { value: TAG } });
+    await chooseTag(config);
     fireEvent.change(screen.getByLabelText("Pay"), { target: { value: "1000" } });
     await waitFor(() => expect(document.querySelector(".quote-details")).toBeTruthy(), WAIT);
     const taggedQuoteCount = bodies.length;
@@ -749,7 +791,7 @@ describe("zk.money destination", () => {
     expect(screen.getByRole("button", { name: /^Stealth/ }).getAttribute("aria-pressed")).toBe(
       "true",
     );
-    expect(tagField()).toBeNull();
+    expect(screen.queryByLabelText("Name or address")).toBeNull();
     expect(document.querySelector(".quote-details")).toBeNull();
     expect(screen.getByLabelText<HTMLInputElement>("Pay").value).toBe("1000");
     expect(screen.getByRole("button", { name: "On Base - Change network" })).toBeTruthy();
@@ -769,10 +811,10 @@ describe("zk.money destination", () => {
       walletMethods.filter((method) => method === "personal_sign" || method.startsWith("eth_sign")),
     ).toEqual([]);
     fireEvent.click(screen.getByRole("button", { name: /^Shielded/ }));
-    expect(tagField()?.value).toBe("");
+    expect(namedRecipient()).toBeTruthy();
   });
 
-  it("keeps the guest Public default and drops the tag after leaving zk.money", async () => {
+  it("keeps Public selected and requires a reset after leaving zk.money", async () => {
     const bodies = await quoteToTag(taggedQuote);
     await waitFor(() => expect(document.querySelector(".quote-details")).toBeTruthy(), WAIT);
     const tagQuoteCount = bodies.length;
@@ -784,7 +826,10 @@ describe("zk.money destination", () => {
     expect(screen.getByRole("button", { name: /^Public/ }).getAttribute("aria-pressed")).toBe(
       "true",
     );
-    expect(tagField()).toBeNull();
+    expect(screen.queryByLabelText("Name or address")).toBeNull();
+    expect(namedRecipient()).toBeTruthy();
+    expect(bodies).toHaveLength(tagQuoteCount);
+    resetRecipient();
     await waitFor(() => expect(bodies.length).toBeGreaterThan(tagQuoteCount), WAIT);
     for (const body of bodies.slice(tagQuoteCount)) {
       expect(body.settlement_preference).toBe("public");
@@ -804,14 +849,12 @@ describe("zk.money destination", () => {
       expect(reasonId).toBeTruthy();
       expect(reasonId ? document.getElementById(reasonId)?.textContent?.trim() : "").not.toBe("");
       fireEvent.click(shortcut);
-      expect(tagField()).toBeNull();
+      expect(screen.queryByLabelText("Name or address")).toBeNull();
       expect(screen.getByRole("group", { name: "Settlement privacy" })).toBeTruthy();
 
       fireEvent.click(screen.getByRole("button", { name: "On Arbitrum - Change network" }));
-      await waitFor(
-        () => expect(screen.getByRole("button", { name: /Direct Aztec/ })).toBeTruthy(),
-        WAIT,
-      );
+      const dialog = await screen.findByRole("dialog", { name: "Select network" }, WAIT);
+      expect(within(dialog).queryByRole("button", { name: /Aztec/ })).toBeNull();
       expect(
         Array.from(document.querySelectorAll(".token-search-chain-item")).some((option) =>
           option.textContent?.includes("zk.money"),

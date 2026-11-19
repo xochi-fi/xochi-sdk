@@ -349,39 +349,6 @@
 }
 
 /* Slippage Selector (compact) */
-.slippage-options {
-  display: flex;
-  gap: 0.25rem;
-}
-
-.slippage-btn {
-  padding: 0.35rem 0.55rem;
-  font-family: var(--font-mono);
-  font-size: 0.65rem;
-  background: transparent;
-  border: 1px solid var(--line-subtle);
-  border-radius: 5px;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition:
-    border-color var(--duration-fast) var(--ease-smooth),
-    color var(--duration-fast) var(--ease-smooth),
-    background var(--duration-fast) var(--ease-smooth),
-    box-shadow var(--duration-fast) var(--ease-smooth);
-}
-
-.slippage-btn:hover {
-  border-color: var(--muted-gold-30);
-  color: var(--pearl-cream);
-}
-
-.slippage-btn.active {
-  background: var(--muted-gold-15);
-  border-color: rgba(168, 154, 128, 0.4);
-  color: var(--muted-gold);
-  box-shadow: 0 0 8px rgba(168, 154, 128, 0.08);
-}
-
 /* Legacy chain selector (for backwards compatibility) */
 .chain-selector-group {
   margin-bottom: 1rem;
@@ -446,4 +413,9 @@
 
 [data-theme="light"] .chain-badge__on {
   color: #494c4c;
+}
+
+.token-btn__token,
+.chain-badge {
+  min-height: 44px;
 }
