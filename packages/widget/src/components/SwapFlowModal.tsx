@@ -264,14 +264,24 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
   const structuredError = typeof error === "object" && error !== null ? error : null;
   const phase = receipt.phase;
   const sendRecipientDisplay = props.destination.sendRecipientDisplay;
+  const swapPayee =
+    props.swapRecipientLabel ??
+    (props.destination.recipientTag && `@${props.destination.recipientTag}`);
+  const swapToStealthPayee = swapPayee && props.stealthPayee === "other" ? swapPayee : undefined;
   const title =
-    phase === "confirm" && sendRecipientDisplay
-      ? confirmSend(sendRecipientDisplay)
-      : sendRecipientDisplay && phase === "failed"
-        ? "Send failed"
-        : sendRecipientDisplay && phase === "may-have-moved"
-          ? "Send did not complete"
-          : PHASE_TITLES[phase];
+    phase === "confirm"
+      ? sendRecipientDisplay
+        ? confirmSend(sendRecipientDisplay)
+        : swapPayee
+          ? `Confirm swap to ${swapPayee}`
+          : PHASE_TITLES.confirm
+      : phase === "success" && swapPayee && !sendRecipientDisplay
+        ? "Swap receipt"
+        : sendRecipientDisplay && phase === "failed"
+          ? "Send failed"
+          : sendRecipientDisplay && phase === "may-have-moved"
+            ? "Send did not complete"
+            : PHASE_TITLES[phase];
   // A Canton order past signing renders its escrow (the lock, Riddler's
   // attested delivery, the claim or the refund), never the phase's success or
   // delivered copy: a gateway-reported completion is not a delivery.
@@ -424,9 +434,12 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
           </button>
         </div>
 
-        {props.swapRecipientLabel && (
-          <p className="swap-recipient-flow">To: {props.swapRecipientLabel}</p>
-        )}
+        {swapPayee &&
+          !sendRecipientDisplay &&
+          phase !== "confirm" &&
+          phase !== "success" &&
+          phase !== "deposit" &&
+          !props.destination.recipientTag && <p className="swap-recipient-flow">To: {swapPayee}</p>}
 
         {/* Polite announcement of phase changes for screen readers */}
         <span className="sr-only" aria-live="polite">
@@ -487,8 +500,13 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
                 )}
               </div>
             )}
+            {swapToStealthPayee && (
+              <p className="swap-recipient-flow">
+                Funds land at a one-time stealth address controlled by {swapToStealthPayee}’s keys.
+              </p>
+            )}
             <TransactionPreview
-              quote={quote}
+              quote={swapToStealthPayee ? { ...quote, claimInfo: undefined } : quote}
               fromAmount={props.fromAmount}
               fromSymbol={props.fromSymbol}
               fromDecimals={props.fromDecimals}
@@ -528,6 +546,7 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
               toChainId={depositScreen.toChainId}
               receivedAmount={depositScreen.receivedAmount}
               recipientTag={props.destination.recipientTag}
+              swapRecipientLabel={swapPayee}
               payoutAddress={depositScreen.payoutAddress}
               refundAddress={depositScreen.refundAddress}
               depositDeadline={depositScreen.depositDeadline}
@@ -615,7 +634,9 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
                 receivedAmount, never a figure reassembled from panel state. */}
             {props.receivedAmount && (
               <p className="swap-flow-payout">
-                Receive{" "}
+                {sendRecipientDisplay?.label || swapPayee
+                  ? `${sendRecipientDisplay?.label ?? swapPayee} receives `
+                  : "Receive "}
                 <strong>
                   {props.receivedAmount} {props.toSymbol}
                 </strong>{" "}
@@ -746,6 +767,7 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
                 stealthPayee={props.stealthPayee}
                 sendRecipientDisplay={sendRecipientDisplay}
                 recipientTag={props.destination.recipientTag}
+                swapRecipientLabel={swapPayee}
                 fromChainId={props.fromChainId}
                 toChainId={props.toChainId}
                 isCrossChain={props.isCrossChain}

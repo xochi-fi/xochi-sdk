@@ -115,11 +115,11 @@ interface QuoteDetailsProps {
    */
   quoteExpiresIn?: number | null;
   /**
-   * The zk.money tag this quote pays (no `@`). The headline names the tag and
-   * the amount as approximate, because zk.money takes its fee on arrival.
+   * The zk.money tag this quote pays (no `@`). Arrival fees are disclosed separately.
    */
   recipientTag?: string;
   swapRecipientLabel?: string;
+  sendRecipientLabel?: string;
   /** The Send payee and route are already displayed above the receipt. */
   sendMode?: "Stealth" | "Shielded";
 }
@@ -145,6 +145,7 @@ export function QuoteDetails({
   quoteExpiresIn,
   recipientTag,
   swapRecipientLabel,
+  sendRecipientLabel,
   sendMode,
 }: QuoteDetailsProps) {
   const { prices, livePrices } = usePrices();
@@ -182,7 +183,7 @@ export function QuoteDetails({
   // Honest settlement confirmation, read from the quote's own options rather than
   // just the user's pick. Public is always available; stealth is tier-gated and
   // the quote reports availability + reason. This surfaces whether the order
-  // actually settles privately, including the case where stealth was requested
+  // actually settles with Stealth, including the case where stealth was requested
   // but this quote can't honor it.
   const stealthOption = quote.settlementOptions?.find((o) => o.type === "stealth");
   const wantsPrivate = settlement === "stealth";
@@ -411,6 +412,7 @@ export function QuoteDetails({
   // request this quote cannot honour settles public, and says so.
   const routeLabel =
     fromChainId === toChainId ? fromChainName : `${fromChainName} ${GLYPH.flow} ${toChainName}`;
+  const payee = sendRecipientLabel ?? swapRecipientLabel ?? (recipientTag && `@${recipientTag}`);
   const privacyLabel =
     recipientTag !== undefined ? "Shielded" : privateConfirmed ? "Stealth" : "Public";
 
@@ -423,8 +425,8 @@ export function QuoteDetails({
           floods the screen-reader queue. */}
       <div className="quote-headline">
         <p className="quote-headline__main">
-          {recipientTag !== undefined
-            ? `@${recipientTag} receives ≈ ${payoutLabel} ${toSymbol}`
+          {payee
+            ? `${payee} receives ${payoutLabel} ${toSymbol}, paid as quoted or fully refunded.`
             : payoutHeadline(`${payoutLabel} ${toSymbol}`)}
         </p>
         {refresh && (
@@ -433,9 +435,6 @@ export function QuoteDetails({
           </span>
         )}
       </div>
-      {swapRecipientLabel && !recipientTag && (
-        <p className="quote-meta">To: {swapRecipientLabel}</p>
-      )}
       {recipientTag !== undefined && (
         <>
           <p className="quote-meta">

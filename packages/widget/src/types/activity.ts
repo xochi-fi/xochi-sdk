@@ -139,6 +139,9 @@ export interface SwapActivity {
   recipientTag?: string;
   /** Send identity and a retry input only when it is a name or an alias. */
   sendRecipientDisplay?: SendRecipientDisplay;
+  swapRecipientLabel?: string;
+  /** The original name or zk.money alias, when the recipient was entered that way. */
+  swapRecipientRetryInput?: string;
   /**
    * Deposit-route facts, present only on a swap the user funds by hand. See
    * `DepositActivity`.

@@ -148,12 +148,14 @@ function AgentRow({
   );
 }
 
-export function AuthorizedAgents() {
+export function AuthorizedAgents({ enabled = false }: { enabled?: boolean }) {
   const { agents, authorize, revoke } = useAgentRegistry();
   const [adding, setAdding] = useState(false);
   const [label, setLabel] = useState("");
   const [wallet, setWallet] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  if (!enabled && agents.length === 0) return null;
 
   const submit = (): void => {
     const trimmedWallet = wallet.trim();
@@ -186,9 +188,7 @@ export function AuthorizedAgents() {
       </div>
 
       {agents.length === 0 && !adding && (
-        <p className="agents-section__empty">
-          No authorized agents. An authorized agent streams its activity privately.
-        </p>
+        <p className="agents-section__empty">No authorized agents.</p>
       )}
 
       {agents.length > 0 && (

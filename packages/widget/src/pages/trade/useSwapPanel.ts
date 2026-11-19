@@ -26,8 +26,9 @@
  * target sit in different groups.
  */
 
-import type { ResolvedRecipient } from "../../lib/recipient/index.js";
-import { recipientLabel } from "./RecipientSheet.js";
+import { resolveRecipient, type ResolvedRecipient } from "../../lib/recipient/index.js";
+import { useRecipientDeps } from "../send/useSendRecipient.js";
+import { recipientIssue, recipientLabel } from "./RecipientSheet.js";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useAccount } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
@@ -67,6 +68,13 @@ export function useSwapPanel(
   const { trustScore } = useTrustScore();
 
   const [swapRecipient, setSwapRecipient] = useState<ResolvedRecipient | null>(null);
+  const [recipientRetry, setRecipientRetry] = useState<SwapPrefill["swapRecipientRetry"]>();
+  const recipientDeps = useRecipientDeps();
+  const [recipientRetryFailed, setRecipientRetryFailed] = useState(false);
+  const restoreSwapRecipient = useCallback((retry: SwapPrefill["swapRecipientRetry"]) => {
+    setRecipientRetryFailed(false);
+    setRecipientRetry(retry);
+  }, []);
   const [showExplainer, setShowExplainer] = useState(false);
 
   // Read by three groups, so it is held here rather than by the flow group that
@@ -279,7 +287,7 @@ export function useSwapPanel(
     intent: gating.intent,
     resumed,
     payoutAddress: gating.payoutAddress,
-    recipientInvalid: gating.recipientInvalid,
+    recipientInvalid: gating.recipientInvalid || recipientRetry !== undefined,
     isConnected,
     connectedChainId,
     flowOpen,
@@ -292,6 +300,50 @@ export function useSwapPanel(
     clearRecipient();
     setSwapRecipient(null);
   }, [clearRecipient]);
+
+  const mode = route.zkMoneyDestination ? "shielded" : gating.settlement;
+  const swapPayee =
+    !sendRecipient &&
+    !route.isNonEvmDest &&
+    swapRecipient &&
+    !(
+      mode === "public" &&
+      address &&
+      swapRecipient.address?.toLowerCase() === address.toLowerCase()
+    )
+      ? route.zkMoneyDestination && gating.zkMoneyTag
+        ? `@${gating.zkMoneyTag}`
+        : (swapRecipient.name ?? recipientLabel(swapRecipient.input))
+      : undefined;
+  // The resolver returns zk.money aliases without their prefix.
+  const swapRecipientRetryInput =
+    swapRecipient?.kind === "zkmoney" && swapRecipient.shieldedAlias
+      ? `@${swapRecipient.shieldedAlias}`
+      : swapRecipient?.kind === "ens" ||
+          swapRecipient?.kind === "gns" ||
+          swapRecipient?.kind === "wns"
+        ? swapRecipient.input
+        : undefined;
+
+  useEffect(() => {
+    if (!recipientRetry || recipientRetryFailed) return;
+    const { input } = recipientRetry;
+    if (!input || !recipientDeps) {
+      setRecipientRetryFailed(true);
+      return;
+    }
+    const controller = new AbortController();
+    void resolveRecipient(input, recipientDeps, controller.signal).then((result) => {
+      if (controller.signal.aborted) return;
+      if (result.status === "resolved" && !recipientIssue(result.recipient, mode)) {
+        setSwapRecipient(result.recipient);
+        setRecipientRetry(undefined);
+      } else {
+        setRecipientRetryFailed(true);
+      }
+    });
+    return () => controller.abort();
+  }, [recipientRetry, recipientRetryFailed, recipientDeps, mode, address]);
 
   const flow = useSwapFlow({
     prefill: admittedPrefill,
@@ -316,14 +368,14 @@ export function useSwapPanel(
     settlement: gating.settlement,
     settlementFix: gating.settlementFix,
     destination: gating.destination,
-    recipientMissing: gating.recipientMissing,
-    recipientInvalid: gating.recipientInvalid,
+    recipientMissing: gating.recipientMissing || recipientRetry !== undefined,
+    recipientInvalid: gating.recipientInvalid || recipientRetry !== undefined,
     restoreSettlement: gating.restoreSettlement,
     clearRecipient: clearSwapRecipient,
-    swapRecipientLabel:
-      !sendRecipient && !route.isNonEvmDest && swapRecipient
-        ? (swapRecipient.name ?? recipientLabel(swapRecipient.input))
-        : undefined,
+    restoreSwapRecipient,
+    swapRecipientRetryInput,
+    swapRecipientLabel: swapPayee,
+    swapRecipient: swapPayee ? swapRecipient : undefined,
     restoreRecipientTag: gating.setRecipientTag,
     restoreRefundAddress: gating.setRefundAddress,
     stealthPayee: gating.stealthRecipient ? "other" : "self",
@@ -533,7 +585,10 @@ export function useSwapPanel(
     isNonEvmDest: route.isNonEvmDest,
     swapRecipient,
     swapRecipientIssue: gating.swapRecipientIssue,
+    recipientRetryFailed,
+    recipientRetryPending: !!recipientRetry && !recipientRetryFailed,
     selectSwapRecipient: (recipient: ResolvedRecipient | null, mode?: SettlementType) => {
+      restoreSwapRecipient(undefined);
       setSwapRecipient(recipient);
       gating.clearRecipient();
       gating.restoreStealthRecipient(null);
@@ -542,8 +597,8 @@ export function useSwapPanel(
     },
     recipientAddress: gating.recipientAddress,
     setRecipientAddress: gating.setRecipientAddress,
-    recipientInvalid: gating.recipientInvalid,
-    recipientMissing: gating.recipientMissing,
+    recipientInvalid: gating.recipientInvalid || recipientRetry !== undefined,
+    recipientMissing: gating.recipientMissing || recipientRetry !== undefined,
     recipientCheck: gating.recipientCheck,
     sentRecipient: gating.sentRecipient,
     cantonDestination: gating.cantonDestination,

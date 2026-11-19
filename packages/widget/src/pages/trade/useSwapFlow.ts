@@ -56,7 +56,7 @@ import { planResume, shouldCaptureToActivity } from "./resumeSwap.js";
 import type { ResumedSwap } from "./resumeSwap.js";
 import type { RouteCheck, SwapRouteLegs } from "./useSwapRoute.js";
 import type { SettlementFix } from "../../lib/settlementAvailability.js";
-import type { DepositActivity } from "../../types/activity.js";
+import type { DepositActivity, SwapActivityItem } from "../../types/activity.js";
 import {
   upsertLocalSwap,
   toActivityStatus,
@@ -114,6 +114,7 @@ export interface SwapPrefill {
   toToken: string;
   fromAmount: string;
   fromSend?: true;
+  swapRecipientRetry?: { input?: string; zkMoneyDestination?: boolean };
   sendRecipientDisplay?: SendRecipientDisplay;
   /**
    * Settlement mode of the original order, restored on retry (Phase 6).
@@ -162,6 +163,9 @@ export interface UseSwapFlowParams {
   settlementFix: SettlementFix | null;
   destination: IntentDestination;
   swapRecipientLabel?: string;
+  swapRecipient?: ResolvedRecipient | null;
+  swapRecipientRetryInput?: string;
+  restoreSwapRecipient?: (retry: SwapPrefill["swapRecipientRetry"]) => void;
   recipientMissing: boolean;
   recipientInvalid: boolean;
   restoreSettlement: (next: SettlementType) => void;
@@ -186,14 +190,15 @@ export interface SwapCta {
   action: "submit" | "useMax";
 }
 
-export interface ActivityRecipientDisplay {
-  sendRecipientDisplay?: SendRecipientDisplay;
-  swapRecipientLabel?: string;
-}
+type ActivityRecipientDisplay = Pick<
+  SwapActivityItem["data"],
+  "sendRecipientDisplay" | "swapRecipientLabel" | "swapRecipientRetryInput"
+>;
 
 type FlowDestination = IntentDestination &
   ActivityRecipientDisplay & {
     sendRecipient?: ResolvedRecipient;
+    swapRecipient?: ResolvedRecipient | null;
   };
 
 export interface UseSwapFlowResult {
@@ -239,6 +244,9 @@ export function useSwapFlow({
   settlementFix,
   destination,
   swapRecipientLabel,
+  swapRecipient,
+  swapRecipientRetryInput,
+  restoreSwapRecipient,
   recipientMissing,
   recipientInvalid,
   restoreSettlement,
@@ -286,7 +294,7 @@ export function useSwapFlow({
     ...destination,
     recipientTag: intent.quote ? intent.quote.recipientTag : destination.recipientTag,
     ...(sendRecipientDisplay && { sendRecipientDisplay, sendRecipient }),
-    ...(swapRecipientLabel && { swapRecipientLabel }),
+    ...(swapRecipientLabel && { swapRecipientLabel, swapRecipientRetryInput, swapRecipient }),
   };
 
   /**
@@ -347,7 +355,11 @@ export function useSwapFlow({
     }
     // A history row that paid someone else's keys keeps no keys to pay again,
     // and retrying it as-is would pay this wallet's own keys instead.
-    if (prefill.stealthPayee === "other" && prefill.stealthRecipient === undefined) {
+    if (
+      prefill.stealthPayee === "other" &&
+      prefill.stealthRecipient === undefined &&
+      !prefill.swapRecipientRetry
+    ) {
       showToast("That send paid someone else's stealth keys. Start it again from Send.", "error");
       return;
     }
@@ -381,6 +393,7 @@ export function useSwapFlow({
           : "public",
     );
     clearRecipient();
+    restoreSwapRecipient?.(prefill.swapRecipientRetry);
     restoreStealthRecipient(prefill.stealthRecipient ?? null);
     restoreRecipientTag(recipientTag ?? "");
     restoreRefundAddress(prefill.refundAddress ?? "");
@@ -389,14 +402,15 @@ export function useSwapFlow({
       toChainId: prefill.toChainId,
       fromToken: nextFromToken,
       toToken: nextToToken,
-      zkMoneyDestination: recipientTag !== undefined,
+      zkMoneyDestination:
+        recipientTag !== undefined || prefill.swapRecipientRetry?.zkMoneyDestination === true,
     });
     try {
       setAmount(
         formatTokenAmount(
           BigInt(prefill.fromAmount),
           nextFromToken.decimals,
-          prefill.fromSend ? nextFromToken.decimals : 6,
+          nextFromToken.decimals,
         ),
       );
     } catch {
@@ -552,6 +566,8 @@ export function useSwapFlow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address, flowOpen, intent.status]);
 
+  const recentSwapId = useRef<string | null>(null);
+
   // Log a submitted swap to the local activity feed. Trading is wallet-first, so
   // the Member-gated history endpoint returns nothing here; persisting locally is
   // what makes the feed reflect the user's own trades. Keyed on intentId+status,
@@ -596,6 +612,14 @@ export function useSwapFlow({
       if (intent.status === "completed" && executedDestination.sendRecipient) {
         rememberRecipient(executedDestination.sendRecipient);
       }
+    }
+    if (
+      executedDestination?.swapRecipient &&
+      recentSwapId.current !== intent.intentId &&
+      (intent.status !== "failed" || intent.receipt.phase === "may-have-moved")
+    ) {
+      recentSwapId.current = intent.intentId;
+      rememberRecipient(executedDestination.swapRecipient);
     }
     upsertLocalSwap(owner, {
       id: intent.intentId,
@@ -644,6 +668,7 @@ export function useSwapFlow({
         ...({
           sendRecipientDisplay: executedDestination?.sendRecipientDisplay,
           swapRecipientLabel: executedDestination?.swapRecipientLabel,
+          swapRecipientRetryInput: executedDestination?.swapRecipientRetryInput,
         } satisfies ActivityRecipientDisplay),
         // The marker only, never the keys (see SwapActivity.stealthPayee).
         ...((executedDestination ? executedPayee : stealthPayee) === "other" && {
@@ -857,6 +882,7 @@ export function useSwapFlow({
       routeBeforeSend.current = null;
       restoreSettlement("public");
       clearRecipient();
+      restoreSwapRecipient?.(undefined);
       restoreStealthRecipient(null);
       restoreRecipientTag("");
       applyRoute(previousRoute);
@@ -868,6 +894,7 @@ export function useSwapFlow({
     executedDestination,
     restoreSettlement,
     clearRecipient,
+    restoreSwapRecipient,
     restoreStealthRecipient,
     restoreRecipientTag,
     applyRoute,
@@ -1017,6 +1044,7 @@ export function useSwapFlow({
           action: "useMax",
         }
       : null;
+  const namedSwapLabel = swapRecipientLabel ? `Swap to ${swapRecipientLabel}` : undefined;
   const ctaChoice: string | SwapCta = flowReopenable
     ? "View order progress"
     : !isConnected
@@ -1053,7 +1081,7 @@ export function useSwapFlow({
                           : intent.canAllocateDepositRoute
                             ? intent.error
                               ? "Try reserving route again"
-                              : "Review & reserve route"
+                              : (namedSwapLabel ?? "Review & reserve route")
                             : intent.error
                               ? "Quote failed"
                               : intent.canSign
@@ -1061,10 +1089,11 @@ export function useSwapFlow({
                                   ? "Updating quote..."
                                   : sendRecipientDisplay
                                     ? `Send ${formatTokenAmount(amountBigInt, fromToken.decimals, fromToken.decimals)} ${fromToken.symbol} with ${sendRecipientDisplay.mode}`
-                                    : fromChainId !== toChainId &&
-                                        fromToken.symbol === toToken.symbol
-                                      ? `Bridge ${fromToken.symbol}`
-                                      : `Swap ${fromToken.symbol} ${GLYPH.flow} ${toToken.symbol}`
+                                    : (namedSwapLabel ??
+                                      (fromChainId !== toChainId &&
+                                      fromToken.symbol === toToken.symbol
+                                        ? `Bridge ${fromToken.symbol}`
+                                        : `Swap ${fromToken.symbol} ${GLYPH.flow} ${toToken.symbol}`))
                                 : "Getting quote...";
   const cta: SwapCta =
     typeof ctaChoice === "string" ? { label: ctaChoice, action: "submit" } : ctaChoice;

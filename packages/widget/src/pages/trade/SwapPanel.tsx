@@ -13,7 +13,7 @@
  */
 
 import { useClaimInXochiApp } from "../../components/widgetTabsContext.js";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { InfoButton } from "../../components/InfoButton.js";
 import { STATUS_GLYPH } from "../../lib/glyphs.js";
 import { truncateServedReason } from "../../lib/declineGuidance.js";
@@ -143,6 +143,8 @@ export function SwapPanel({
     isNonEvmDest,
     swapRecipient,
     swapRecipientIssue,
+    recipientRetryFailed,
+    recipientRetryPending,
     selectSwapRecipient,
     trustScore,
     recipientAddress,
@@ -216,9 +218,16 @@ export function SwapPanel({
     destinationChainBlockedReason,
   } = useSwapPanel(prefill, onStealthSettled, sendRecipient);
   const [recipientSheetOpen, setRecipientSheetOpen] = useState(false);
+  useEffect(() => {
+    if (recipientRetryFailed) setRecipientSheetOpen(true);
+  }, [recipientRetryFailed]);
   const recipientTrigger = useRef<HTMLButtonElement>(null);
   const { features } = useCapabilities();
-  const toLabel = swapRecipient && (swapRecipient.name ?? recipientLabel(swapRecipient.input));
+  const toLabel = swapRecipient
+    ? (swapRecipient.name ?? recipientLabel(swapRecipient.input))
+    : zkMoneyDestination && zkMoneyTag
+      ? `@${zkMoneyTag}`
+      : undefined;
   const stealthChainNames = joinChainNames(
     stealthChains.map((chainId) => EXTENDED_CHAIN_NAMES[chainId]),
   );
@@ -708,7 +717,12 @@ export function SwapPanel({
               >
                 <span>To:</span>{" "}
                 <span>
-                  {toLabel || (zkMoneyDestination && zkMoneyTag ? `@${zkMoneyTag}` : "Your wallet")}
+                  {recipientRetryPending
+                    ? "Resolving recipient…"
+                    : recipientRetryFailed
+                      ? "Choose recipient"
+                      : toLabel ||
+                        (zkMoneyDestination && zkMoneyTag ? `@${zkMoneyTag}` : "Your wallet")}
                 </span>
               </button>
             )}
@@ -722,6 +736,8 @@ export function SwapPanel({
               />
             )}
             <div className="settlement-caption" role="status">
+              {zkMoneyDestination && <div>Receive changes to DAI on zk.money.</div>}
+              {recipientRetryFailed && <div>Choose the recipient again.</div>}
               {swapRecipientIssue ??
                 (zkMoneyDestination && !sendRecipient && !zkMoneyTag
                   ? "Choose a zk.money alias."
@@ -795,6 +811,7 @@ export function SwapPanel({
                     stealthDestinationGuidance ? "stealth-destination-guidance" : undefined
                   }
                   readOnly
+                  tabIndex={-1}
                   onClick={
                     receiveFit.truncated || receiveFit.expanded ? receiveFit.toggle : undefined
                   }
@@ -1052,6 +1069,7 @@ export function SwapPanel({
               quoteExpiresIn={intent.quoteExpiresIn}
               recipientTag={intent.quote?.recipientTag}
               swapRecipientLabel={flowDestination.swapRecipientLabel}
+              sendRecipientLabel={flowDestination.sendRecipientDisplay?.label}
               sendMode={sendRecipient ? sendMode : undefined}
             />
           </div>

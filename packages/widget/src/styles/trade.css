@@ -13,3 +13,19 @@
 @import "./solver-race.css";
 @import "./swap-flow.css";
 @import "./token-search.css";
+
+@media (max-width: 320px) {
+  .swap-flow-modal--confirm .tx-preview-amount {
+    min-width: 0;
+    flex-shrink: 1;
+  }
+
+  .swap-flow-modal--confirm .tx-preview-amount-num {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .swap-flow-modal--confirm .tx-preview-detail {
+    flex-basis: 100%;
+  }
+}
