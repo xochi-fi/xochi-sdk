@@ -2,6 +2,61 @@
 
 The complete Xochi trading widget and configurator, extracted from the hosted implementation without changing its iframe boundary. React and React DOM are peers. `@xochi/widget-lib` remains the separate, React-free host loader and wallet bridge.
 
+## Install
+
+`@xochi/widget` requires WalletConnect 2.26 or later with React 19. Wagmi 2
+pins an older WalletConnect provider whose transitive React peer range excludes
+React 19. Add the following configuration for your package manager to your
+application's root `package.json` before installing `@xochi/widget`.
+Dependency overrides are applied by the consumer's package manager.
+
+### npm
+
+```json
+{
+  "overrides": {
+    "@walletconnect/core": "^2.26.0",
+    "@walletconnect/ethereum-provider": "^2.26.0",
+    "@walletconnect/sign-client": "^2.26.0",
+    "@walletconnect/universal-provider": "^2.26.0",
+    "@walletconnect/utils": "^2.26.0"
+  }
+}
+```
+
+### pnpm
+
+```json
+{
+  "pnpm": {
+    "overrides": {
+      "@walletconnect/core": "^2.26.0",
+      "@walletconnect/ethereum-provider": "^2.26.0",
+      "@walletconnect/sign-client": "^2.26.0",
+      "@walletconnect/universal-provider": "^2.26.0",
+      "@walletconnect/utils": "^2.26.0"
+    }
+  }
+}
+```
+
+### Yarn
+
+```json
+{
+  "resolutions": {
+    "@walletconnect/core": "^2.26.0",
+    "@walletconnect/ethereum-provider": "^2.26.0",
+    "@walletconnect/sign-client": "^2.26.0",
+    "@walletconnect/universal-provider": "^2.26.0",
+    "@walletconnect/utils": "^2.26.0"
+  }
+}
+```
+
+`@xochi/widget-lib` is the iframe embed API. It has no wallet dependencies and
+needs no WalletConnect overrides.
+
 ## Release state
 
 The ramp release candidate pairs `@xochi/widget@0.1.0` with
@@ -21,7 +76,8 @@ node scripts/verify-widget-consumer.mjs
 
 This installs the signer, client, loader and widget tarballs into a scratch
 consumer. It uses anonymous public npm resolution for external dependencies,
-with no workspace links or overrides. It checks exports and strict declarations
+with the documented npm WalletConnect overrides and no workspace links. It
+requires zero React peer problems, checks exports and strict declarations,
 and builds the widget and the wallet-free configurator from their public entry points.
 
 After approval and publication of the prerequisites, verify the widget against
@@ -42,19 +98,9 @@ declarations. Its discovery and unsigned maker ports use widget-owned types.
 The runtime remains pinned to `@zkp2p/sdk@0.15.0-rc.11`. The rc.12 tarball still
 contains unresolved `./types` imports in its ESM declarations.
 
-The React 19 wallet gate also fails on the packed widget from `origin/main`.
-Wagmi 2 selects WalletConnect's Apache-licensed provider, which pulls AppKit
-1.7.8, Valtio 1.13.2 and `use-sync-external-store@1.2.0`. The store's peer range
-excludes React 19. RainbowKit 2 supports Wagmi 2. WalletConnect provider 2.21.9
-selects the Valtio 2 graph and changes the provider license from Apache-2.0 to
-the WalletConnect Community License.
-
-The [Apache-compatible backport request](https://github.com/WalletConnect/walletconnect-monorepo/issues/7393)
-tracks a candidate that passed the React peer check and wallet production
-build, but failed strict provider declaration checks on `Core.relayUrl` and
-`SignClient.signConfig`. Pairing and signing remain unqualified. Keep the React
-peer gate enabled and repeat complete packed-widget and host qualification
-after a redistribution-cleared compatible wallet graph becomes public.
+The documented WalletConnect 2.26 overrides clear the React 19 release gate.
+The release decision accepts WalletConnect 2.26 for now. Review of the Reown
+license remains an open legal item outside this release gate.
 
 ## Rendering
 
