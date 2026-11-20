@@ -123,12 +123,6 @@ if (host) {
 - The events carry no intent id, but a host that supplies `provider` sees the full signed `XochiIntent`, `intentId` included, when the frame asks that wallet to sign it (`eth_signTypedData_v4`). Only a wallet the frame owns keeps the intent id from the host.
 - The frame side, `connectToHost`, posts only `xochi:ready` before the handshake (to `"*"`, or to `hostOrigin` when given). It pins the origin of the first well-formed `xochi:provider` from `window.parent` (only `hostOrigin`, when given; never the opaque `"null"`), then handles only messages from that window and origin and posts only to it. It applies the host's limits before asking: off-allowlist methods (`4200`), bad params (`-32602`), requests over `MAX_MESSAGE_LENGTH` (`-32600`) and more than `MAX_PENDING_RPC` in flight (`-32005`) are refused with the host's own code and message, without posting anything. Host messages over `MAX_MESSAGE_LENGTH` are dropped (an answer that size rejects its request with `-32603`), and host error messages are cut to `MAX_ERROR_MESSAGE_LENGTH`.
 
-Changes: [CHANGELOG.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/widget-lib/CHANGELOG.md).
-
-## License
-
-MIT
-
 ## Tabs and ramp integration
 
 `WidgetTab` is `trade | send | activity | claims`. Trade has Buy (`onramp`),
@@ -200,10 +194,12 @@ Custom TypeScript exhaustive event switches must add the new union members.
 
 ### Migrate a hosted embed
 
-Use `@xochi/widget-lib@0.6.0` with a hosted shell serving
-`@xochi/widget@0.1.0` or later compatible widget at `/embed`. Deploy that shell
-first. A standalone or legacy Swap embed can continue using `layout=swap`.
-With the full layout, the widget opens on Trade > Swap by default.
+`@xochi/widget-lib@0.6.0` needs a hosted frame built from widget source that
+understands these parameters. The production frame at `widget.xochi.fi` does not
+yet: it ignores `initialTab`, `initialMode`, `modes` and the other new keys, so
+against it `createXochiRampWidget` silently opens Swap and no ramp events fire.
+Deploy the compatible frame first. A standalone or legacy Swap embed can continue
+using `layout=swap`. With the full layout, the widget opens on Trade > Swap by default.
 Set `initialTab: "trade"` and
 `initialMode: "offramp"` to land on Cash out, or use
 `createXochiRampWidget(container, { direction: "offramp" })`. The original
@@ -212,5 +208,20 @@ Trade/Swap events remain on the same bridge.
 An iframe waits for the origin-pinned current handshake before offering new
 Peer execution. Legacy handshakes leave ramp entry points unavailable.
 Activity can recover submitted operations even after ramp entry points are hidden.
-For additional data-handling requirements, see the
-[ramp/1 secret boundary](../client/ramp/README.md#secret-boundary).
+
+### Secret boundary
+
+Integrators own the ramp/1 secret boundary. Public identifier fields carry only
+locally minted, non-authorizing references; never copy provider session/order
+handles into them. Widget events, logs and telemetry must exclude Peer
+cookies/OAuth codes, payment credentials/handles, identity documents or
+attributes, proof material/session IDs, bearer URLs/recovery tokens, raw provider
+responses/errors, wallet private keys/signatures, and Xochi read tokens. A string
+matching `RAMP_REF_PATTERN` does not make a provider secret public. Never log
+input or diagnostics from an untrusted provider.
+
+Changes: [CHANGELOG.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/widget-lib/CHANGELOG.md).
+
+## License
+
+MIT
