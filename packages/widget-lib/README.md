@@ -123,6 +123,103 @@ if (host) {
 - The events carry no intent id, but a host that supplies `provider` sees the full signed `XochiIntent`, `intentId` included, when the frame asks that wallet to sign it (`eth_signTypedData_v4`). Only a wallet the frame owns keeps the intent id from the host.
 - The frame side, `connectToHost`, posts only `xochi:ready` before the handshake (to `"*"`, or to `hostOrigin` when given). It pins the origin of the first well-formed `xochi:provider` from `window.parent` (only `hostOrigin`, when given; never the opaque `"null"`), then handles only messages from that window and origin and posts only to it. It applies the host's limits before asking: off-allowlist methods (`4200`), bad params (`-32602`), requests over `MAX_MESSAGE_LENGTH` (`-32600`) and more than `MAX_PENDING_RPC` in flight (`-32005`) are refused with the host's own code and message, without posting anything. Host messages over `MAX_MESSAGE_LENGTH` are dropped (an answer that size rejects its request with `-32603`), and host error messages are cut to `MAX_ERROR_MESSAGE_LENGTH`.
 
+## Tabs and ramp integration
+
+`WidgetTab` is `trade | send | activity | claims`. Trade has Buy (`onramp`),
+Swap (`swap`), and Cash out (`offramp`). Send supports Wallet address (`address`)
+and Stealth (`stealth`).
+
+```ts
+import { createXochiRampWidget } from "@xochi/widget-lib";
+
+const widget = createXochiRampWidget(container, {
+  direction: "onramp", // default; opens Trade / Buy
+  listeners: {
+    "ramp:status": ({ rampRef, peer, xochi }) => {
+      // Correlate only; rampRef cannot authorize or retrieve an operation.
+    },
+  },
+});
+widget.updateParams({
+  initialTab: "trade",
+  tabs: ["trade", "send", "activity", "claims"],
+  initialMode: "offramp",
+  modes: ["onramp", "swap", "offramp"],
+  sendDestinations: ["address", "stealth"],
+  fiatCurrency: "USD",
+  rampProviders: ["peer"],
+});
+```
+
+The offramp facade opens Trade / Cash out for payouts to the user's own
+payment account. `updateParams` retains the iframe element and
+navigates its document when the encoded parameters change, as it does for existing
+parameters; it restarts frame readiness and wallet handshaking. For wallet changes
+use `updateProvider`.
+
+The new defaults are `initialTab`, `initialMode`, and `fiatCurrency` (three uppercase
+currency letters, validated against live offers before execution). The narrowing
+lists are `tabs`, `modes`, `sendDestinations` (`address | stealth`), and
+`rampProviders` (Phase 1: `peer`). These lists only hide surfaces; they never grant
+capability, eligibility or executable rail availability. Omission uses frame defaults;
+an explicit empty list hides every entry. URL parsing drops unknown defaults and
+unknown list entries, including legacy `payment_app`, and deduplicates lists. An
+all-unknown or oversized restriction remains empty. Encoding rejects unknown values, duplicates and
+oversized lists. Existing trade `amount` has no meaning for ramp amounts.
+
+Ramp events extend `XochiWidgetEvent` on the existing `xochi:event` channel:
+
+- `ramp:started`: `rampRef`, `direction` (`onramp | offramp`).
+- `ramp:status` and `ramp:terminal`: `rampRef`, `peer`, optional `xochi`.
+- `ramp:recovery-required`: `rampRef`, `leg` (`peer | xochi`), `code`.
+
+Leg states are the normalized `ramp/1` states in `RAMP_LEG_STATES`; recovery codes
+are limited to `RAMP_RECOVERY_CODES`, matching `ramp/1` error codes. Unknown codes
+must be normalized to `internal` by the trusted adapter before emitting. The frame
+mints `rampRef` with `mintRampRef`: `ramp_` and 128 random bits in lowercase hex.
+It is opaque and non-authorizing. Both bridge ends rebuild validated public fields;
+invalid events are rejected by the emitter and ignored by the host. Events exclude
+amounts, assets, provider IDs and handles, URLs, payment/identity/proof data,
+signatures and raw provider errors. Address and stealth sends never emit ramp events.
+
+**Bridge version decision: retain protocol v1.** These are additive event names and
+URL fields; the handshake and wallet RPC contract are unchanged. The frozen original
+v1 host decoder in `legacyEvent.v1.test.ts` ignores all four ramp names and still
+accepts trade events. `bridge.test.ts` exercises the new events over the same v1
+origin-pinned bridge. Older frames ignore unsupported URL keys and modes. A frame from the prior
+release candidate falls back to Swap when given `initialMode=offramp` without
+mode narrowing. Protocol v1 readiness only confirms bridge compatibility. Deploy
+the compatible frame before using the new Cash out entry point.
+Custom TypeScript exhaustive event switches must add the new union members.
+
+### Migrate a hosted embed
+
+`@xochi/widget-lib@0.6.0` needs a hosted frame built from widget source that
+understands these parameters. The production frame at `widget.xochi.fi` does not
+yet: it ignores `initialTab`, `initialMode`, `modes` and the other new keys, so
+against it `createXochiRampWidget` silently opens Swap and no ramp events fire.
+Deploy the compatible frame first. A standalone or legacy Swap embed can continue
+using `layout=swap`. With the full layout, the widget opens on Trade > Swap by default.
+Set `initialTab: "trade"` and
+`initialMode: "offramp"` to land on Cash out, or use
+`createXochiRampWidget(container, { direction: "offramp" })`. The original
+Trade/Swap events remain on the same bridge.
+
+An iframe waits for the origin-pinned current handshake before offering new
+Peer execution. Legacy handshakes leave ramp entry points unavailable.
+Activity can recover submitted operations even after ramp entry points are hidden.
+
+### Secret boundary
+
+Integrators own the ramp/1 secret boundary. Public identifier fields carry only
+locally minted, non-authorizing references; never copy provider session/order
+handles into them. Widget events, logs and telemetry must exclude Peer
+cookies/OAuth codes, payment credentials/handles, identity documents or
+attributes, proof material/session IDs, bearer URLs/recovery tokens, raw provider
+responses/errors, wallet private keys/signatures, and Xochi read tokens. A string
+matching `RAMP_REF_PATTERN` does not make a provider secret public. Never log
+input or diagnostics from an untrusted provider.
+
 Changes: [CHANGELOG.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/widget-lib/CHANGELOG.md).
 
 ## License

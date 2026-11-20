@@ -11,6 +11,8 @@ import {
   parseRamp,
   rampOutcome,
   type RampCommand,
+  RampErrorCodeSchema,
+  RampLegStateSchema,
   RampSnapshotSchema,
   RampWireSchema,
 } from "./ramp.js";
@@ -43,6 +45,13 @@ ajv.addFormat("date-time", (value: string) => z.iso.datetime().safeParse(value).
 const validateShape = ajv.compile(schema);
 
 describe("ramp/1 cross-runtime conformance", () => {
+  it("matches @xochi/widget-lib's public ramp vocabulary", async () => {
+    const { RAMP_LEG_STATES, RAMP_RECOVERY_CODES } =
+      await import("../../widget-lib/src/protocol.js");
+    expect([...RAMP_LEG_STATES]).toEqual(RampLegStateSchema.options);
+    expect([...RAMP_RECOVERY_CODES]).toEqual(RampErrorCodeSchema.options);
+  });
+
   it.each(fixtures.wire_cases)("$id", ({ input, valid, expected_outcome }) => {
     const parsed = parseRamp(input);
     expect(parsed.ok).toBe(valid);
