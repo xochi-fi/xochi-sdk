@@ -125,7 +125,11 @@ export interface RpcErrorObject {
   data?: unknown;
 }
 
-/** Ramp/1 public vocabulary, kept dependency-free and checked against the client in tests. */
+/**
+ * Ramp/1 public vocabulary, kept dependency-free. Mirrors `@xochi/client`'s ramp/1
+ * `RampLegStateSchema` / `RampErrorCodeSchema`; the test comparing them returns
+ * with the client contract (xochi-sdk#228).
+ */
 export type RampDirection = "onramp" | "offramp";
 export type RampLegName = "peer" | "xochi";
 export const RAMP_LEG_STATES = [

@@ -728,11 +728,7 @@ describe("onAutoConnect", () => {
 });
 
 it("mints opaque ramp refs and validates and sanitizes queued ramp wire events", async () => {
-  const { mintRampRef, RAMP_REF_PATTERN, RAMP_LEG_STATES, RAMP_RECOVERY_CODES } =
-    await import("./index.js");
-  const { RampLegStateSchema, RampErrorCodeSchema } = await import("../../client/src/ramp.js");
-  expect(RAMP_LEG_STATES).toEqual(RampLegStateSchema.options);
-  expect(RAMP_RECOVERY_CODES).toEqual(RampErrorCodeSchema.options);
+  const { mintRampRef, RAMP_REF_PATTERN } = await import("./index.js");
   const rampRef = mintRampRef();
   expect(rampRef).toMatch(RAMP_REF_PATTERN);
   expect(mintRampRef()).not.toBe(rampRef);
