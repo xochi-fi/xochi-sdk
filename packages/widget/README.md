@@ -60,7 +60,7 @@ needs no WalletConnect overrides.
 ## Release state
 
 The ramp release candidate pairs `@xochi/widget@0.1.0` with
-`@xochi/widget-lib@0.6.0`, `@xochi/client@0.1.17` and the existing
+`@xochi/widget-lib@0.6.0`, `@xochi/client@0.2.0` and the existing
 `@xochi/signer@0.9.0`. A hosted shell serving ramps must mount at least widget
 `0.1.0` at `/embed` and mount the configurator from that same exact package
 version. Upgrade the hosted frame before enabling ramp entry points in hosts,
@@ -80,8 +80,12 @@ with the documented npm WalletConnect overrides and no workspace links. It
 requires zero React peer problems, checks exports and strict declarations,
 and builds the widget and the wallet-free configurator from their public entry points.
 
-After approval and publication of the prerequisites, verify the widget against
-the exact public registry versions before publishing it:
+After release approval, publish the prerequisites from the reviewed main commit.
+Push `client-v0.2.0` first and wait for `@xochi/client@0.2.0` to resolve from
+the public registry. Then push `widget-lib-v0.6.0` and wait for
+`@xochi/widget-lib@0.6.0` to resolve. The signer is already public at
+`0.9.0`. Verify the widget against these exact public registry versions before
+publishing it as `widget-v0.1.0`:
 
 ```sh
 npm run check:redistribution -w @xochi/widget
