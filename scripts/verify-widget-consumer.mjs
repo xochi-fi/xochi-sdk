@@ -205,6 +205,13 @@ writeFileSync(
       name: "widget-packed-consumer",
       private: true,
       type: "module",
+      overrides: {
+        "@walletconnect/core": "^2.26.0",
+        "@walletconnect/ethereum-provider": "^2.26.0",
+        "@walletconnect/sign-client": "^2.26.0",
+        "@walletconnect/universal-provider": "^2.26.0",
+        "@walletconnect/utils": "^2.26.0",
+      },
     },
     null,
     2,
@@ -278,20 +285,18 @@ assert(
 );
 const peerGraph = JSON.parse(peerCheck.stdout);
 const reactPeerValidation = {
-  valid: peerCheck.status === 0,
+  valid: peerCheck.status === 0 && (peerGraph.problems ?? []).length === 0,
   react: peerGraph.dependencies?.react?.version,
   reactDom: peerGraph.dependencies?.["react-dom"]?.version,
   problems: peerGraph.problems ?? [],
 };
-assert(
-  reactPeerValidation.valid || reactPeerValidation.problems.length > 0,
-  `React peer validation returned no usable result: ${peerCheck.stderr}`,
-);
 const failures = [];
 if (reactPeerValidation.valid) {
-  console.log(`PASS: React peer closure (${reactPeerValidation.react})`);
+  console.log(
+    `PASS: React peer closure (React ${reactPeerValidation.react}, React DOM ${reactPeerValidation.reactDom}, zero problems)`,
+  );
 } else {
-  const failure = `React peer closure: ${reactPeerValidation.problems.join("; ")}`;
+  const failure = `React peer closure: ${reactPeerValidation.problems.join("; ") || peerCheck.stderr}`;
   console.error(`FAIL: ${failure}`);
   failures.push(failure);
 }

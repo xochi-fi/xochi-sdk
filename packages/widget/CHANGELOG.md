@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Clear the React 19 release gate with documented WalletConnect 2.26 overrides
+  for npm, pnpm, and Yarn. The packed consumer requires zero React peer problems.
+  Review of the Reown license remains an open legal item outside this release gate.
+
 ## [0.1.0] - 2026-11-18
 
 ### Changed

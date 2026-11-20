@@ -153,7 +153,7 @@ This #98 ownership disposition is an extraction prerequisite only: publication
 remains gated on the producer/claim-chain prerequisites tracked in #98 and
 separate registry approval.
 
-## Ramp contract (0.1.17 release candidate)
+## Ramp contract (0.2.0 release candidate)
 
 `atomic`, `parseRamp`, `rampOutcome`, and `checkRampCommand` expose the provider-neutral
 [`ramp/1` contract](ramp/README.md). TypeScript uses canonical snake_case wire fields.
