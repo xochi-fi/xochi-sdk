@@ -20,7 +20,7 @@ describe("paymentSummary", () => {
 
   it("claims no gas only when the allowance is known to cover the pull", () => {
     // A short Permit2 allowance costs one gasful approve first (#29).
-    expect(paymentSummary("permit2", true, "required")).toMatch(/^Gas for a one-time approval/);
+    expect(paymentSummary("permit2", true, "required")).toMatch(/^Gas for an approval/);
     // Unknown: a conditional that is true either way.
     expect(paymentSummary("permit2", true, "unknown")).toMatch(
       /^Gas only if an approval is needed/,

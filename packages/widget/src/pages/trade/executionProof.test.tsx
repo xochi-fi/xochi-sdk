@@ -75,6 +75,10 @@ const intentView = (over: Partial<IntentView> = {}): IntentView => ({
   quote: null,
   permitType: "none",
   approval: "none",
+  approvalMayNeedReset: false,
+  notExecuted: false,
+  unlimitedApproval: false,
+  setUnlimitedApproval: () => {},
   awaitingPull: false,
   isSigningPull: false,
   quoteExpiresIn: null,
@@ -89,11 +93,11 @@ const intentView = (over: Partial<IntentView> = {}): IntentView => ({
 
 const noop = (): void => {};
 
-const openFlow = (status: IntentStatus, onCancelSign = noop) =>
+const openFlow = (status: IntentStatus, onCancelSign = noop, over: Partial<IntentView> = {}) =>
   renderTrade(
     <SwapFlowModal
       open
-      intent={intentView({ status, intentId: "xi_exec", quoteId: "q_exec" })}
+      intent={intentView({ status, intentId: "xi_exec", quoteId: "q_exec", ...over })}
       fromAmount="5000000"
       fromSymbol="USDC"
       fromDecimals={6}
@@ -150,6 +154,38 @@ describe("signed payout held through execution", () => {
     expect(cancel.hasAttribute("disabled")).toBe(false);
     cancel.click();
     expect(cancelled).toBe(1);
+  });
+});
+
+describe("quote refusal recovery in the production modal", () => {
+  it("keeps quote policy and enables a new quote after a safe execution failure", async () => {
+    for (const category of ["pair_unsupported", "tag_unresolved"]) {
+      await openFlow("failed", noop, {
+        error: { message: category, code: 400, errorCategory: category },
+      });
+      expect(screen.getByRole("dialog").textContent).not.toContain("No funds moved");
+      expect(screen.queryByRole("button", { name: /new quote|retry|try again/i })).toBeNull();
+      cleanup();
+    }
+
+    await openFlow("failed", noop, {
+      error: {
+        message: "lookup unavailable",
+        code: 503,
+        errorCategory: "tag_resolution_unavailable",
+      },
+    });
+    expect(screen.getByRole("button", { name: "Retry lookup" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "New quote" })).toBeNull();
+    expect(screen.getByRole("dialog").textContent).not.toContain("No funds moved");
+    cleanup();
+
+    await openFlow("failed", noop, {
+      error: { message: "pair_unsupported", code: 400, errorCategory: "pair_unsupported" },
+      notExecuted: true,
+    });
+    expect(screen.getByRole("dialog").textContent).toContain("No funds moved");
+    expect(screen.getByRole("button", { name: "New quote" })).toBeTruthy();
   });
 });
 

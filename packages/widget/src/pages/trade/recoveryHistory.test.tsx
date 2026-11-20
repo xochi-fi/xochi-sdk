@@ -319,7 +319,8 @@ describe("after an execute, Retry only on the Worker's not_executed", () => {
       WAIT,
     );
     expect(screen.queryByRole("heading", { name: "Funds may have moved" })).toBeNull();
-    expect(screen.getByRole("button", { name: /try again/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New quote" })).toBeTruthy();
+    expect(screen.getByText(/No funds moved/)).toBeTruthy();
   });
 
   it("holds a not-sent order on Close, with the way back in", async () => {

@@ -43,6 +43,9 @@ export const MAY_HAVE_MOVED_NOTICE = {
   detail: "This order did not complete. Check Activity before trading again.",
 } as const;
 
+/** The SDK's safe failure verdict; after submission it requires not_executed. */
+export const NO_FUNDS_MOVED_NOTICE = "No funds moved. Get a new quote to try again.";
+
 /** Category -> status glyph, from the shared vocabulary (src/lib/glyphs.ts). */
 export const ERROR_ART = STATUS_GLYPH;
 

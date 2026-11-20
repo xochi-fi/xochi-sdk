@@ -47,8 +47,8 @@ export function createTestWagmiConfig(account: `0x${string}` = TEST_WALLET): Con
 }
 
 export function testWrapper(config: Config) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return function Wrap({ children }: { children: ReactNode }) {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     return (
       // reconnectOnMount off so "connected" is set explicitly by the test (via
       // wagmi's `connect` action) rather than racing an async reconnect.

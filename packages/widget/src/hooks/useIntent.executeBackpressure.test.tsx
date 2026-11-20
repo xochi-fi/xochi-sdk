@@ -255,6 +255,7 @@ describe("execute not accepted by the Worker", () => {
     await advance(STATUS_POLL_MS);
     expect(result.current.status).toBe("failed");
     expect(result.current.receipt.phase).toBe("failed");
+    expect(result.current.notExecuted).toBe(true);
   });
 
   // Probe P-W77 (round 9), decision 2. Only the Worker's rate limit answered,
@@ -295,6 +296,7 @@ describe("execute not accepted by the Worker", () => {
     expect(result.current.error).toBe(NOT_SENT_GONE);
     expect(result.current.pollExhausted).toBe(false);
     expect(result.current.receipt.phase).toBe("failed");
+    expect(result.current.notExecuted).toBe(true);
     await advance(10_000);
     expect(executeCalls()).toHaveLength(4);
   });
@@ -358,6 +360,7 @@ describe("execute not accepted by the Worker", () => {
     await advance(STATUS_POLL_MS * 2);
     expect(result.current.status).toBe("failed");
     expect(result.current.receipt.phase).toBe("failed");
+    expect(result.current.notExecuted).toBe(true);
     await advance(10_000);
     expect(executeCalls()).toHaveLength(4);
   });

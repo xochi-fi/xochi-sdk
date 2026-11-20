@@ -1,8 +1,11 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.1] - 2026-11-20
 
 ### Fixed
+
+- Default to exact Permit2 approvals, require explicit consent for unlimited approval, and identify confirmed execution failures where no funds moved (xochi-fi/xochi-widget#177).
+- Adopt a host wallet that already has an account without prompting again on mobile, and request accounts before attempting a chain switch (xochi-fi/xochi-widget#178).
 
 - Clear the React 19 release gate with documented WalletConnect 2.26 overrides
   for npm, pnpm, and Yarn. The packed consumer requires zero React peer problems.

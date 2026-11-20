@@ -643,14 +643,13 @@ export function useSwapFlow({
         receivingTxHash: intent.receivingTxHash,
         settlementTxHash: intent.settlementTxHash,
         settlementChainId: intent.settlementChainId,
-        // The machine keeps a failure's verdict, not its substatus. A `failed` it
-        // does not end on `may-have-moved` is one the Worker marked `not_executed`
-        // or one that was never sent: nothing moved, so the feed may retry it.
+        // Persist only the SDK's safe execution verdict. A quote refusal also
+        // has phase `failed`, but must not gain the feed's execution retry.
         substatus:
           intent.status === "failed"
-            ? intent.receipt.phase === "may-have-moved"
-              ? null
-              : NOT_EXECUTED_SUBSTATUS
+            ? intent.notExecuted
+              ? NOT_EXECUTED_SUBSTATUS
+              : null
             : intent.substatus,
         // The dispatched order's own mode (bound at confirm), never the live
         // toggle: this effect re-runs on later status/tx-hash transitions, and
@@ -702,6 +701,7 @@ export function useSwapFlow({
     isResumedIntent,
     intent.intentId,
     intent.status,
+    intent.notExecuted,
     intent.legsWithheld,
     intent.txHash,
     intent.receivingTxHash,

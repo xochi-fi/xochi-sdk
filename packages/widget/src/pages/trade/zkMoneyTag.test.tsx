@@ -494,6 +494,7 @@ describe("zk.money destination", () => {
     // The Worker's verdict is final: no Retry is offered for it.
     expect(document.querySelector(".error-retry-btn")).toBeNull();
     expect(document.querySelector(".error-suggestion")).toBeNull();
+    expect(document.querySelector(".error-display")?.textContent).not.toContain("No funds moved");
     expect(namedRecipient()).toBeTruthy();
     expect(document.querySelector<HTMLButtonElement>(".submit-btn")?.disabled).toBe(true);
   });
@@ -510,6 +511,7 @@ describe("zk.money destination", () => {
     );
     expect(document.querySelector(".error-suggestion")).toBeNull();
     expect(document.querySelector(".error-reason")).toBeNull();
+    expect(screen.queryByRole("button", { name: "New quote" })).toBeNull();
     expect(document.querySelector(".error-countdown")).toBeNull();
     expect(document.querySelector(".quote-details")).toBeNull();
     expect(document.querySelector<HTMLButtonElement>(".submit-btn")?.disabled).toBe(true);

@@ -21,7 +21,11 @@ import {
 } from "@xochi/client";
 import { settlementTxChainId } from "../../lib/explorerLinks.js";
 import type { StructuredError } from "@xochi/client";
-import { getErrorInfo, MAY_HAVE_MOVED_NOTICE } from "../../lib/errorCategory.js";
+import {
+  getErrorInfo,
+  MAY_HAVE_MOVED_NOTICE,
+  NO_FUNDS_MOVED_NOTICE,
+} from "../../lib/errorCategory.js";
 import { useCountdown } from "../ErrorDisplay.js";
 import { type SwapFailureRef, formatFailureRef, supportMailto } from "../../lib/swapFlowPhase.js";
 import { reportSwapFailure } from "../../lib/reportClient.js";
@@ -40,6 +44,8 @@ function formatFillMs(ms: number): string {
 
 interface SwapResultProps {
   variant: "success" | "refunded" | "failed" | "may-have-moved" | "pending";
+  /** SDK safe failure verdict; after submission only the worker marker permits it. */
+  notExecuted?: boolean;
   /** Stealth settlement: funds land at a one-time address the user must claim. */
   isStealth?: boolean;
   /**
@@ -124,6 +130,7 @@ function TxLink({
 
 export function SwapResult({
   variant,
+  notExecuted = false,
   isStealth,
   stealthPayee,
   sendRecipientDisplay,
@@ -552,6 +559,7 @@ export function SwapResult({
         {info?.message ?? (sendRecipientDisplay ? "Send failed" : "Swap failed")}
       </h3>
       {info?.suggestion && <p className="swap-result__desc">{info.suggestion}</p>}
+      {notExecuted && <p className="swap-result__desc">{NO_FUNDS_MOVED_NOTICE}</p>}
 
       {failureRef && !tagLookupFailure && (
         <div className="swap-result__ref">
@@ -571,13 +579,17 @@ export function SwapResult({
         <button className="modal-btn modal-btn--cancel" onClick={onClose}>
           Dismiss
         </button>
-        {info?.canRetry !== false && (
+        {(notExecuted || info?.canRetry !== false) && (
           <button
             className="modal-btn modal-btn--confirm"
             onClick={onRetry}
             disabled={isWaitingForRetry}
           >
-            {isWaitingForRetry ? `Try again in ${countdown}s` : (info?.retryLabel ?? "Try again")}
+            {isWaitingForRetry
+              ? `Try again in ${countdown}s`
+              : notExecuted
+                ? "New quote"
+                : (info?.retryLabel ?? "Try again")}
           </button>
         )}
       </div>

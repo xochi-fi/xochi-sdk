@@ -71,6 +71,10 @@ const intentAt = (status: IntentStatus, legsWithheld: boolean | null): UseIntent
   tierName: "Standard",
   permitType: "none",
   approval: "none",
+  approvalMayNeedReset: false,
+  notExecuted: false,
+  unlimitedApproval: false,
+  setUnlimitedApproval: noop,
   isApproving: false,
   requestQuote: noop,
   allocateDepositRoute: () => Promise.resolve(false),
@@ -208,7 +212,11 @@ describe("the flow capture carries the served legs_withheld verdict", () => {
 /** A `failed` intent as `useIntent` reports it, ending on `phase`. */
 const failedAt = (phase: "failed" | "may-have-moved"): UseIntentReturn => {
   const intent = intentAt("failed", null);
-  return { ...intent, receipt: { ...intent.receipt, phase } };
+  return {
+    ...intent,
+    notExecuted: phase === "failed",
+    receipt: { ...intent.receipt, phase },
+  };
 };
 
 // The machine keeps no failure substatus, only its verdict, and the feed never
@@ -220,6 +228,13 @@ describe("the flow capture carries the machine's failure verdict", () => {
     act(() => setIntent(failedAt("failed")));
     expect(stored()?.intentStatus).toBe("failed");
     expect(stored()?.data.substatus).toBe("not_executed");
+  });
+
+  it("does not turn a quote refusal into a retryable execution marker", async () => {
+    await renderTrade(<FlowProbe initial={intentAt("settling", null)} />, { connected: true });
+    act(() => setIntent({ ...failedAt("failed"), notExecuted: false }));
+    expect(stored()?.intentStatus).toBe("failed");
+    expect(stored()?.data.substatus).toBeNull();
   });
 
   it("records no marker on a failure that may have moved funds", async () => {

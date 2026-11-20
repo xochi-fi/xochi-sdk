@@ -20,7 +20,7 @@ import {
   signTypedData,
   type GetAccountReturnType,
 } from "wagmi/actions";
-import { mainnet } from "wagmi/chains";
+import { base, mainnet } from "wagmi/chains";
 import { verifyTypedData } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { HOST_WALLET_ID, autoConnectHostWallet, createWagmiConfig, hostWallet } from "./wagmi.js";
@@ -295,7 +295,106 @@ describe("hostWallet", () => {
       page.stop();
     }
   });
+
+  // MetaMask SDK on mobile web answers `eth_accounts` from its cache but treats
+  // `eth_requestAccounts` as a redirect: it deep-links to the MetaMask app and
+  // waits on it, and the backgrounded app never answers.
+  it("adopts the host's connected wallet without asking for accounts again", async () => {
+    const ACCOUNT = "0x70997970c51812dc3a010c7d01b50e0d17dc79c8";
+    const config = createWagmiConfig(bridge);
+    let rejectConnected!: (error: Error) => void;
+    const connected = new Promise<GetAccountReturnType>((resolve, reject) => {
+      rejectConnected = reject;
+      const unwatch = watchAccount(config, {
+        onChange(account) {
+          if (account.status !== "connected") return;
+          unwatch();
+          resolve(account);
+        },
+      });
+    });
+    const host = answerHostRpcs({ eth_chainId: "0x1", eth_accounts: [ACCOUNT] }, (method) => {
+      if (method === "eth_requestAccounts") {
+        rejectConnected(new Error("the frame asked the host wallet for accounts again"));
+      }
+    });
+    const stopAutoConnect = autoConnectHostWallet(config, bridge);
+    try {
+      hostSends({ type: MESSAGE.provider, available: true, autoConnect: true });
+      const account = await connected;
+      expect(account.address?.toLowerCase()).toBe(ACCOUNT);
+      expect(account.connector?.id).toBe(HOST_WALLET_ID);
+    } finally {
+      stopAutoConnect();
+      host.stop();
+    }
+  });
+
+  // A host wallet with no account yet still gets the connect prompt, and only
+  // then the switch to the chain RainbowKit's modal asks for: a switch first
+  // would prompt (or, on mobile MetaMask, deep-link) for a wallet the user has
+  // not connected.
+  it("prompts for accounts before switching chain when the host wallet has none", async () => {
+    const ACCOUNT = "0x70997970c51812dc3a010c7d01b50e0d17dc79c8";
+    const host = answerHostRpcs({
+      eth_chainId: "0x1",
+      eth_accounts: [],
+      eth_requestAccounts: [ACCOUNT],
+    });
+    try {
+      hostSends({ type: MESSAGE.provider, available: true, autoConnect: true });
+      const config = createWagmiConfig(bridge);
+      const connector = config.connectors.find((c) => c.id === HOST_WALLET_ID)!;
+      const result = await connect(config, { connector, chainId: base.id });
+      expect(result.accounts.map((a) => a.toLowerCase())).toEqual([ACCOUNT]);
+      expect(host.methods[0]).toBe("eth_accounts");
+      const prompted = host.methods.indexOf("eth_requestAccounts");
+      expect(prompted).toBeGreaterThan(0);
+      expect(host.methods.indexOf("wallet_switchEthereumChain")).toBeGreaterThan(prompted);
+    } finally {
+      host.stop();
+    }
+  });
+
+  it("neither requests accounts nor switches chains when a reconnect has lost its account", async () => {
+    const host = answerHostRpcs({ eth_chainId: "0x1", eth_accounts: [] });
+    try {
+      hostSends({ type: MESSAGE.provider, available: true, autoConnect: true });
+      const config = createWagmiConfig(bridge);
+      const connector = config.connectors.find((c) => c.id === HOST_WALLET_ID)!;
+      const result = await connector.connect({ isReconnecting: true, chainId: base.id });
+      expect(result.accounts).toEqual([]);
+      expect(host.methods).toEqual(["eth_accounts", "eth_chainId"]);
+    } finally {
+      host.stop();
+    }
+  });
 });
+
+/**
+ * The host wallet answering the frame's RPCs from `answers` by method and
+ * refusing the rest (4200, as widget-lib does). `methods` records every method
+ * asked, in order; `onRequest` sees each one before it is answered.
+ */
+function answerHostRpcs(
+  answers: Readonly<Record<string, unknown>>,
+  onRequest: (method: string) => void = () => {},
+) {
+  const methods: string[] = [];
+  const answer = (event: MessageEvent): void => {
+    const message = event.data as FrameMessage | null;
+    if (message?.type !== MESSAGE.rpc) return;
+    methods.push(message.method);
+    onRequest(message.method);
+    hostSends(
+      message.method in answers
+        ? { type: MESSAGE.rpcResult, id: message.id, result: answers[message.method] }
+        : { type: MESSAGE.rpcResult, id: message.id, error: { code: 4200, message: "no" } },
+    );
+  };
+  parent.addEventListener("message", answer);
+  return { methods, stop: () => parent.removeEventListener("message", answer) };
+}
 
 /**
  * A frame reloaded after the host wallet was connected: wagmi mid-reconnect

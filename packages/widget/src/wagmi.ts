@@ -17,7 +17,7 @@ import { mainnet, arbitrum, optimism, base, polygon, gnosis } from "wagmi/chains
 import { createConnector, http, type Config } from "wagmi";
 import { connect, getAccount, watchAccount, type GetAccountReturnType } from "wagmi/actions";
 import { injected } from "wagmi/connectors";
-import { fallback, defineChain } from "viem";
+import { fallback, defineChain, UserRejectedRequestError } from "viem";
 import {
   ARC_BROWSER_ENABLED,
   ARC_BROWSER_RPC_URL,
@@ -219,6 +219,36 @@ export function hostWallet(bridge: HostConnection): Wallet {
           isAuthorized() {
             return bridge.autoConnect() ? base.isAuthorized.call(this) : Promise.resolve(false);
           },
+          async connect<withCapabilities extends boolean = false>(
+            parameters?: Parameters<typeof base.connect<withCapabilities>>[0],
+          ) {
+            const connectBase = base.connect<withCapabilities>;
+            const { chainId, ...options } = parameters ?? {};
+            // Mobile wallets can redirect on account requests and chain switches.
+            // A read error fails the attempt instead of triggering an account prompt.
+            const reconnecting = options.isReconnecting === true;
+            const adopt =
+              !reconnecting &&
+              bridge.autoConnect() &&
+              (await base.getAccounts.call(this)).length > 0;
+            let result = await connectBase.call(this, {
+              ...options,
+              isReconnecting: reconnecting || adopt,
+            });
+            if (adopt && result.accounts.length === 0) {
+              result = await connectBase.call(this, options);
+            }
+            // The account read can return empty even during an authorized reconnect.
+            if (result.accounts.length === 0 || !chainId || result.chainId === chainId)
+              return result;
+            try {
+              const chain = await base.switchChain!.call(this, { chainId });
+              return { ...result, chainId: chain.id };
+            } catch (error) {
+              if ((error as { code?: number }).code === UserRejectedRequestError.code) throw error;
+              return result;
+            }
+          },
         };
       }),
   };
@@ -228,7 +258,7 @@ export function hostWallet(bridge: HostConnection): Wallet {
  * Whether this frame's own host-wallet auto-connect is in flight. Module scope
  * because React re-runs the effect that starts it (StrictMode, a config
  * change) and each run would otherwise start a second connect: a second
- * wallet prompt.
+ * wallet prompt when the host wallet has no account to adopt.
  */
 let hostAutoConnecting = false;
 
@@ -240,7 +270,8 @@ const settling = (status: GetAccountReturnType["status"]): boolean =>
  * Connect the embedding page's wallet on load when, and only when, the host
  * passed `autoConnect: true`: once per attachment of its wallet (widget-lib's
  * `onAutoConnect`). Otherwise it is an option in the connect modal like any
- * other wallet. Returns the unsubscribe.
+ * other wallet. Returns the unsubscribe. The connect adopts the host's
+ * connection without a prompt (the `connect` override in `hostWallet`).
  *
  * Waits until wagmi is not settling a connection. Its mount-time reconnect
  * starts from the previous page's connections, restored from storage under

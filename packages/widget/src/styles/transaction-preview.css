@@ -200,3 +200,28 @@
 .tx-preview-payment-value.gasless {
   color: var(--color-success);
 }
+
+.tx-preview-approval {
+  padding: 0.5rem 0.75rem;
+}
+
+.tx-preview-approval-choice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.tx-preview-approval-choice input {
+  accent-color: var(--color-success);
+}
+
+.tx-preview-approval-note {
+  margin: 0.25rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}

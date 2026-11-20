@@ -1288,6 +1288,7 @@ export function SwapPanel({
                 originTokens={originTokens}
                 errorCategory={quoteErrorCategory}
                 mayHaveMoved={intent.receipt.phase === "may-have-moved"}
+                notExecuted={intent.notExecuted}
               />
             )}
 
