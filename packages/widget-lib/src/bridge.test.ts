@@ -504,3 +504,27 @@ describe("host and frame", () => {
     expect(wallet.calls).toEqual([]);
   });
 });
+
+it("carries ramp events over the existing origin-pinned v1 channel", async () => {
+  const seen: XochiWidgetEvent[] = [];
+  const { frame } = mount({
+    provider: new TestWallet(),
+    listeners: {
+      "ramp:started": (e) => seen.push(e),
+      "ramp:status": (e) => seen.push(e),
+      "ramp:recovery-required": (e) => seen.push(e),
+      "ramp:terminal": (e) => seen.push(e),
+    },
+  });
+  expect(await nextAvailability(frame)).toBe(true);
+  const rampRef = `ramp_${"c".repeat(32)}`;
+  const events: XochiWidgetEvent[] = [
+    { name: "ramp:started", rampRef, direction: "onramp" },
+    { name: "ramp:status", rampRef, peer: "in_doubt" },
+    { name: "ramp:recovery-required", rampRef, leg: "peer", code: "peer_in_doubt" },
+    { name: "ramp:terminal", rampRef, peer: "completed", xochi: "skipped" },
+  ];
+  for (const event of events) frame.emit(event);
+  await roundTrip(frame);
+  expect(seen).toEqual(events);
+});

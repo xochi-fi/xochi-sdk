@@ -24,7 +24,21 @@ export const EMBED_PARAM = {
   buyTokens: "buyTokens",
   ref: "ref",
   promo: "promo",
+  initialTab: "initialTab",
+  tabs: "tabs",
+  initialMode: "initialMode",
+  modes: "modes",
+  sendDestinations: "sendDestinations",
+  fiatCurrency: "fiatCurrency",
+  rampProviders: "rampProviders",
 } as const;
+
+export const WIDGET_TABS = ["trade", "send", "activity", "claims"] as const;
+export type WidgetTab = (typeof WIDGET_TABS)[number];
+export const TRADE_MODES = ["swap", "onramp", "offramp"] as const;
+export type TradeMode = (typeof TRADE_MODES)[number];
+export const SEND_DESTINATIONS = ["address", "stealth"] as const;
+export type SendDestinationKind = (typeof SEND_DESTINATIONS)[number];
 
 /** The settlement modes a host may preselect. */
 export type EmbedSettlement = "public" | "stealth";
@@ -71,6 +85,16 @@ export const EMBED_CODE_PATTERN = /^[A-Z0-9][A-Z0-9_-]{2,31}$/;
  * against the token registry or the solver.
  */
 export interface EmbedParams {
+  readonly initialTab?: WidgetTab;
+  /** Narrowing only: never grants availability. */
+  readonly tabs?: readonly WidgetTab[];
+  readonly initialMode?: TradeMode;
+  readonly modes?: readonly TradeMode[];
+  readonly sendDestinations?: readonly SendDestinationKind[];
+  /** ISO 4217 syntax; must still be supported by live capability data. */
+  readonly fiatCurrency?: string;
+  /** Phase 1 supports only peer. This list only narrows live availability. */
+  readonly rampProviders?: readonly string[];
   fromChainId?: number;
   toChainId?: number;
   sellSymbol?: string;
@@ -183,7 +207,40 @@ export function parseEmbedParams(search: string): EmbedParams {
   if (ref !== null) params.ref = ref;
   const promo = normalizeEmbedCode(query.get(EMBED_PARAM.promo) ?? "");
   if (promo !== null) params.promo = promo;
-  return params;
+  const initialTab = WIDGET_TABS.find((v) => v === query.get("initialTab"));
+  const initialMode = TRADE_MODES.find((v) => v === query.get("initialMode"));
+  // Readonly public fields are populated only while constructing this result.
+  return {
+    ...params,
+    ...(initialTab === undefined ? {} : { initialTab }),
+    ...(initialMode === undefined ? {} : { initialMode }),
+    ...parseNarrowing(query),
+  };
+}
+
+const NARROWING = {
+  tabs: WIDGET_TABS,
+  modes: TRADE_MODES,
+  sendDestinations: SEND_DESTINATIONS,
+  rampProviders: ["peer"],
+} as const;
+
+function parseNarrowing(query: URLSearchParams): Partial<EmbedParams> {
+  const result: Record<string, unknown> = {};
+  for (const [field, allowed] of Object.entries(NARROWING)) {
+    const raw = query.get(field);
+    if (raw === null) continue;
+    const entries = raw.split(",", MAX_EMBED_LIST + 1);
+    // Preserve an explicit empty restriction, including all-unknown lists.
+    // Otherwise a refused restriction could accidentally expose every surface.
+    result[field] =
+      entries.length > MAX_EMBED_LIST
+        ? []
+        : [...new Set(entries.filter((v) => (allowed as readonly string[]).includes(v)))];
+  }
+  const currency = query.get("fiatCurrency") ?? "";
+  if (/^[A-Z]{3}$(?![\s\S])/.test(currency)) result.fiatCurrency = currency;
+  return result;
 }
 
 function isChainId(value: unknown): boolean {
@@ -209,6 +266,23 @@ function isList(value: unknown, entry: (item: unknown) => boolean): boolean {
 /** Why `value` cannot be written as `field`, or null when it can. */
 function fieldProblem(field: keyof EmbedParams, value: unknown): string | null {
   switch (field) {
+    case "initialTab":
+      return WIDGET_TABS.some((v) => v === value) ? null : "must be a known widget tab";
+    case "initialMode":
+      return TRADE_MODES.some((v) => v === value) ? null : "must be a known Trade mode";
+    case "fiatCurrency":
+      return typeof value === "string" && /^[A-Z]{3}$(?![\s\S])/.test(value)
+        ? null
+        : "must be three uppercase currency letters";
+    case "tabs":
+    case "modes":
+    case "sendDestinations":
+    case "rampProviders":
+      return Array.isArray(value) &&
+        (value.length === 0 ||
+          isList(value, (v) => (NARROWING[field] as readonly unknown[]).includes(v)))
+        ? null
+        : "must be a distinct list of known values";
     case "fromChainId":
     case "toChainId":
       return isChainId(value) ? null : "must be a positive integer chain id (at most 12 digits)";
@@ -266,6 +340,10 @@ function fieldText(field: keyof EmbedParams, value: unknown): string {
       const locks = value as readonly EmbedLock[];
       return EMBED_LOCKS.filter((lock) => locks.includes(lock)).join(",");
     }
+    case "tabs":
+    case "modes":
+    case "sendDestinations":
+    case "rampProviders":
     case "fromChains":
     case "toChains":
     case "sellTokens":

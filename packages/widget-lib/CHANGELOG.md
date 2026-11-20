@@ -4,6 +4,17 @@ All notable changes to `@xochi/widget-lib` are documented here. Format follows [
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-20
+
+Runtime-additive on protocol v1. Custom TypeScript implementations of `HostConnection` must add `hostProtocol` and `onHostProtocol`; exhaustive `XochiWidgetEvent` switches must handle the four `ramp:*` names. Deploy a frame that understands the new URL fields before hosts rely on them; older frames ignore them.
+
+### Added
+
+- Tab and Trade mode embed params: `initialTab` (`WIDGET_TABS`: `trade | send | activity | claims`), `initialMode` (`TRADE_MODES`: `swap | onramp | offramp`), `fiatCurrency` (three uppercase letters), and the narrowing lists `tabs`, `modes`, `sendDestinations` (`SEND_DESTINATIONS`: `address | stealth`) and `rampProviders` (`peer`). Lists only hide surfaces, never grant availability; an explicit empty list hides every entry. URL parsing drops unknown defaults and list entries (including legacy `payment_app`) and deduplicates; encoding rejects unknown values, duplicates and oversized lists.
+- `createXochiRampWidget(container, { direction })` opens Trade in Buy (`onramp`, default) or Cash out (`offramp`).
+- Ramp lifecycle events on the existing `xochi:event` channel: `ramp:started`, `ramp:status`, `ramp:terminal`, `ramp:recovery-required`. Both bridge ends rebuild only the validated public fields; invalid events are refused by the frame and ignored by the host. `rampRef` is minted by `mintRampRef` (`RAMP_REF_PATTERN`), opaque and non-authorizing. Exported `RAMP_LEG_STATES`, `RAMP_RECOVERY_CODES` and the `RampWidgetEvent`, `RampDirection`, `RampLegState`, `RampLegName` types.
+- `HostConnection.hostProtocol()` reports which protocol the pinned host speaks: `"pending"` before a well-formed `xochi:provider` pins the origin, `"legacy"` for a host that sends no `protocolVersion`, `"current"` for `WIDGET_PROTOCOL_VERSION`. `onHostProtocol(listener)` observes the change and returns an unsubscribe; destroy removes the listeners. The frame app uses it to refuse ramp execution until a current host is pinned. No protocol version bump.
+
 ## [0.5.0] - 2026-11-10
 
 Runtime-additive on protocol v1. Custom TypeScript implementations must add `XochiWidget.updateTheme`, `HostConnection.theme` and `HostConnection.onTheme`; exhaustive `HostMessage` switches must handle `xochi:theme`.
