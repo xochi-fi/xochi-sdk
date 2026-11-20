@@ -29,7 +29,9 @@
   height: 100%;
   background: linear-gradient(90deg, var(--muted-gold) 0%, var(--cryptowave-sky) 100%);
   border-radius: 2px;
-  transition: width 0.6s var(--ease-out);
+  width: 100%;
+  transform-origin: left;
+  transition: transform 0.6s var(--ease-out);
   box-shadow: 0 0 8px var(--sky-30);
 }
 

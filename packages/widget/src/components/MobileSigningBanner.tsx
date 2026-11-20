@@ -53,8 +53,8 @@ export function MobileSigningBanner() {
       <div className="mobile-signing-banner__body">
         <p className="mobile-signing-banner__title">Trouble signing on mobile?</p>
         <p className="mobile-signing-banner__text">
-          Some private browsers (DuckDuckGo especially) block the wallet connection. Open Xochi in
-          Safari, or connect with Coinbase Wallet. Both sign reliably.
+          Some browsers (such as DuckDuckGo) block the wallet connection. Open Xochi in Safari, or
+          connect with Coinbase Wallet. Both sign reliably.
         </p>
       </div>
       <div className="mobile-signing-banner__actions">

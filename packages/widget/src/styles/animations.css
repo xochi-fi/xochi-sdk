@@ -376,48 +376,6 @@
   transform: rotate(15deg);
 }
 
-/* Underline grow effect */
-.underline-grow {
-  position: relative;
-}
-
-.underline-grow::after {
-  content: "";
-  position: absolute;
-  bottom: -2px;
-  left: 0;
-  width: 0;
-  height: 1px;
-  background: var(--muted-gold);
-  transition: width var(--duration-normal) var(--ease-out);
-}
-
-.underline-grow:hover::after,
-.underline-grow:focus::after {
-  width: 100%;
-}
-
-/* Left border accent grow */
-.border-accent {
-  position: relative;
-}
-
-.border-accent::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 2px;
-  height: 0;
-  background: var(--muted-gold);
-  transition: height var(--duration-normal) var(--ease-out);
-}
-
-.border-accent:hover::before {
-  height: 60%;
-}
-
 /* ============================================================
    Loading States
    ============================================================ */
@@ -489,13 +447,6 @@
 /* Success highlight */
 .success-highlight {
   animation: successPulse 0.6s var(--ease-out);
-}
-
-/* Error highlight with left border */
-.error-highlight {
-  animation: shake 0.4s var(--ease-out);
-  border-left: 3px solid var(--negative-muted-70) !important;
-  background: var(--negative-08) !important;
 }
 
 /* ============================================================

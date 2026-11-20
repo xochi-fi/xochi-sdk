@@ -26,7 +26,6 @@
 .swap-btn,
 .balance-display,
 .balance-max,
-.trade-explainer__toggle,
 .activity-strip__summary,
 .token-btn__token,
 .chain-badge,
@@ -74,12 +73,6 @@
   content: "";
   position: absolute;
   inset: -7px -6px;
-}
-
-.trade-explainer__toggle::before {
-  content: "";
-  position: absolute;
-  inset: -16px 0;
 }
 
 .activity-strip__summary::before {

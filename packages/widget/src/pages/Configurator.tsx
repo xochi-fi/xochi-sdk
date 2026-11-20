@@ -64,12 +64,20 @@ import { LayoutSection } from "./configurator/LayoutSection.js";
 import { AllowedAssetsSection } from "./configurator/AllowedAssetsSection.js";
 import { IntegrationSection, integrationSummary } from "./configurator/IntegrationSection.js";
 import { SharedLinkBanner, sharedPresets } from "./configurator/SharedLinkBanner.js";
+import { widgetSurfaces } from "./trade/embedNarrowing.js";
+import { SurfaceSection } from "./configurator/SurfaceSection.js";
+import {
+  surfaceParams,
+  withSurfaceParams,
+  replaceSurfaceParams,
+} from "./configurator/surfaceParams.js";
 import { WhatUsersSee } from "./configurator/WhatUsersSee.js";
 
 /** Quiet time after the last change before the preview reloads. */
 export const PREVIEW_DEBOUNCE_MS = 400;
 
 type SectionId =
+  | "surfaces"
   | "route"
   | "assets"
   | "privacy"
@@ -79,6 +87,7 @@ type SectionId =
   | "developer";
 
 const SECTION_TITLE: Record<SectionId, string> = {
+  surfaces: "Tabs, Trade and Send",
   route: "Route",
   assets: "Allowed assets",
   privacy: "Privacy",
@@ -100,6 +109,7 @@ function currentChoice(
 ): Required<Omit<FrameParams, "amount" | "height" | "ref" | "promo" | EmbedAllowField>> &
   EmbedAllowLists {
   return {
+    ...surfaceParams(asked),
     fromChainId: config.fromChainId,
     toChainId: config.toChainId,
     sellSymbol: config.fromToken.symbol,
@@ -187,7 +197,8 @@ export function Configurator() {
   // The preview reloads the whole frame, so it waits for a pause in typing.
   // The snippet is written from the same debounced params: what you copy is
   // what the preview is showing.
-  const overrides = embedOverrides(config);
+  const overrides = withSurfaceParams(embedOverrides(config), choice);
+  const shownSurfaces = widgetSurfaces(overrides);
   const search = encodeEmbedParams(overrides);
   const path = `${EMBED_PATH}${search}`;
   const [preview, setPreview] = useState({ search, overrides });
@@ -203,18 +214,23 @@ export function Configurator() {
   // preview. Once the user changes anything it follows them on either matrix;
   // an untouched shared URL waits for the live one (see useConfiguratorUrl).
   useConfiguratorUrl(
-    configuratorSearch(config, backdrop, device),
+    configuratorSearch(config, backdrop, device, overrides),
     source !== "fallback" || touched,
     PREVIEW_DEBOUNCE_MS,
   );
 
-  const params = useParamsDraft(config, offer, (next) => {
-    setChoice(next);
-    setAmountText(next.amount ?? "");
-    setHeightText(next.height === undefined ? "" : String(next.height));
-    setRefText(next.ref ?? "");
-    setPromoText(next.promo ?? "");
-  });
+  const params = useParamsDraft(
+    config,
+    offer,
+    (next) => {
+      setChoice(next);
+      setAmountText(next.amount ?? "");
+      setHeightText(next.height === undefined ? "" : String(next.height));
+      setRefText(next.ref ?? "");
+      setPromoText(next.promo ?? "");
+    },
+    overrides,
+  );
 
   // The section drilled into, or null for the list. Going back returns focus
   // to the row that opened it, and tidies the Developer draft.
@@ -286,6 +302,18 @@ export function Configurator() {
   };
 
   const sections: Record<SectionId, { summary: string; options: ReactNode }> = {
+    surfaces: {
+      summary: "Visibility and defaults",
+      options: (
+        <SurfaceSection
+          params={overrides}
+          onChange={(next) => {
+            setTouched(true);
+            setChoice((previous) => replaceSurfaceParams(previous, next));
+          }}
+        />
+      ),
+    },
     route: {
       summary: routeSummary(config),
       options: (
@@ -484,7 +512,18 @@ export function Configurator() {
         }}
       />
 
-      <WhatUsersSee config={config} />
+      {shownSurfaces.initialTab === "trade" && shownSurfaces.initialMode === "swap" ? (
+        <WhatUsersSee config={config} />
+      ) : (
+        <section className="config-sees" aria-label="What users see">
+          <h2 className="config-sees__title">What users see</h2>
+          <p className="config-hint">
+            The live widget preview shows availability and requirements for the selected surface.
+            Fiat rails require fresh provider capabilities; these defaults do not authorize
+            execution.
+          </p>
+        </section>
+      )}
     </div>
   );
 }

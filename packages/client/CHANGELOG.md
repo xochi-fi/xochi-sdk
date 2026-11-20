@@ -4,6 +4,19 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+## [0.2.0]
+
+### Added
+
+- Publish the provider-neutral `ramp/1` contract with canonical atomic amounts, JSON Schema, and conformance vectors.
+- Export `rampClient` for validated commands and recovery, `rampDiscovery` for capability and offer discovery, `rampProvider` for trusted provider adapters, and `rampOperationStore` for operation snapshots, revision checks, and idempotency.
+
+- Independently approved post-onramp routing through `createXochiRampLeg` and `RampClient.offerRoute`. Fresh route quotes require completed, released Peer delivery; expired or failed quotes remain recoverable partial success, while unknown execution permits reconciliation only. Route retry and skip never repeat Peer.
+
+### Changed
+
+- `RampClient` `check_status` on an `in_doubt` leg may now reconcile to `action_required` (the same submitted operation waiting on the user, e.g. a signaled but unpaid Peer intent). A `processing` leg still never regresses, and no reconciliation resubmits.
+
 ## [0.1.17] - 2026-11-18
 
 ### Fixed
@@ -68,6 +81,14 @@ Requires `@xochi/signer` `^0.9.0` (was `^0.8.0`): the escrow binding and Canton 
   excessive-slippage decisions. This is an extraction prerequisite, not
   publication approval; #98's producer and claim-chain prerequisites and
   separate registry approval remain gates.
+- Add canonical snake_case `ramp/1` schemas and inferred TypeScript bindings,
+  exact atomic-unit parsing, sanitized boundary validation, independently derived
+  leg outcomes, revision/idempotency command preflight, and shared JSON conformance
+  fixtures. In-doubt operations never permit execute-again. No provider executor,
+  durable replay store, wallet signer or new bridge is included.
+- Export packed JSON Schema/conformance artifacts for other runtimes. Add a
+  separately pinned Peer compatibility example; package compatibility and a
+  fail-closed readiness result do not establish live execution or publication.
 
 ### Fixed
 
@@ -80,6 +101,19 @@ Requires `@xochi/signer` `^0.9.0` (was `^0.8.0`): the escrow binding and Canton 
   expiring a replacement session, including same-token logout/re-authentication.
   The widget supplies its local wallet-session generation; no credentials enter
   the client state machine.
+- Keep recoverable failed legs nonterminal while preserving failed/partial-success
+  outcomes. Permit only the failed leg's explicit recovery action; never repeat a
+  completed sibling, reopen a refunded leg or execute an in-doubt operation again.
+  Add canonical recovery, finality, stale-revision and replay conformance vectors.
+- Snapshot bounded data descriptors at the `parseRamp` boundary; reject accessors
+  without invoking them and contain throwing or revoked Proxies as `invalid_request`.
+  Never log or retain escaped provider errors.
+- Reject unknown keys in `ramp/1` intents and commands; provider data still drops
+  bounded unknown fields. `parseRamp` now checks route assets and recipient against
+  the intent, preview pay/receive/fee assets against the leg order, and CAIP-19
+  `asset_id` chains. `approve` and `execute_route` require `quote_id`.
+  `checkRampCommand` returns `invalid_command` / `invalid_receipt` instead of throwing.
+  Schema patterns drop lookahead so RE2 validators accept them.
 
 ### Fixed
 

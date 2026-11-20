@@ -6,41 +6,39 @@
  * The frame renders these, and the configurator's "What users see" panel
  * (xochi-fi/xochi-widget#40) imports the same constants, so the panel cannot
  * describe a mode in words the frame does not use.
- *
- * Shielded says the amount stays visible. The accepted design
- * (docs/planning/shielded-execution.md D1, X-DOC-07) is recipient-private with
- * a public amount and token, so no string here may claim the amount is hidden.
  */
 
 import type { SettlementType } from "../../types/index.js";
 import type { SettlementFix } from "../../lib/settlementAvailability.js";
+import { ZKMONEY_PRIVACY_COPY } from "./zkMoney.js";
 import { CANTON_PUBLIC_ONLY_LINE } from "./canton.js";
 
 /**
- * The one description of each mode: the line under its button. Nothing else in
+ * The one description of each mode: the line under the segment. Nothing else in
  * the frame restates it.
  */
+export const SHIELDED_DESCRIPTION = ZKMONEY_PRIVACY_COPY;
+
 export const MODE_META: Record<SettlementType, string> = {
   public: "Recipient and amount visible",
   stealth: "Recipient hidden, amount visible",
-  shielded: "Recipient hidden on Aztec, amount visible",
+  shielded: SHIELDED_DESCRIPTION,
 };
 
-/** What a tap on Stealth without a wallet says, beside the connect action. */
-export const STEALTH_NEEDS_WALLET_CAPTION =
-  "Stealth derives its one-time address from a connected wallet.";
-
 /**
- * What a tap on Shielded says while it is not offered (SPEC §5.1: reserved and
- * unavailable). No launch promise: "coming soon" was dropped with the spec's
- * "launch-pending".
+ * What Stealth does and does not hide, stated wherever someone else is paid.
+ * The venue derives the one-time address from the meta-address in the quote
+ * request, so it learns the meta-address: the copy must not claim the venue
+ * cannot link sender and recipient.
  */
-export const SHIELDED_UNAVAILABLE_CAPTION =
-  "Shielded is unavailable. It hides the recipient; the amount, token, solver and timing stay public.";
+export const STEALTH_PRIVACY_LIMITS =
+  "Stealth hides the recipient from public view. Xochi sees the recipient's meta-address and uses it to derive the one-time address, so it can link the payment to them. Stealth does not hide your funding transaction, amount or timing.";
+
+export const SHIELDED_UNAVAILABLE_CAPTION = `Shielded is unavailable. ${ZKMONEY_PRIVACY_COPY}`;
 
 /** The one fix an unavailable mode shows, in place of its meta line. */
 export const SETTLEMENT_FIX_LINE: Record<SettlementFix, string> = {
-  wallet: "Connect a wallet",
+  wallet: "Wallet required",
   setup: "Set up Stealth",
   quote: "Updating quote",
   destination: "Choose a Stealth chain",
@@ -67,3 +65,5 @@ export const payoutHeadline = (payout: string): string =>
 
 /** The same guarantee where no figure is shown (the configurator's preview). */
 export const PAYOUT_GUARANTEE = "Receive exactly the quoted amount, or a full refund.";
+
+export const SHIELDED_DEPOSIT_NOTE = "Deposit is public on Ethereum.";

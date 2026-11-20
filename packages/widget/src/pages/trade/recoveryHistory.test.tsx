@@ -210,7 +210,9 @@ describe("a resumed order ends as the order it was dispatched", () => {
     await resumeToCompletion("stealth");
     await waitFor(
       () =>
-        expect(screen.getByRole("heading", { name: "Landed at the private address" })).toBeTruthy(),
+        expect(
+          screen.getByRole("heading", { name: "Landed at the one-time stealth address" }),
+        ).toBeTruthy(),
       WAIT,
     );
     expect(screen.getByRole("button", { name: "Claim payment" })).toBeTruthy();
@@ -393,8 +395,12 @@ describe("retry restores the settlement mode by name", () => {
     );
     expect(document.querySelector<HTMLButtonElement>(".submit-btn")?.disabled).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: /^Shielded/ }));
-    expect(screen.getByLabelText("zk.money tag")).toBeTruthy();
-    expect(document.querySelector(".settlement-caption[aria-live]")?.textContent).toBe("");
+    expect(screen.getByRole("button", { name: /^Shielded/ }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(screen.getByText("Choose a zk.money alias.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "To: Your wallet" }));
+    expect(screen.getByRole("textbox", { name: "Name or address" })).toBeTruthy();
   });
 });
 
@@ -420,7 +426,7 @@ describe("terminal rows name the next action", () => {
 
   /** Open the strip, then expand the single row inside it. */
   const expandRow = (): void => {
-    fireEvent.click(screen.getByRole("button", { name: "Toggle activity" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Activity/ }));
     const row = document.querySelector(".activity-row");
     fireEvent.click(row as HTMLElement);
   };
@@ -579,9 +585,9 @@ describe("terminal rows name the next action", () => {
     expandRow();
 
     const route = document.querySelector(".activity-chain-route")?.textContent ?? "";
-    expect(route).toContain("Aztec");
+    expect(route).toContain("zk.money");
     expect(route).toContain("Stealth");
-    expect(screen.getByText("Aztec Network (Stealth)")).toBeTruthy();
+    expect(screen.getByText("zk.money", { exact: true })).toBeTruthy();
     expect(document.body.textContent).not.toContain("Shielded");
   });
 

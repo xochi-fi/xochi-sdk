@@ -121,7 +121,7 @@ describe("layout=swap", () => {
     expect(screen.queryByRole("tab")).toBeNull();
     expect(screen.queryByRole("tabpanel")).toBeNull();
     expect(screen.queryByRole("region", { name: "Transaction log" })).toBeNull();
-    expect(screen.getByLabelText("Send")).toBeTruthy();
+    expect(screen.getByLabelText("Pay")).toBeTruthy();
   });
 
   it("hides account chrome when the host owns wallet UI", async () => {
@@ -217,9 +217,7 @@ describe("layout=swap", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull(), WAIT);
-    fireEvent.click(
-      await screen.findByRole("button", { name: /Claim your private payment/ }, WAIT),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: /Open Claims/ }, WAIT));
     expect(open).toHaveBeenCalledWith("/embed#claims", "_blank", "noopener,noreferrer");
   });
 
@@ -245,7 +243,7 @@ describe("layout=swap", () => {
     // The row after the card says where to claim and opens nothing.
     const note = await screen.findByRole("note", {}, WAIT);
     expect(note.textContent).toContain(CLAIM_IN_XOCHI_APP);
-    expect(screen.queryByRole("button", { name: /Claim your private payment/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Open Claims/ })).toBeNull();
     expect(open).not.toHaveBeenCalled();
   });
 });
@@ -310,12 +308,7 @@ describe("howItWorks and height", () => {
     stubApi();
     await renderTrade(<Trade look={look("howItWorks=0")} />);
     expect(screen.queryByRole("button", { name: /How it works/ })).toBeNull();
-    // The custody and fee facts stay, in one line.
-    expect(
-      screen.getByText(
-        "Self-custody: you sign from your own wallet. Privacy is part of the trading fee, never an extra charge.",
-      ),
-    ).toBeTruthy();
+    expect(screen.queryByText(/Privacy is part of the trading fee/)).toBeNull();
     cleanup();
 
     await renderTrade(<Trade look={look("howItWorks=1")} />);

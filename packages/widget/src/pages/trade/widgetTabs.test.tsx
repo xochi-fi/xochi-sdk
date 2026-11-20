@@ -4,16 +4,23 @@
  * The widget's in-frame tabs and account chip (xochi-fi/xochi-widget#20).
  *
  * The widget is served alone, so what used to sit below the card on one long
- * page is now three tabs at the card's width. What must stay true, checked
- * against the real provider stack and the rendered DOM:
- *   - Swap / Activity / Claims is a WAI-ARIA tablist: click selects, arrows
- *     move and select (wrapping), Home/End jump, one tab stop;
+ * page is now tabs at the card's width (Trade / Send / Activity / Claims, the
+ * peer-send-tab addendum). What must stay true, checked against the real
+ * provider stack and the rendered DOM:
+ *   - the top row is a WAI-ARIA tablist: click selects, arrows move and select
+ *     (wrapping), Home/End jump, one tab stop; Trade's Buy | Swap mode is a
+ *     nested tablist with the same keys;
  *   - Claims exists only where it can render (a connected wallet);
- *   - leaving Swap mid-quote keeps the held quote: no re-quote, no reset;
+ *   - leaving Swap mid-quote (for another tab or for Buy) keeps the held
+ *     quote: no re-quote, no reset;
+ *   - Buy shows its critical facts before any rail, reads Peer only for an
+ *     entered amount, and offers only fresh live rails (nothing executes);
+ *   - host narrowing (tabs / modes / destinations / rampProviders) hides
+ *     surfaces and seeds the initial selection, never adds one;
  *   - every "go claim it" path lands on the Claims tab: the claims nudge, the
  *     activity row's claim action, and the stealth receipt's "Claim your
  *     payment";
- *   - an activity retry lands on Swap with the row's route prefilled;
+ *   - an activity retry lands on Trade's Swap mode with the row's route prefilled;
  *   - the account chip appears only while connected and opens RainbowKit's
  *     account modal, whose Disconnect works.
  */
@@ -24,6 +31,8 @@ import type { Config } from "wagmi";
 import { QuoteResponseSchema } from "@xochi/client";
 import { quoteWire, statusWire } from "../../test/intentHarness.js";
 import { intentAPI } from "../../lib/intentAPI.js";
+import { RampDiscoveryContext } from "../../ramp/availability/useRampDiscovery.js";
+import { RECORDED_AT, recordedPort } from "../../test/rampPort.js";
 import {
   renderTrade,
   makeTestConfig,
@@ -101,31 +110,54 @@ afterEach(() => {
 // Handles
 // ============================================================
 
-const tab = (name: "Swap" | "Activity" | "Claims"): HTMLElement =>
-  screen.getByRole("tab", { name: new RegExp(`^${name}`) });
+/** The top row's tabs (the nested mode and destination tablists are not in it). */
+const topTabs = (): HTMLElement[] =>
+  within(screen.getByRole("tablist", { name: "Widget sections" })).getAllByRole("tab");
 
-const tabNames = (): string[] =>
-  screen.getAllByRole("tab").map((t) => (t.textContent ?? "").replace(/\d.*$/, ""));
+const tab = (name: "Trade" | "Send" | "Activity" | "Claims"): HTMLElement =>
+  within(screen.getByRole("tablist", { name: "Widget sections" })).getByRole("tab", {
+    name: new RegExp(`^${name}`),
+  });
+
+const modeTab = (name: "Buy" | "Swap" | "Cash out"): HTMLElement =>
+  within(screen.getByRole("tablist", { name: "Trade mode" })).getByRole("tab", { name });
+
+const tabNames = (): string[] => topTabs().map((t) => (t.textContent ?? "").replace(/\d.*$/, ""));
 
 const selectedTab = (): string | undefined =>
-  screen
-    .getAllByRole("tab")
+  topTabs()
     .find((t) => t.getAttribute("aria-selected") === "true")
     ?.textContent?.replace(/\d.*$/, "");
 
-/** The one visible tabpanel, checked against the selected tab's aria-controls. */
-const visiblePanel = (): HTMLElement => {
-  const panel = screen.getByRole("tabpanel");
-  const selected = screen
+const selectedMode = (): string | undefined =>
+  within(screen.getByRole("tablist", { name: "Trade mode" }))
     .getAllByRole("tab")
-    .find((t) => t.getAttribute("aria-selected") === "true");
-  expect(selected?.getAttribute("aria-controls")).toBe(panel.id);
+    .find((t) => t.getAttribute("aria-selected") === "true")?.textContent ?? undefined;
+
+/**
+ * The one visible top-level tabpanel, checked against the selected tab's
+ * aria-controls; every other top-level panel is hidden.
+ */
+const visiblePanel = (): HTMLElement => {
+  const selected = topTabs().find((t) => t.getAttribute("aria-selected") === "true");
+  const panel = document.getElementById(selected?.getAttribute("aria-controls") ?? "");
+  if (!panel) throw new Error("selected tab controls no panel");
+  expect(panel.getAttribute("role")).toBe("tabpanel");
   expect(panel.getAttribute("aria-labelledby")).toBe(selected?.id);
+  expect(panel.hasAttribute("hidden")).toBe(false);
+  for (const other of topTabs()) {
+    if (other === selected) continue;
+    const id = other.getAttribute("aria-controls");
+    expect(id && document.getElementById(id)?.hasAttribute("hidden")).toBe(true);
+  }
   return panel;
 };
 
 /** The pay field, found the way a screen reader names it. */
-const payAmount = (): HTMLInputElement => screen.getByLabelText<HTMLInputElement>("Send");
+const payAmount = (): HTMLInputElement =>
+  within(document.querySelector(".trade-card") as HTMLElement).getByLabelText<HTMLInputElement>(
+    "Pay",
+  );
 
 const swapRecord = (over: Partial<SwapActivityItem> = {}): SwapActivityItem => ({
   id: "xi_widget_tabs",
@@ -155,9 +187,8 @@ const seedActivity = (...items: SwapActivityItem[]): void => {
   );
 };
 
-/** Open the activity strip, then expand its single row. */
+/** Expand the single row in the Activity tab. */
 const expandActivityRow = async (): Promise<void> => {
-  fireEvent.click(await screen.findByRole("button", { name: "Toggle activity" }, WAIT));
   const row = await waitFor(() => {
     const found = document.querySelector(".activity-row");
     if (!found) throw new Error("activity row not rendered");
@@ -175,33 +206,42 @@ describe("tablist", () => {
     stubApi();
     await renderTrade(<Trade look={FULL_LOOK} />);
 
-    expect(screen.getByRole("tablist")).toBeTruthy();
-    expect(selectedTab()).toBe("Swap");
+    expect(screen.getByRole("tablist", { name: "Widget sections" })).toBeTruthy();
+    expect(selectedTab()).toBe("Trade");
+    expect(selectedMode()).toBe("Swap");
     expect(visiblePanel().querySelector(".trade-card")).toBeTruthy();
 
     fireEvent.click(tab("Activity"));
     expect(selectedTab()).toBe("Activity");
     const activity = visiblePanel();
-    expect(within(activity).getByRole("region", { name: "Transaction log" })).toBeTruthy();
+    const activityLog = within(within(activity).getByRole("region", { name: "Transaction log" }));
+    expect(activityLog.getByRole("button", { name: "Connect wallet" })).toBeTruthy();
+    expect(activityLog.queryByRole("button", { expanded: false })).toBeNull();
     // The card is still mounted, only hidden: that is what keeps a swap alive.
-    expect(
-      document.querySelector(".trade-card")?.closest("[role=tabpanel]")?.hasAttribute("hidden"),
-    ).toBe(true);
+    expect(document.querySelector(".trade-card")?.closest("[hidden]")).not.toBeNull();
 
-    fireEvent.click(tab("Swap"));
-    expect(selectedTab()).toBe("Swap");
+    fireEvent.click(tab("Send"));
+    expect(selectedTab()).toBe("Send");
+    expect(within(visiblePanel()).getByRole("textbox", { name: "To" })).toBeTruthy();
+
+    fireEvent.click(tab("Trade"));
+    expect(selectedTab()).toBe("Trade");
     expect(visiblePanel().querySelector(".trade-card")).toBeTruthy();
   });
 
   it("moves with the arrow keys, wraps, and jumps with Home/End", async () => {
     stubApi();
     await renderTrade(<Trade look={FULL_LOOK} />, { connected: true });
-    expect(tabNames()).toEqual(["Swap", "Activity", "Claims"]);
+    expect(tabNames()).toEqual(["Trade", "Send", "Activity", "Claims"]);
 
     const key = (k: string): void => {
       fireEvent.keyDown(document.activeElement as HTMLElement, { key: k });
     };
-    tab("Swap").focus();
+    tab("Trade").focus();
+
+    key("ArrowRight");
+    expect(selectedTab()).toBe("Send");
+    expect(document.activeElement).toBe(tab("Send"));
 
     key("ArrowRight");
     expect(selectedTab()).toBe("Activity");
@@ -210,21 +250,130 @@ describe("tablist", () => {
     key("ArrowRight");
     expect(selectedTab()).toBe("Claims");
     key("ArrowRight");
-    expect(selectedTab()).toBe("Swap");
-    expect(document.activeElement).toBe(tab("Swap"));
+    expect(selectedTab()).toBe("Trade");
+    expect(document.activeElement).toBe(tab("Trade"));
 
     key("ArrowLeft");
     expect(selectedTab()).toBe("Claims");
     expect(document.activeElement).toBe(tab("Claims"));
 
     key("Home");
-    expect(selectedTab()).toBe("Swap");
+    expect(selectedTab()).toBe("Trade");
     key("End");
     expect(selectedTab()).toBe("Claims");
-    expect(visiblePanel().querySelector('[aria-label="Private receiving"]')).toBeTruthy();
+    expect(visiblePanel().querySelector('[aria-label="Stealth receiving"]')).toBeTruthy();
 
     // One tab stop: only the selected tab is in the Tab order.
-    expect(screen.getAllByRole("tab").map((t) => t.tabIndex)).toEqual([-1, -1, 0]);
+    expect(topTabs().map((t) => t.tabIndex)).toEqual([-1, -1, -1, 0]);
+  });
+
+  it("moves between wrapped rows while keeping one tab stop", async () => {
+    stubApi();
+    await renderTrade(<Trade look={FULL_LOOK} />, { connected: true });
+    for (const [index, button] of topTabs().entries()) {
+      vi.spyOn(button, "getBoundingClientRect").mockReturnValue(
+        DOMRect.fromRect({
+          x: (index % 2) * 100,
+          y: Math.floor(index / 2) * 44,
+          width: 100,
+          height: 44,
+        }),
+      );
+    }
+    tab("Trade").focus();
+    fireEvent.keyDown(tab("Trade"), { key: "ArrowDown" });
+    expect(document.activeElement).toBe(tab("Activity"));
+    expect(selectedTab()).toBe("Activity");
+    fireEvent.keyDown(tab("Activity"), { key: "ArrowUp" });
+    expect(document.activeElement).toBe(tab("Trade"));
+    expect(topTabs().filter((button) => button.tabIndex === 0)).toEqual([tab("Trade")]);
+  });
+
+  it("switches Trade between Buy and Swap with the same keys", async () => {
+    stubApi();
+    await renderTrade(<Trade look={FULL_LOOK} />, { connected: true });
+    expect(selectedMode()).toBe("Swap");
+
+    modeTab("Swap").focus();
+    fireEvent.keyDown(modeTab("Swap"), { key: "ArrowRight" });
+    expect(selectedMode()).toBe("Buy");
+    expect(document.activeElement).toBe(modeTab("Buy"));
+    // The top row did not move: the mode is Trade's own selection.
+    expect(selectedTab()).toBe("Trade");
+
+    fireEvent.keyDown(modeTab("Buy"), { key: "End" });
+    expect(selectedMode()).toBe("Cash out");
+    fireEvent.keyDown(modeTab("Cash out"), { key: "ArrowRight" });
+    expect(selectedMode()).toBe("Swap");
+    expect(
+      within(screen.getByRole("tablist", { name: "Trade mode" }))
+        .getAllByRole("tab")
+        .map((t) => t.tabIndex),
+    ).toEqual([0, -1, -1]);
+  });
+
+  it("shows Buy's critical facts before any rail and reads Peer only for an amount", async () => {
+    stubApi();
+    const port = recordedPort({ account: TEST_ACCOUNT, clock: { t: RECORDED_AT } });
+    await renderTrade(
+      <RampDiscoveryContext value={port}>
+        <Trade look={FULL_LOOK} />
+      </RampDiscoveryContext>,
+      { connected: true },
+    );
+    fireEvent.click(modeTab("Buy"));
+
+    const buy = document.getElementById(modeTab("Buy").getAttribute("aria-controls") ?? "")!;
+    expect(buy.hasAttribute("hidden")).toBe(false);
+    expect(within(buy).getByRole("region", { name: "Before you choose" }).textContent).toMatch(
+      /wallet addresses are public/,
+    );
+    expect(within(buy).queryAllByRole("radio")).toHaveLength(0);
+    expect(port.calls).toEqual([]);
+    // The Swap card is hidden, not unmounted.
+    expect(document.querySelector(".trade-card")?.closest("[hidden]")).not.toBeNull();
+
+    fireEvent.change(within(buy).getByLabelText("USDC to receive"), { target: { value: "25" } });
+    await within(buy).findByRole("radio", { name: "Wise" }, WAIT);
+    expect(port.calls).toEqual(["25000000"]);
+    expect(within(buy).getByLabelText(/Wise/)).toBeTruthy();
+    expect(
+      within(buy).getByRole("region", { name: "Unavailable payment apps" }).textContent,
+    ).toMatch(/Venmo.*Temporarily unavailable/);
+  });
+
+  it("follows the host's initial tab and mode, and hides what it narrows out", async () => {
+    stubApi();
+    await renderTrade(
+      <Trade look={FULL_LOOK} embed={{ initialTab: "trade", initialMode: "onramp" }} />,
+    );
+    expect(selectedTab()).toBe("Trade");
+    expect(selectedMode()).toBe("Buy");
+    cleanup();
+
+    await renderTrade(
+      <Trade look={FULL_LOOK} embed={{ rampProviders: [], initialMode: "onramp" }} />,
+    );
+    expect(selectedMode()).toBe("Swap");
+    expect(
+      within(screen.getByRole("tablist", { name: "Trade mode" }))
+        .getAllByRole("tab")
+        .map((t) => t.textContent),
+    ).toEqual(["Swap"]);
+    fireEvent.click(tab("Send"));
+    expect(screen.getByRole("textbox", { name: "To" })).toBeTruthy();
+    cleanup();
+
+    await renderTrade(
+      <Trade look={FULL_LOOK} embed={{ initialTab: "trade", initialMode: "offramp" }} />,
+    );
+    expect(selectedTab()).toBe("Trade");
+    expect(selectedMode()).toBe("Cash out");
+    cleanup();
+
+    await renderTrade(<Trade look={FULL_LOOK} embed={{ tabs: ["activity"] }} />);
+    expect(tabNames()).toEqual(["Activity"]);
+    expect(document.querySelector(".trade-card")).toBeNull();
   });
 
   it("offers Claims only to a connected wallet", async () => {
@@ -232,7 +381,7 @@ describe("tablist", () => {
     await renderTrade(<Trade look={FULL_LOOK} />);
     // A disconnected visitor can neither set up stealth keys nor claim, so the
     // tab would open on an empty panel.
-    expect(tabNames()).toEqual(["Swap", "Activity"]);
+    expect(tabNames()).toEqual(["Trade", "Send", "Activity"]);
   });
 });
 
@@ -253,7 +402,9 @@ describe("leaving Swap mid-quote", () => {
     expect(quotesBefore).toBeGreaterThan(0);
 
     fireEvent.click(tab("Activity"));
-    fireEvent.click(tab("Swap"));
+    fireEvent.click(tab("Trade"));
+    fireEvent.click(modeTab("Buy"));
+    fireEvent.click(modeTab("Swap"));
 
     expect(payAmount().value).toBe("1000");
     expect(screen.getByLabelText<HTMLInputElement>("Amount to receive").value).toBe("998");
@@ -268,17 +419,20 @@ describe("leaving Swap mid-quote", () => {
 // ============================================================
 
 describe("activity retry", () => {
-  it("lands on Swap with the row's route prefilled", async () => {
+  it("lands on Trade's Swap mode with the row's route prefilled", async () => {
     stubApi();
     // Only a failure the Worker marked `not_executed` is retried from the feed.
     seedActivity(swapRecord({ data: { ...swapRecord().data, substatus: "not_executed" } }));
     await renderTrade(<Trade look={FULL_LOOK} />, { connected: true });
 
+    // From Buy, so landing on Swap is the retry's doing.
+    fireEvent.click(modeTab("Buy"));
     fireEvent.click(tab("Activity"));
     await expandActivityRow();
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
 
-    expect(selectedTab()).toBe("Swap");
+    expect(selectedTab()).toBe("Trade");
+    expect(selectedMode()).toBe("Swap");
     expect(visiblePanel().querySelector(".trade-card")).toBeTruthy();
     await waitFor(() => expect(payAmount().value).toBe("5"), WAIT);
   });
@@ -307,7 +461,7 @@ describe("claim paths land on the Claims tab", () => {
 
     fireEvent.click(nudge);
     expect(selectedTab()).toBe("Claims");
-    expect(visiblePanel().querySelector('[aria-label="Private receiving"]')).toBeTruthy();
+    expect(visiblePanel().querySelector('[aria-label="Stealth receiving"]')).toBeTruthy();
   });
 
   it("lands the activity row's claim action on Claims", async () => {
@@ -525,6 +679,6 @@ describe("account chip", () => {
 
     await waitFor(() => expect(screen.queryByRole("button", { name: chipName })).toBeNull(), WAIT);
     // Claims needs a wallet, so it goes with it.
-    expect(tabNames()).toEqual(["Swap", "Activity"]);
+    expect(tabNames()).toEqual(["Trade", "Send", "Activity"]);
   });
 });

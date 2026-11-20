@@ -250,17 +250,6 @@
   border-radius: 999px;
 }
 
-.stealth-claims-waiting {
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  line-height: 1.5;
-  color: var(--pearl-cream);
-  padding: 0.4rem 0.5rem;
-  background: var(--muted-gold-10);
-  border: 1px solid var(--muted-gold-25);
-  border-radius: 4px;
-}
-
 .stealth-claims-error {
   font-family: var(--font-mono);
   font-size: 0.6rem;

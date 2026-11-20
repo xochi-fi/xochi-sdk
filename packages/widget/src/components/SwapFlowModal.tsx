@@ -22,7 +22,7 @@ import type {
   OriginApproval,
   RaceWebSocketMessage,
 } from "../types/intent.js";
-import { EXTENDED_CHAIN_NAMES, isCantonDestinationChainId, isTronChainId } from "@xochi/client";
+import { EXTENDED_CHAIN_NAMES, isCantonDestinationChainId } from "@xochi/client";
 import type { EscrowStatusData } from "@xochi/client";
 import {
   type Receipt,
@@ -44,6 +44,8 @@ import { DepositInstructions } from "./swap-flow/DepositInstructions.js";
 import { buildDepositScreen } from "./swap-flow/depositScreen.js";
 import type { StoredDepositAttestation, DepositAttestationFields } from "@xochi/client";
 import { useWidgetTabsShown } from "./widgetTabsContext.js";
+import { confirmSend, type SendRecipientDisplay } from "../pages/send/sendCopy.js";
+import { ShieldedDisclosure } from "../pages/send/ShieldedDisclosure.js";
 import { APP_VERSION } from "../config.js";
 
 const PHASE_TITLES: Record<SwapPhase, string> = {
@@ -169,7 +171,10 @@ interface SwapFlowModalProps {
   receivedAmount?: string;
   fromChainId: SelectableChainId;
   toChainId: SelectableChainId;
-  destination: IntentDestination;
+  swapRecipientLabel?: string;
+  destination: IntentDestination & { sendRecipientDisplay?: SendRecipientDisplay };
+  /** On a Stealth destination: `"other"` paid someone else's keys, so the ending has no claim. */
+  stealthPayee?: "self" | "other";
   isCrossChain: boolean;
   estimatedDuration: number;
   startTime?: number;
@@ -258,6 +263,25 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
   const errorMessage = typeof error === "string" ? error : (error?.message ?? null);
   const structuredError = typeof error === "object" && error !== null ? error : null;
   const phase = receipt.phase;
+  const sendRecipientDisplay = props.destination.sendRecipientDisplay;
+  const swapPayee =
+    props.swapRecipientLabel ??
+    (props.destination.recipientTag && `@${props.destination.recipientTag}`);
+  const swapToStealthPayee = swapPayee && props.stealthPayee === "other" ? swapPayee : undefined;
+  const title =
+    phase === "confirm"
+      ? sendRecipientDisplay
+        ? confirmSend(sendRecipientDisplay)
+        : swapPayee
+          ? `Confirm swap to ${swapPayee}`
+          : PHASE_TITLES.confirm
+      : phase === "success" && swapPayee && !sendRecipientDisplay
+        ? "Swap receipt"
+        : sendRecipientDisplay && phase === "failed"
+          ? "Send failed"
+          : sendRecipientDisplay && phase === "may-have-moved"
+            ? "Send did not complete"
+            : PHASE_TITLES[phase];
   // A Canton order past signing renders its escrow (the lock, Riddler's
   // attested delivery, the claim or the refund), never the phase's success or
   // delivered copy: a gateway-reported completion is not a delivery.
@@ -388,12 +412,12 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
     >
       <div
         ref={contentRef}
-        className={`modal-content swap-flow-modal swap-flow-modal--${phase}`}
+        className={`modal-content swap-flow-modal swap-flow-modal--${phase}${sendRecipientDisplay ? " swap-flow-modal--send" : ""}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-header">
           <h3 id="swap-flow-title" className="modal-title">
-            {cantonEscrowPhase ? "Canton delivery" : PHASE_TITLES[phase]}
+            {cantonEscrowPhase ? "Canton delivery" : title}
           </h3>
           <button className="modal-close" onClick={onClose} aria-label="Close">
             <svg
@@ -410,9 +434,16 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
           </button>
         </div>
 
+        {swapPayee &&
+          !sendRecipientDisplay &&
+          phase !== "confirm" &&
+          phase !== "success" &&
+          phase !== "deposit" &&
+          !props.destination.recipientTag && <p className="swap-recipient-flow">To: {swapPayee}</p>}
+
         {/* Polite announcement of phase changes for screen readers */}
         <span className="sr-only" aria-live="polite">
-          {cantonEscrowPhase ? "Canton delivery" : PHASE_TITLES[phase]}
+          {cantonEscrowPhase ? "Canton delivery" : title}
         </span>
 
         {props.destination.recipientTag &&
@@ -420,11 +451,18 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
           phase !== "deposit" &&
           phase !== "success" && (
             <p className="swap-flow-tag-route">
-              Route: public Ethereum DAI payout to @{props.destination.recipientTag} on zk.money.
-              {depositView &&
-                isTronChainId(depositView.from_chain_id) &&
-                " TRON funding is public."}{" "}
-              Aztec credit is separate.
+              To @{props.destination.recipientTag} on zk.money
+              {(sendRecipientDisplay?.mode !== "Shielded" ||
+                phase === "pending" ||
+                phase === "refunded" ||
+                phase === "failed" ||
+                phase === "may-have-moved" ||
+                (phase === "awaiting-wallet" && awaitingPull)) && (
+                <>
+                  <br />
+                  <ShieldedDisclosure />
+                </>
+              )}
             </p>
           )}
 
@@ -462,8 +500,13 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
                 )}
               </div>
             )}
+            {swapToStealthPayee && (
+              <p className="swap-recipient-flow">
+                Funds land at a one-time stealth address controlled by {swapToStealthPayee}’s keys.
+              </p>
+            )}
             <TransactionPreview
-              quote={quote}
+              quote={swapToStealthPayee ? { ...quote, claimInfo: undefined } : quote}
               fromAmount={props.fromAmount}
               fromSymbol={props.fromSymbol}
               fromDecimals={props.fromDecimals}
@@ -472,6 +515,7 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
               fromChainId={props.fromChainId}
               toChainId={props.toChainId}
               destination={props.destination}
+              sendRecipientDisplay={sendRecipientDisplay}
               onConfirm={props.onConfirm}
               onCancel={onClose}
               isLoading={isSigning}
@@ -502,6 +546,7 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
               toChainId={depositScreen.toChainId}
               receivedAmount={depositScreen.receivedAmount}
               recipientTag={props.destination.recipientTag}
+              swapRecipientLabel={swapPayee}
               payoutAddress={depositScreen.payoutAddress}
               refundAddress={depositScreen.refundAddress}
               depositDeadline={depositScreen.depositDeadline}
@@ -589,7 +634,9 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
                 receivedAmount, never a figure reassembled from panel state. */}
             {props.receivedAmount && (
               <p className="swap-flow-payout">
-                Receive{" "}
+                {sendRecipientDisplay?.label || swapPayee
+                  ? `${sendRecipientDisplay?.label ?? swapPayee} receives `
+                  : "Receive "}
                 <strong>
                   {props.receivedAmount} {props.toSymbol}
                 </strong>{" "}
@@ -636,6 +683,8 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
               settlementChainId={settlementChainId}
               substatus={substatus}
               isStealth={props.destination.type === "stealth"}
+              stealthPayee={props.stealthPayee}
+              sendRecipientDisplay={sendRecipientDisplay}
               // Same signal DepositInstructions branches on, so both surfaces
               // agree about whether a signature was ever part of this route.
               // Reads `depositView` rather than the quote directly: a RESUMED
@@ -681,7 +730,7 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
             request. Point the user to a browser/wallet that signs reliably. */}
         {(phase === "awaiting-wallet" || awaitingPull) && shouldOfferInAppBrowser() && (
           <p className="swap-flow-inapp-hint">
-            No wallet prompt? Some private browsers (DuckDuckGo) block it. Open Xochi in Safari, or
+            No wallet prompt? Some browsers (such as DuckDuckGo) block it. Open Xochi in Safari, or
             connect with Coinbase Wallet.
           </p>
         )}
@@ -715,7 +764,10 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
               <SwapResult
                 variant={phase}
                 isStealth={props.destination.type === "stealth"}
+                stealthPayee={props.stealthPayee}
+                sendRecipientDisplay={sendRecipientDisplay}
                 recipientTag={props.destination.recipientTag}
+                swapRecipientLabel={swapPayee}
                 fromChainId={props.fromChainId}
                 toChainId={props.toChainId}
                 isCrossChain={props.isCrossChain}

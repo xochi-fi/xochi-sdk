@@ -1,10 +1,7 @@
 /**
  * ActivityFeed Component
  *
- * Compact, collapsible swap-activity strip for the trade screen. Collapsed to a
- * single summary line by default (latest swap + status), it expands in place to
- * a dense list of the wallet's swaps plus any claimable settlements. Rows expand
- * for detail and offer Retry / Report on failed swaps.
+ * Wallet activity with expandable swap details and recovery actions.
  */
 
 import { useState, useCallback, useEffect, useMemo } from "react";
@@ -16,14 +13,20 @@ import {
   isReportableSwapStatus,
   isRetryableSwapStatus,
 } from "../types/activity.js";
-import { formatTimeAgo, formatRawAmount, truncateAddress } from "../utils/format.js";
+import {
+  formatTimeAgo,
+  formatRawAmount,
+  formatTokenAmount,
+  truncateAddress,
+} from "../utils/format.js";
 import {
   EXTENDED_CHAIN_NAMES,
+  getExplorerTxUrl,
   CHAIN_SHORT_NAMES,
-  settlementDisclosure,
   getTokenInfoForChain,
 } from "@xochi/client";
 import { swapExplorerLinks } from "../lib/explorerLinks.js";
+import { ShieldedDisclosure } from "../pages/send/ShieldedDisclosure.js";
 import { getAztecTokenInfo } from "../lib/aztecTokens.js";
 import { LinksSignIn, type LinksSignInAction } from "./LinksSignIn.js";
 import { linksRecoveryKind } from "../lib/linksSignIn.js";
@@ -38,13 +41,24 @@ import { usePrices } from "../hooks/usePrices.js";
 import { swapUsd, estimatedFeeUsd } from "../lib/activityValue.js";
 import { phaseFromStatus } from "@xochi/client";
 import { isTerminalIntentStatus } from "@xochi/client";
+import { PrivacyBars } from "./PrivacyBars.js";
 import { TokenIcon } from "./TokenIcon.js";
 import { Chevron } from "./Chevron.js";
 import { AuthorizedAgents } from "./AuthorizedAgents.js";
 import { CHAIN_ICONS, AZTEC_ICON } from "../assets/chains/index.js";
 import { normalizeZkMoneyTag, zkMoneyTagValid } from "../pages/trade/zkMoney.js";
 import { isCantonDestinationChainId, isTronChainId, verifyStoredDeposit } from "@xochi/client";
+import type { SendActivityItem } from "../lib/localSends.js";
+import { chainName } from "../pages/send/addressSend.js";
+import { formatRampTime, railName } from "../ramp/availability/model.js";
+import type { OfframpActivityItem } from "../ramp/offramp/localOfframps.js";
+import { formatMixedCashOut, formatUsdc } from "../ramp/offramp/model.js";
+import { heldReleaseEstimate, type RampOperationSummary } from "../ramp/recovery/summaries.js";
 import { DEPOSIT_ATTESTATION_PIN } from "../config.js";
+
+function activityAddress(address: string): string {
+  return truncateAddress(address).replace("...", "…");
+}
 
 /** USD helper: null when the swapped token is outside the priced set (avoids a
  *  misleading $1 par fallback). Takes raw smallest-unit amount + decimals. */
@@ -201,8 +215,8 @@ function SwapRow({
   const { data, timestamp, intentStatus } = item;
   const fromToken = getTokenInfo(data.fromToken, data.fromChainId);
   const toToken = getTokenInfo(data.toToken, data.toChainId);
-  const fromSymbol = fromToken?.symbol ?? truncateAddress(data.fromToken);
-  const toSymbol = toToken?.symbol ?? truncateAddress(data.toToken);
+  const fromSymbol = fromToken?.symbol ?? activityAddress(data.fromToken);
+  const toSymbol = toToken?.symbol ?? activityAddress(data.toToken);
   const normalizedTag =
     typeof data.recipientTag === "string" ? normalizeZkMoneyTag(data.recipientTag) : "";
   const recipientTag =
@@ -217,7 +231,7 @@ function SwapRow({
     ? toToken
       ? formatRawAmount(data.toAmount, toToken.decimals)
       : "--"
-    : "...";
+    : "…";
   // Two legs, two explorers: the deposit hash on the source chain, the fill hash
   // on the destination chain. A same-chain swap has no fill link.
   const { source: explorerUrl, destination: fillExplorerUrl } = swapExplorerLinks({
@@ -236,7 +250,12 @@ function SwapRow({
   // A completed stealth row's next action is the claim, not an explorer link:
   // the funds sit at the one-time address until claimed (Phase 6).
   const canGoToClaims =
-    onClaimNudge !== undefined && intentStatus === "completed" && data.settlementType === "stealth";
+    onClaimNudge !== undefined &&
+    intentStatus === "completed" &&
+    data.settlementType === "stealth" &&
+    // Someone else's payment is theirs to claim.
+    data.stealthPayee !== "other" &&
+    !data.sendRecipientDisplay;
   // The recipient's receipt step on a shielded payout, behind its kill switch.
   const command = receiptCommand(item, RECIPIENT_RECEIPTS_LIVE);
   const refundAddress = useMemo(() => {
@@ -276,7 +295,7 @@ function SwapRow({
   const inUsd = fromToken ? usd(data.fromAmount, fromToken.decimals, fromToken.symbol) : null;
   const outUsd =
     data.toAmount && toToken ? usd(data.toAmount, toToken.decimals, toToken.symbol) : null;
-  const feeUsd = estimatedFeeUsd(inUsd, data.feeRate);
+  const feeUsd = estimatedFeeUsd(inUsd, Number.isFinite(data.feeRate) ? data.feeRate : 0);
 
   // One report per row: latch on first click so rapid clicks can't fire N POSTs
   // and N toasts. The button switches to a static "Reported" acknowledgement.
@@ -289,15 +308,18 @@ function SwapRow({
 
   const destinationLabel = recipientTag
     ? `@${recipientTag} on zk.money`
-    : data.destinationType === "aztec"
-      ? "Aztec"
+    : data.destinationType === "aztec" || data.settlementType === "shielded"
+      ? "zk.money"
       : CHAIN_SHORT_NAMES[data.toChainId];
-  const aztecPrivacyLabel =
-    data.destinationType === "aztec" &&
-    data.settlementType !== undefined &&
-    data.settlementType !== "public"
-      ? settlementDisclosure(data.settlementType).label
-      : null;
+  const send = data.sendRecipientDisplay;
+  const swapPayee = data.swapRecipientLabel ?? (recipientTag && `@${recipientTag}`);
+  const mode =
+    send?.mode ??
+    (recipientTag || data.settlementType === "shielded"
+      ? "Shielded"
+      : data.settlementType === "stealth"
+        ? "Stealth"
+        : "Public");
 
   return (
     <div className={`activity-row-wrapper ${isExpanded ? "expanded" : ""}`}>
@@ -305,31 +327,37 @@ function SwapRow({
         <div className="activity-icon-wrap activity-icon--swap">{getActivityIcon("swap")}</div>
         <div className="activity-details">
           <div className="activity-main">
-            <span className="activity-action">{getActivityLabel("swap")}</span>
+            <span className="activity-action">
+              {send
+                ? `Send · to ${send.label}`
+                : swapPayee
+                  ? `Swap · to ${swapPayee}`
+                  : getActivityLabel("swap")}
+            </span>
             {item.initiator === "agent" && item.agentLabel && (
               <span className="activity-via">via {item.agentLabel}</span>
             )}
-            <span className="activity-chain-route">
-              <ChainIcon chainId={data.fromChainId} />
-              {CHAIN_SHORT_NAMES[data.fromChainId]}
-              <span className="chain-arrow"> -&gt; </span>
-              {data.destinationType === "aztec" ? (
-                <img src={AZTEC_ICON} alt="" className="inline-chain-icon" />
-              ) : (
-                <ChainIcon chainId={data.toChainId} />
-              )}
-              {destinationLabel}
-              {data.destinationType === "aztec" && aztecPrivacyLabel && (
-                <span className="destination-tag-inline aztec">{aztecPrivacyLabel}</span>
-              )}
-            </span>
+            {!send && (
+              <span className="activity-chain-route">
+                <ChainIcon chainId={data.fromChainId} />
+                {CHAIN_SHORT_NAMES[data.fromChainId]}
+                <span className="chain-arrow"> → </span>
+                {data.destinationType === "aztec" ? (
+                  <img src={AZTEC_ICON} alt="" className="inline-chain-icon" />
+                ) : (
+                  <ChainIcon chainId={data.toChainId} />
+                )}
+                {destinationLabel}
+                {data.destinationType === "aztec" && <ActivityMode mode={mode} />}
+              </span>
+            )}
           </div>
           <div className="activity-tokens">
             <span className="from-token">
               <TokenIcon symbol={fromSymbol} className="inline-token-icon" />
               {fromAmount} {fromSymbol}
             </span>
-            <span className="swap-arrow"> -&gt; </span>
+            <span className="swap-arrow"> → </span>
             <span className="to-token">
               <TokenIcon symbol={toSymbol} className="inline-token-icon" />
               {toAmount} {toSymbol}
@@ -338,7 +366,7 @@ function SwapRow({
           {inUsd != null && outUsd != null && (
             <div className="activity-usd">
               <span className="activity-usd__flow">
-                {fmtUsd(inUsd)} <span className="chain-arrow">-&gt;</span> {fmtUsd(outUsd)}
+                {fmtUsd(inUsd)} <span className="chain-arrow">→</span> {fmtUsd(outUsd)}
               </span>
               {feeUsd != null && (
                 <span className="activity-usd__fee">est. fee ~{fmtFeeUsd(feeUsd)}</span>
@@ -347,9 +375,11 @@ function SwapRow({
           )}
           {live && <PhaseLine status={intentStatus} />}
           <div className="activity-meta">
+            {(send || data.destinationType !== "aztec") && <ActivityMode mode={mode} />}
             <span className={`activity-status-badge ${badge.className}`}>{badge.label}</span>
-            <span className="activity-dot">.</span>
-            <span className="activity-time">{formatTimeAgo(timestamp)}</span>
+            <time className="activity-time" dateTime={new Date(timestamp).toISOString()}>
+              {formatTimeAgo(timestamp)}
+            </time>
           </div>
         </div>
         <Chevron open={isExpanded} className="activity-chevron" />
@@ -359,7 +389,9 @@ function SwapRow({
         <div className="activity-expanded">
           {stateCopy && (
             <div className={`expanded-status expanded-status--${stateCopy.tone}`} role="status">
-              <p className="expanded-status__headline">{stateCopy.headline}</p>
+              <p className="expanded-status__headline">
+                {send && intentStatus === "failed" ? "Send failed" : stateCopy.headline}
+              </p>
               {stateCopy.detail && <p className="expanded-status__detail">{stateCopy.detail}</p>}
             </div>
           )}
@@ -373,14 +405,20 @@ function SwapRow({
             <DetailRow
               label="Destination"
               value={
-                recipientTag
-                  ? `@${recipientTag} on zk.money (public Ethereum DAI deposit)`
-                  : data.destinationType === "aztec"
-                    ? `Aztec Network${aztecPrivacyLabel ? ` (${aztecPrivacyLabel})` : ""}`
-                    : `${CHAIN_FULL_NAMES[data.toChainId]} (${toSymbol})`
+                send?.label ??
+                (mode === "Shielded" || data.destinationType === "aztec"
+                  ? destinationLabel
+                  : `${CHAIN_FULL_NAMES[data.toChainId]} (${toSymbol})`)
               }
             />
-            {data.isCrossChain && <DetailRow label="Type" value="Cross-chain swap" />}
+            {mode === "Shielded" && (
+              <p className="expanded-status__detail">
+                <ShieldedDisclosure />
+              </p>
+            )}
+            {data.isCrossChain && (
+              <DetailRow label="Type" value={send ? "Cross-chain send" : "Cross-chain swap"} />
+            )}
           </div>
 
           <div className="expanded-section">
@@ -401,7 +439,7 @@ function SwapRow({
               {fillExplorerUrl && data.receivingTxHash && (
                 <DetailRow
                   label="Receipt"
-                  value={truncateAddress(data.receivingTxHash)}
+                  value={activityAddress(data.receivingTxHash)}
                   mono
                   link={fillExplorerUrl}
                 />
@@ -409,7 +447,7 @@ function SwapRow({
               {data.txHash && (
                 <DetailRow
                   label={fillExplorerUrl ? "Deposit" : "Hash"}
-                  value={truncateAddress(data.txHash)}
+                  value={activityAddress(data.txHash)}
                   mono
                   link={explorerUrl || undefined}
                 />
@@ -492,14 +530,14 @@ function SwapRow({
 function SummaryPreview({ item }: { item: SwapActivityItem }) {
   const fromToken = getTokenInfo(item.data.fromToken, item.data.fromChainId);
   const toToken = getTokenInfo(item.data.toToken, item.data.toChainId);
-  const fromSymbol = fromToken?.symbol ?? truncateAddress(item.data.fromToken);
-  const toSymbol = toToken?.symbol ?? truncateAddress(item.data.toToken);
+  const fromSymbol = fromToken?.symbol ?? activityAddress(item.data.fromToken);
+  const toSymbol = toToken?.symbol ?? activityAddress(item.data.toToken);
   const badge = getSwapStatusBadge(item.intentStatus);
   return (
     <span className="activity-strip__latest">
       <TokenIcon symbol={fromSymbol} className="inline-token-icon" />
       {fromSymbol}
-      <span className="chain-arrow"> -&gt; </span>
+      <span className="chain-arrow"> → </span>
       <TokenIcon symbol={toSymbol} className="inline-token-icon" />
       {toSymbol}
       <span className={`activity-status-badge ${badge.className}`}>{badge.label}</span>
@@ -511,12 +549,142 @@ function SummaryPreview({ item }: { item: SwapActivityItem }) {
 // Main Component
 // ============================================================
 
+interface LocalHistory {
+  sends: readonly SendActivityItem[];
+  purchases: readonly RampOperationSummary[];
+  cashOuts: readonly OfframpActivityItem[];
+}
+
+interface LocalRow {
+  key: string;
+  timestamp: number;
+  amount: string;
+  detail: string;
+  action?: string;
+  status: string;
+  transaction?: { href: string; hash: string };
+}
+
+const SEND_STATUS = { pending: "Submitted", completed: "Sent", failed: "Failed" };
+const CASH_OUT_STATUS = {
+  mixed: "Partly cashed out and returned",
+  open: "Open",
+  in_doubt: "Checking status",
+  delivered: "Paid out",
+  returned: "Returned to wallet",
+  not_started: "Not started, nothing deposited",
+};
+const CASH_OUT_PHASE = {
+  awaiting_buyer: "Awaiting a buyer",
+  matched: "Matched with a buyer",
+  delivering: "Partly paid out",
+  delivered: "Paid out",
+  returned: "Returned",
+};
+
+function purchaseStatus(purchase: RampOperationSummary): string {
+  if (purchase.abandoned) return "Abandoned, no transfer submitted";
+  if (purchase.payout_state === "held") {
+    const release = heldReleaseEstimate(purchase);
+    return release
+      ? `Payout held, estimated release ${formatRampTime(release, true)} (not guaranteed)`
+      : "Payout held";
+  }
+  switch (purchase.state) {
+    case "completed":
+      return "Received";
+    case "in_doubt":
+      return "Status uncertain, check before any new transfer";
+    case "failed":
+      return purchase.submitted ? "Did not complete" : "Did not start, no transfer submitted";
+    case "quoted":
+      return Date.parse(purchase.quote_expires_at) <= Date.now()
+        ? "Quote expired, no transfer submitted"
+        : "Quote not submitted";
+    case "action_required":
+      return "Waiting for you";
+    default:
+      return "In progress";
+  }
+}
+
+function localRows(history: LocalHistory, wallet?: string): LocalRow[] {
+  const owner = wallet?.toLowerCase();
+  return [
+    ...history.sends.map(({ id, timestamp, data, status }) => {
+      const explorer = getExplorerTxUrl(data.chainId as SelectableChainId, data.txHash);
+      return {
+        key: `send:${id}`,
+        timestamp,
+        action: `Send · to ${activityAddress(data.recipient)}`,
+        amount: `${formatTokenAmount(BigInt(data.amount), data.decimals, data.decimals)} ${data.symbol}`,
+        detail: chainName(data.chainId),
+        status: SEND_STATUS[status],
+        transaction: explorer ? { href: explorer, hash: data.txHash } : undefined,
+      };
+    }),
+    ...history.purchases
+      .filter((purchase) => purchase.wallet === owner)
+      .map((purchase) => {
+        const { asset, atomic } = purchase.receive;
+        const amount = formatTokenAmount(BigInt(atomic), asset.decimals, asset.decimals);
+        return {
+          key: `buy:${purchase.operation_id}`,
+          timestamp: Date.parse(purchase.created_at),
+          amount: `Buy ${amount} ${asset.kind === "crypto" ? asset.symbol : asset.currency}`,
+          detail: `Via ${purchase.rail.label}`,
+          status: purchaseStatus(purchase),
+        };
+      }),
+    ...history.cashOuts.map(({ id, timestamp, status, phase, data, totals }) => ({
+      key: `cash-out:${id}`,
+      timestamp,
+      amount:
+        status === "mixed" && totals
+          ? formatMixedCashOut(totals.filled, totals.returned)
+          : `Cash out ${formatUsdc(data.amount)}`,
+      detail: `To your ${railName({ rail: { id: data.rail, label: data.rail } })} (${data.currency})`,
+      status: status === "open" && phase ? CASH_OUT_PHASE[phase] : CASH_OUT_STATUS[status],
+    })),
+  ];
+}
+
+function ActivityMode({ mode }: { mode: "Public" | "Stealth" | "Shielded" }) {
+  return (
+    <span className="activity-mode">
+      <PrivacyBars count={mode === "Shielded" ? 3 : mode === "Stealth" ? 2 : 1} active /> {mode}
+    </span>
+  );
+}
+
+function LocalActivityRow({ row }: { row: LocalRow }) {
+  return (
+    <div className="send-activity__row">
+      <span className="send-activity__amount">{row.action ?? row.amount}</span>
+      {row.action && <span className="send-activity__meta">{row.amount}</span>}
+      <span className="send-activity__meta">{row.detail}</span>
+      <span className="send-activity__status">
+        <ActivityMode mode="Public" />
+        {row.status}
+        <time dateTime={new Date(row.timestamp).toISOString()}>{formatTimeAgo(row.timestamp)}</time>
+      </span>
+      {row.transaction && (
+        <a href={row.transaction.href} target="_blank" rel="noopener noreferrer">
+          Transaction {activityAddress(row.transaction.hash)}
+        </a>
+      )}
+    </div>
+  );
+}
+
 interface ActivityFeedProps {
   activities: SwapActivityItem[];
+  localHistory?: LocalHistory;
   isLoading: boolean;
   error: string | null;
   hasMore: boolean;
   isConnected: boolean;
+  enableAgents?: boolean;
   /** Connected wallet; used to choose per-row private-intent recovery. */
   connectedWallet?: string;
   /** Wallet bound to the active SIWE session, when one exists. */
@@ -552,25 +720,21 @@ function SignInPrompt({
 }) {
   return (
     <div className={compact ? "activity-signin activity-signin--compact" : "activity-signin"}>
-      <p className="activity-signin__text">
-        {compact
-          ? "Sign in with the wallet to load the full history."
-          : "Sign in with the wallet to see past swaps."}
-      </p>
       <button className="btn btn--ghost btn--sm" onClick={onSignIn} disabled={isSigningIn}>
-        {isSigningIn ? "Check wallet..." : "Sign in"}
+        {isSigningIn ? "Check wallet…" : "Sign in to load history"}
       </button>
-      {!compact && <p className="activity-signin__note">One quick signature, no gas.</p>}
     </div>
   );
 }
 
 export function ActivityFeed({
   activities,
+  localHistory,
   isLoading,
   error,
   hasMore,
   isConnected,
+  enableAgents,
   connectedWallet,
   sessionWallet,
   needsSignIn,
@@ -651,45 +815,71 @@ export function ActivityFeed({
 
   const latest = live[0] ?? activities[0];
   const count = activities.length;
-  const showSkeletons = isLoading && count === 0;
+  const historyRows = localHistory
+    ? [
+        ...localRows(localHistory, connectedWallet).map((row) => ({
+          key: row.key,
+          timestamp: row.timestamp,
+          content: <LocalActivityRow row={row} />,
+        })),
+        ...activities.map((item) => ({
+          key: `swap:${item.id}`,
+          timestamp: item.timestamp,
+          content: (
+            <SwapRow
+              item={item}
+              isExpanded={expandedIds.has(item.id)}
+              onToggle={() => toggleExpanded(item.id)}
+              usd={usd}
+              live={!isTerminalIntentStatus(item.intentStatus)}
+              onReport={onReportSwap}
+              onRetry={onRetrySwap}
+              onClaimNudge={onClaimNudge}
+              linksSignIn={linksSignInFor(item)}
+            />
+          ),
+        })),
+      ].sort((a, b) => b.timestamp - a.timestamp)
+    : undefined;
+  const showSkeletons = isLoading && (historyRows?.length ?? count) === 0;
 
   return (
     <div className="activity-strip">
-      <button
-        className="activity-strip__summary"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-label="Toggle activity"
-      >
-        <span className="activity-strip__title">
-          <span className="panel-icon">*</span>
-          Activity
-        </span>
-        <span className="activity-strip__preview">
-          {!isConnected ? (
-            <span className="activity-strip__muted">{UI.CONNECT_TO_VIEW} activity</span>
-          ) : latest ? (
-            <>
-              <SummaryPreview item={latest} />
-              {count > 1 && <span className="activity-strip__count">+{count - 1}</span>}
-            </>
-          ) : (
-            <span className="activity-strip__muted">No activity</span>
-          )}
-          {claimableCount > 0 && (
-            <span className="activity-strip__claim-chip">{claimableCount} claimable</span>
-          )}
-        </span>
-        <Chevron open={open} className="activity-strip__chevron" />
-      </button>
+      {!localHistory && (
+        <button
+          className="activity-strip__summary"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+        >
+          <span className="activity-strip__title">Activity</span>
+          <span className="activity-strip__preview">
+            {!isConnected ? (
+              <span className="activity-strip__muted">{UI.CONNECT_TO_VIEW} activity</span>
+            ) : latest ? (
+              <>
+                <SummaryPreview item={latest} />
+                {count > 1 && <span className="activity-strip__count">+{count - 1}</span>}
+              </>
+            ) : (
+              <span className="activity-strip__muted">No activity</span>
+            )}
+            {claimableCount > 0 && (
+              <span className="activity-strip__claim-chip">{claimableCount} claimable</span>
+            )}
+          </span>
+          <Chevron open={open} className="activity-strip__chevron" />
+        </button>
+      )}
 
-      {open && (
+      {(localHistory || open) && (
         <div className="activity-strip__body">
           <div className="activity-strip__toolbar">
-            {isConnected && count > 0 && (
+            {!localHistory && isConnected && count > 0 && (
               <span className="activity-strip__stat">
-                {fmtUsd(volumeUsd)} traded <span className="activity-dot">.</span> {count}{" "}
-                {count === 1 ? "swap" : "swaps"}
+                <span>{fmtUsd(volumeUsd)} traded</span>
+                <span>
+                  {count} {count === 1 ? "swap" : "swaps"}
+                </span>
               </span>
             )}
             <button
@@ -735,13 +925,46 @@ export function ActivityFeed({
               <span className="activity-strip__claim-chip">{claimableCount} claimable</span>
               <span className="activity-strip__claimable-text">
                 {claimableCount === 1 ? "settlement is" : "settlements are"} ready to claim.
-                {onClaimNudge ? " Claim in Stealth Payments." : ""}
+                {onClaimNudge ? " Open Claims." : ""}
               </span>
             </button>
           )}
 
           <div className="activity-feed" aria-live="polite" aria-label="Activity feed">
-            {!isConnected ? (
+            {historyRows ? (
+              <>
+                {needsSignIn && (
+                  <SignInPrompt isSigningIn={isSigningIn} onSignIn={onSignIn} compact />
+                )}
+                {error && !needsSignIn && (
+                  <p className="error-text" role="status">
+                    History could not load. Refresh to try again.
+                  </p>
+                )}
+                {showSkeletons ? (
+                  <ActivitySkeleton />
+                ) : historyRows.length === 0 ? (
+                  <div className="activity-empty">
+                    <p>Nothing yet</p>
+                  </div>
+                ) : (
+                  <ul className="activity-history">
+                    {historyRows.map(({ key, content }) => (
+                      <li key={key}>{content}</li>
+                    ))}
+                  </ul>
+                )}
+                {hasMore && !needsSignIn && (
+                  <button
+                    className="btn btn--ghost btn--sm"
+                    onClick={onLoadMore}
+                    disabled={isLoading}
+                  >
+                    {isLoading ? "Loading…" : "Load more"}
+                  </button>
+                )}
+              </>
+            ) : !isConnected ? (
               <div className="activity-empty">
                 <p>{UI.CONNECT_TO_VIEW} activity</p>
               </div>
@@ -766,7 +989,7 @@ export function ActivityFeed({
               </>
             ) : count === 0 ? (
               <div className="activity-empty">
-                <p>No swaps</p>
+                <p>Nothing yet</p>
               </div>
             ) : (
               <>
@@ -815,14 +1038,14 @@ export function ActivityFeed({
                     onClick={onLoadMore}
                     disabled={isLoading}
                   >
-                    {isLoading ? "Loading..." : "Load more"}
+                    {isLoading ? "Loading…" : "Load more"}
                   </button>
                 )}
               </>
             )}
           </div>
 
-          {isConnected && <AuthorizedAgents />}
+          {isConnected && <AuthorizedAgents enabled={enableAgents} />}
         </div>
       )}
     </div>

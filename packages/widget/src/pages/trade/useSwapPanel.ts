@@ -19,14 +19,17 @@
  * SwapPanel remains JSX-only and never reaches into a child hook.
  *
  * What stays here is what genuinely belongs to no single group: the wallet
- * facts, the trust score, the two disclosure toggles, the slippage setting, and
+ * facts, the trust score, the recipient selection, the help disclosure, and
  * the two cells more than one group reads (`flowOpen`, `resumed` -- see below).
  * Plus the cross-group wiring: the four `on*` transitions a leg change owes the
  * groups downstream of the route, and the one effect whose trigger and whose
  * target sit in different groups.
  */
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { resolveRecipient, type ResolvedRecipient } from "../../lib/recipient/index.js";
+import { useRecipientDeps } from "../send/useSendRecipient.js";
+import { recipientIssue, recipientLabel } from "./RecipientSheet.js";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useAccount } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useTrustScore } from "../../hooks/useTrustScore.js";
@@ -52,6 +55,7 @@ export function useSwapPanel(
   prefill: SwapPrefill | null | undefined,
   /** Fired once when a stealth swap settles, so the receive panel can auto-scan. */
   onStealthSettled?: () => void,
+  sendRecipient?: ResolvedRecipient,
 ) {
   // The wallet's ACTUAL chain, from the connection. Not `useChainId()`: wagmi
   // does not sync a connector chain it has no config for, so on an unlisted
@@ -60,12 +64,17 @@ export function useSwapPanel(
   const { isConnected, address, chainId: connectedChainId } = useAccount();
   const { openConnectModal } = useConnectModal();
 
-  // Effective score (0 while trust economics is off). It drives the tier ladder,
-  // the quote's fallback fee anatomy and the tier persisted with each swap.
+  // Effective score (0 while trust economics is off), used for quote fees.
   const { trustScore } = useTrustScore();
 
-  const [slippageBps, setSlippageBps] = useState(DEFAULT_SLIPPAGE_BPS);
-  const [showSettings, setShowSettings] = useState(false);
+  const [swapRecipient, setSwapRecipient] = useState<ResolvedRecipient | null>(null);
+  const [recipientRetry, setRecipientRetry] = useState<SwapPrefill["swapRecipientRetry"]>();
+  const recipientDeps = useRecipientDeps();
+  const [recipientRetryFailed, setRecipientRetryFailed] = useState(false);
+  const restoreSwapRecipient = useCallback((retry: SwapPrefill["swapRecipientRetry"]) => {
+    setRecipientRetryFailed(false);
+    setRecipientRetry(retry);
+  }, []);
   const [showExplainer, setShowExplainer] = useState(false);
 
   // Read by three groups, so it is held here rather than by the flow group that
@@ -170,6 +179,7 @@ export function useSwapPanel(
       // panel fail its own `refundAddressError` check on a value the user never
       // typed for this route.
       gating.clearRecipient();
+      setSwapRecipient(null);
       gating.clearRefund();
       gating.intent.reset();
     },
@@ -191,7 +201,8 @@ export function useSwapPanel(
     isConnected,
     address,
     trustScore,
-    slippageBps,
+    slippageBps: DEFAULT_SLIPPAGE_BPS,
+    swapRecipient: sendRecipient ? null : swapRecipient,
     flowOpen,
     onStealthSettled,
     initialSettlement: embed.settlementPreference,
@@ -276,7 +287,7 @@ export function useSwapPanel(
     intent: gating.intent,
     resumed,
     payoutAddress: gating.payoutAddress,
-    recipientInvalid: gating.recipientInvalid,
+    recipientInvalid: gating.recipientInvalid || recipientRetry !== undefined,
     isConnected,
     connectedChainId,
     flowOpen,
@@ -284,8 +295,59 @@ export function useSwapPanel(
     amountLocked,
   });
 
+  const { clearRecipient } = gating;
+  const clearSwapRecipient = useCallback(() => {
+    clearRecipient();
+    setSwapRecipient(null);
+  }, [clearRecipient]);
+
+  const mode = route.zkMoneyDestination ? "shielded" : gating.settlement;
+  const swapPayee =
+    !sendRecipient &&
+    !route.isNonEvmDest &&
+    swapRecipient &&
+    !(
+      mode === "public" &&
+      address &&
+      swapRecipient.address?.toLowerCase() === address.toLowerCase()
+    )
+      ? route.zkMoneyDestination && gating.zkMoneyTag
+        ? `@${gating.zkMoneyTag}`
+        : (swapRecipient.name ?? recipientLabel(swapRecipient.input))
+      : undefined;
+  // The resolver returns zk.money aliases without their prefix.
+  const swapRecipientRetryInput =
+    swapRecipient?.kind === "zkmoney" && swapRecipient.shieldedAlias
+      ? `@${swapRecipient.shieldedAlias}`
+      : swapRecipient?.kind === "ens" ||
+          swapRecipient?.kind === "gns" ||
+          swapRecipient?.kind === "wns"
+        ? swapRecipient.input
+        : undefined;
+
+  useEffect(() => {
+    if (!recipientRetry || recipientRetryFailed) return;
+    const { input } = recipientRetry;
+    if (!input || !recipientDeps) {
+      setRecipientRetryFailed(true);
+      return;
+    }
+    const controller = new AbortController();
+    void resolveRecipient(input, recipientDeps, controller.signal).then((result) => {
+      if (controller.signal.aborted) return;
+      if (result.status === "resolved" && !recipientIssue(result.recipient, mode)) {
+        setSwapRecipient(result.recipient);
+        setRecipientRetry(undefined);
+      } else {
+        setRecipientRetryFailed(true);
+      }
+    });
+    return () => controller.abort();
+  }, [recipientRetry, recipientRetryFailed, recipientDeps, mode, address]);
+
   const flow = useSwapFlow({
     prefill: admittedPrefill,
+    sendRecipient,
     intent: gating.intent,
     isConnected,
     address,
@@ -306,12 +368,18 @@ export function useSwapPanel(
     settlement: gating.settlement,
     settlementFix: gating.settlementFix,
     destination: gating.destination,
-    recipientMissing: gating.recipientMissing,
-    recipientInvalid: gating.recipientInvalid,
+    recipientMissing: gating.recipientMissing || recipientRetry !== undefined,
+    recipientInvalid: gating.recipientInvalid || recipientRetry !== undefined,
     restoreSettlement: gating.restoreSettlement,
-    clearRecipient: gating.clearRecipient,
+    clearRecipient: clearSwapRecipient,
+    restoreSwapRecipient,
+    swapRecipientRetryInput,
+    swapRecipientLabel: swapPayee,
+    swapRecipient: swapPayee ? swapRecipient : undefined,
     restoreRecipientTag: gating.setRecipientTag,
     restoreRefundAddress: gating.setRefundAddress,
+    stealthPayee: gating.stealthRecipient ? "other" : "self",
+    restoreStealthRecipient: gating.restoreStealthRecipient,
     flowOpen,
     setFlowOpen,
     resumed,
@@ -491,10 +559,6 @@ export function useSwapPanel(
     stealthDestinationSupported: gating.stealthDestinationSupported,
     stealthRouteAvailable: gating.stealthRouteAvailable,
     stealthRefusalReason: gating.stealthRefusalReason,
-    showSettings,
-    setShowSettings,
-    slippageBps,
-    setSlippageBps,
     trustScore,
     intent: gating.intent,
     fromToken: route.fromToken,
@@ -519,10 +583,22 @@ export function useSwapPanel(
     payoutField: amounts.payoutField,
     amountBigInt: amounts.amountBigInt,
     isNonEvmDest: route.isNonEvmDest,
+    swapRecipient,
+    swapRecipientIssue: gating.swapRecipientIssue,
+    recipientRetryFailed,
+    recipientRetryPending: !!recipientRetry && !recipientRetryFailed,
+    selectSwapRecipient: (recipient: ResolvedRecipient | null, mode?: SettlementType) => {
+      restoreSwapRecipient(undefined);
+      setSwapRecipient(recipient);
+      gating.clearRecipient();
+      gating.restoreStealthRecipient(null);
+      gating.intent.reset();
+      if (mode) handleSettlementChange(mode);
+    },
     recipientAddress: gating.recipientAddress,
     setRecipientAddress: gating.setRecipientAddress,
-    recipientInvalid: gating.recipientInvalid,
-    recipientMissing: gating.recipientMissing,
+    recipientInvalid: gating.recipientInvalid || recipientRetry !== undefined,
+    recipientMissing: gating.recipientMissing || recipientRetry !== undefined,
     recipientCheck: gating.recipientCheck,
     sentRecipient: gating.sentRecipient,
     cantonDestination: gating.cantonDestination,
@@ -622,6 +698,10 @@ export function useSwapPanel(
     // while one is in flight, the live form's otherwise. Never the live
     // toggle for an executed order (see executedDestination in useSwapFlow).
     flowDestination: flow.flowDestination,
+    flowStealthPayee: flow.flowStealthPayee,
+    // Someone else's meta-address from Send, shown on the card while it holds.
+    stealthRecipient: gating.stealthRecipient,
+    clearStealthRecipient: () => gating.restoreStealthRecipient(null),
     // The host's locks and allow-lists, for the selectors and the amount field.
     policy,
     executionStartTime: flow.executionStartTime,

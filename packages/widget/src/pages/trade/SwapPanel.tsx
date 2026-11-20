@@ -13,7 +13,8 @@
  */
 
 import { useClaimInXochiApp } from "../../components/widgetTabsContext.js";
-import { Chevron } from "../../components/Chevron.js";
+import { useEffect, useId, useRef, useState } from "react";
+import { InfoButton } from "../../components/InfoButton.js";
 import { STATUS_GLYPH } from "../../lib/glyphs.js";
 import { truncateServedReason } from "../../lib/declineGuidance.js";
 import { formatTokenAmount } from "../../utils/format.js";
@@ -22,21 +23,28 @@ import {
   isTronChainId,
   MAX_PRICE_IMPACT_PERCENT,
   QUOTE_BUSY_STATES,
-  SLIPPAGE_OPTIONS,
 } from "@xochi/client";
 import { ESTIMATED_SINGLE_CHAIN_SEC, ESTIMATED_CROSS_CHAIN_SEC } from "@xochi/client";
 import { joinChainNames } from "./config.js";
-import { MODE_META, SETTLEMENT_FIX_LINE, STEALTH_NEEDS_WALLET_CAPTION } from "./settlementCopy.js";
-import { TokenSelector, SlippageSelector } from "./Selectors.js";
-import { PermitBadge } from "../../components/PermitBadge.js";
+import {
+  MODE_META,
+  SETTLEMENT_FIX_LINE,
+  SHIELDED_DEPOSIT_NOTE,
+  SHIELDED_DESCRIPTION,
+  STEALTH_PRIVACY_LIMITS,
+} from "./settlementCopy.js";
+import { RecipientChip } from "../send/RecipientChip.js";
+import type { ResolvedRecipient } from "../../lib/recipient/index.js";
+import { MetaAddressValue } from "../send/MetaAddressValue.js";
+import { TokenSelector } from "./Selectors.js";
 import { PrivacyBars } from "../../components/PrivacyBars.js";
 import { QuoteDetails } from "../../components/QuoteDetails.js";
 import { ErrorDisplay } from "../../components/ErrorDisplay.js";
-import { TierProgress } from "../../components/TierProgress.js";
 import { WrapModal } from "../../components/WrapModal.js";
 import { SwapFlowModal } from "../../components/SwapFlowModal.js";
-import { useSwapPanel } from "./useSwapPanel.js";
 import { useCapabilities } from "../../hooks/useCapabilities.js";
+import { RecipientSheet, recipientLabel } from "./RecipientSheet.js";
+import { useSwapPanel } from "./useSwapPanel.js";
 import { useTronLinkFill } from "./useTronLinkFill.js";
 
 export type { SwapPrefill } from "./useSwapPanel.js";
@@ -44,12 +52,13 @@ import type { SwapPrefill } from "./useSwapPanel.js";
 import { useAmountFit, type AmountFit } from "./useAmountFit.js";
 import { type EmbedLock } from "@xochi/widget-lib";
 import { ROUTE_LIST_UNAVAILABLE } from "./useSwapRoute.js";
-import { ZKMONEY_ACCOUNT_URL, ZKMONEY_PRIVACY_COPY, zkMoneyRefusal } from "./zkMoney.js";
+import { normalizeZkMoneyTag, ZKMONEY_ACCOUNT_URL, zkMoneyRefusal } from "./zkMoney.js";
 import { CANTON_READINESS_NOTE, CANTON_RECIPIENT_HINT, cantonDecline } from "./canton.js";
 
 interface SwapPanelProps {
   /** Values to seed the panel with when the user retries a past swap. */
   prefill?: SwapPrefill | null;
+  sendRecipient?: ResolvedRecipient;
   /** Fired once when a stealth swap settles, so the receive panel can auto-scan. */
   onStealthSettled?: () => void;
   /**
@@ -92,6 +101,7 @@ function AmountRevealToggle({
 
 export function SwapPanel({
   prefill,
+  sendRecipient,
   onStealthSettled,
   onGoToClaims,
   howItWorks = true,
@@ -109,11 +119,6 @@ export function SwapPanel({
     settlementFix,
     stealthChains,
     stealthRefusalReason,
-    showSettings,
-    setShowSettings,
-    slippageBps,
-    setSlippageBps,
-    trustScore,
     intent,
     fromToken,
     toToken,
@@ -136,6 +141,12 @@ export function SwapPanel({
     payoutField,
     amountBigInt,
     isNonEvmDest,
+    swapRecipient,
+    swapRecipientIssue,
+    recipientRetryFailed,
+    recipientRetryPending,
+    selectSwapRecipient,
+    trustScore,
     recipientAddress,
     setRecipientAddress,
     recipientInvalid,
@@ -146,10 +157,7 @@ export function SwapPanel({
     zkMoneyOffered,
     zkMoneyBlockedReason,
     handleZkMoneySelect,
-    recipientTag,
-    setRecipientTag,
     zkMoneyTag,
-    zkMoneyTagError,
     isNonEvmOrigin,
     refundAddress,
     setRefundAddress,
@@ -192,6 +200,9 @@ export function SwapPanel({
     flowOpen,
     flowReopenable,
     flowDestination,
+    flowStealthPayee,
+    stealthRecipient,
+    clearStealthRecipient,
     executionStartTime,
     policy,
     sourceChainIds,
@@ -205,7 +216,18 @@ export function SwapPanel({
     classifyDestinationToken,
     originChainBlockedReason,
     destinationChainBlockedReason,
-  } = useSwapPanel(prefill, onStealthSettled);
+  } = useSwapPanel(prefill, onStealthSettled, sendRecipient);
+  const [recipientSheetOpen, setRecipientSheetOpen] = useState(false);
+  useEffect(() => {
+    if (recipientRetryFailed) setRecipientSheetOpen(true);
+  }, [recipientRetryFailed]);
+  const recipientTrigger = useRef<HTMLButtonElement>(null);
+  const { features } = useCapabilities();
+  const toLabel = swapRecipient
+    ? (swapRecipient.name ?? recipientLabel(swapRecipient.input))
+    : zkMoneyDestination && zkMoneyTag
+      ? `@${zkMoneyTag}`
+      : undefined;
   const stealthChainNames = joinChainNames(
     stealthChains.map((chainId) => EXTENDED_CHAIN_NAMES[chainId]),
   );
@@ -221,22 +243,41 @@ export function SwapPanel({
   );
   const connectWallet = onConnectRequest ?? openConnectModal;
   const setupAction =
-    settlementFix === "setup" && !needsChainSwitch && !flowReopenable && !routeBlocked && !flowOpen;
+    !sendRecipient &&
+    !swapRecipientIssue &&
+    settlementFix === "setup" &&
+    !needsChainSwitch &&
+    !flowReopenable &&
+    !routeBlocked &&
+    !flowOpen;
   const destinationFixExplained =
     stealthDestinationGuidance !== null &&
     (stealthFix === "destination" ||
       stealthFix === "route_loading" ||
       stealthFix === "route_unavailable");
-  const stealthFixLine = destinationFixExplained
-    ? MODE_META.stealth
-    : stealthFix === "destination"
-      ? `Choose ${stealthChainNames}`
-      : stealthFix === null
-        ? MODE_META.stealth
+  const stealthFixLine =
+    destinationFixExplained || stealthFix === "wallet" || stealthFix === null
+      ? null
+      : stealthFix === "destination"
+        ? `Choose ${stealthChainNames}`
         : SETTLEMENT_FIX_LINE[stealthFix];
   // A host-wallet frame without tabs claims in the Xochi app: no Claim payment.
   const claimInXochiApp = useClaimInXochiApp();
-  const locked = (field: EmbedLock): boolean => policy.locks.includes(field);
+  const locked = (field: EmbedLock): boolean => !!sendRecipient || policy.locks.includes(field);
+  const sendMode = sendRecipient?.shieldedAlias ? "Shielded" : "Stealth";
+  const sendQuoteMatches =
+    !sendRecipient ||
+    (fromChainId === prefill?.fromChainId &&
+      toChainId === prefill?.toChainId &&
+      fromToken.address === prefill?.fromToken &&
+      toToken.address === prefill?.toToken &&
+      amountBigInt.toString() === prefill?.fromAmount &&
+      (sendMode === "Shielded"
+        ? zkMoneyDestination &&
+          zkMoneyTag === normalizeZkMoneyTag(sendRecipient.shieldedAlias ?? "")
+        : settlement === "stealth" &&
+          !!stealthRecipient &&
+          stealthRecipient.encoded === prefill?.stealthRecipient?.encoded));
   const payFit = useAmountFit(amount);
   // The host-set amount (`lock=amount`) is a value, not a field, measured the
   // same way so a long figure still shrinks, truncates and reveals.
@@ -245,6 +286,8 @@ export function SwapPanel({
   // The payout field caps its decimals by magnitude (payoutFieldDecimals), so
   // it fits without truncating; the quote headline carries it to the cent.
   const receiveFit = useAmountFit(payoutField);
+  const guestStealth =
+    !isConnected && !zkMoneyDestination && settlement === "stealth" && amountBigInt > 0n;
   // Disconnected, there is no balance to state, so the row shows nothing rather
   // than a "--" placeholder. Connected with an unknown balance (non-EVM origin,
   // read pending or failed) it shows "--", never a 0 that reads as an empty
@@ -253,9 +296,6 @@ export function SwapPanel({
     currentBalance !== null
       ? `${formatTokenAmount(currentBalance, fromToken.decimals, 2)} ${fromToken.symbol}`
       : `-- ${fromToken.symbol}`;
-  // Server-owned trust launch flags (xochi#656). While trust economics is off,
-  // nothing on this panel may promise a fee or privacy benefit from trust.
-  const { features } = useCapabilities();
 
   // One per field: the recipient and the refund address are filled independently
   // and each needs its own note. TronLink is an address picker here, never a
@@ -284,122 +324,159 @@ export function SwapPanel({
   const cantonRefusal =
     cantonDestination && intent.error ? cantonDecline(quoteErrorCategory) : null;
 
+  const explainerId = useId();
+  const settlementCaptionId = useId();
+  const shieldedBlockedId = useId();
+  const selectedMode = zkMoneyDestination ? "shielded" : settlement;
+  const selectedModeFix = selectedMode === "stealth" && !swapRecipientIssue ? stealthFixLine : null;
+
   return (
     <div className="trade-card">
       <div className={`trade-card__body ${showReceipt ? "trade-card__body--split" : ""}`}>
         <div className="trade-card__form">
-          {/* Header: settlement toggle + settings. Each option shows its privacy
-          depth (bars) and what it exposes, so a first-time user can tell at a
-          glance which is more private -- the info used to hide in a hover title,
-          invisible on touch. */}
-          <div className="trade-header">
-            <div
-              className="order-type-toggle order-type-toggle--privacy"
-              role="group"
-              aria-label="Settlement privacy"
-            >
-              <button
-                className={`type-btn type-btn--privacy ${!zkMoneyDestination && settlement === "public" ? "active" : ""}`}
-                onClick={() => handleSettlementChange("public")}
-                aria-pressed={!zkMoneyDestination && settlement === "public"}
-              >
-                <span className="type-btn__head">
-                  <PrivacyBars count={1} active={!zkMoneyDestination && settlement === "public"} />
-                  Public
-                </span>
-                <span className="type-btn__meta">{MODE_META.public}</span>
-              </button>
-              <button
-                className={`type-btn type-btn--privacy ${!zkMoneyDestination && settlement === "stealth" ? "active" : ""}`}
-                onClick={() => handleSettlementChange("stealth")}
-                aria-pressed={!zkMoneyDestination && settlement === "stealth"}
-                /* Selecting Stealth opens live destination browsing, even before
+          {sendRecipient ? (
+            <section className="stealth-payee-note" aria-label={`${sendMode} recipient`}>
+              <RecipientChip recipient={sendRecipient} />
+              <strong>
+                <PrivacyBars count={sendMode === "Shielded" ? 3 : 2} active /> {sendMode}
+              </strong>
+              {sendQuoteMatches && (
+                <p>
+                  From {EXTENDED_CHAIN_NAMES[fromChainId]} to {EXTENDED_CHAIN_NAMES[toChainId]}
+                </p>
+              )}
+              <p>{sendMode === "Stealth" ? STEALTH_PRIVACY_LIMITS : SHIELDED_DESCRIPTION}</p>
+              {sendMode === "Shielded" && <p>{SHIELDED_DEPOSIT_NOTE}</p>}
+            </section>
+          ) : (
+            <div className="trade-settlement">
+              <div className="trade-header">
+                <div
+                  className="order-type-toggle order-type-toggle--privacy"
+                  role="group"
+                  aria-label="Settlement privacy"
+                  aria-describedby={settlementCaptionId}
+                >
+                  <button
+                    className={`type-btn type-btn--privacy ${!zkMoneyDestination && settlement === "public" ? "active" : ""}`}
+                    onClick={() => handleSettlementChange("public")}
+                    aria-pressed={!zkMoneyDestination && settlement === "public"}
+                  >
+                    <span className="type-btn__head">
+                      <PrivacyBars
+                        count={1}
+                        active={!zkMoneyDestination && settlement === "public"}
+                      />
+                      Public
+                    </span>
+                  </button>
+                  <button
+                    className={`type-btn type-btn--privacy ${!zkMoneyDestination && settlement === "stealth" ? "active" : ""}`}
+                    onClick={() => handleSettlementChange("stealth")}
+                    aria-pressed={!zkMoneyDestination && settlement === "stealth"}
+                    /* Selecting Stealth opens live destination browsing, even before
                 route data, wallet connection or key setup. Only the feature
                 gate or zk.money navigation disables this control; quote and
                 execution authorization remain separately guarded. */
-                disabled={!stealthClickable}
-                aria-describedby={stealthHintChainNames ? "stealth-destinations" : undefined}
-                title={
-                  stealthFix === "route" && stealthRefusalReason
-                    ? // The solver's own sentence for the refusal (R16), capped
-                      // like every surface that renders upstream prose.
-                      truncateServedReason(stealthRefusalReason)
-                    : stealthFix === "route_unavailable"
-                      ? "Stealth route data could not be loaded"
-                      : stealthFix === "route_loading"
-                        ? "Loading Stealth routes"
-                        : undefined
-                }
+                    disabled={!stealthClickable}
+                    aria-describedby={stealthHintChainNames ? "stealth-destinations" : undefined}
+                    title={
+                      stealthFix === "route" && stealthRefusalReason
+                        ? // The solver's own sentence for the refusal (R16), capped
+                          // like every surface that renders upstream prose.
+                          truncateServedReason(stealthRefusalReason)
+                        : stealthFix === "route_unavailable"
+                          ? "Stealth route data could not be loaded"
+                          : stealthFix === "route_loading"
+                            ? "Loading Stealth routes"
+                            : undefined
+                    }
+                  >
+                    <span className="type-btn__head">
+                      <PrivacyBars
+                        count={2}
+                        active={!zkMoneyDestination && settlement === "stealth"}
+                      />
+                      Stealth
+                    </span>
+                  </button>
+                  <button
+                    className={`type-btn type-btn--privacy ${zkMoneyDestination ? "active" : ""}`}
+                    onClick={handleZkMoneySelect}
+                    aria-pressed={zkMoneyDestination}
+                    disabled={!zkMoneyOffered}
+                    aria-describedby={!zkMoneyOffered ? shieldedBlockedId : undefined}
+                  >
+                    <span className="type-btn__head">
+                      <PrivacyBars count={3} active={zkMoneyDestination} />
+                      <span>Shielded</span>
+                    </span>
+                  </button>
+                </div>
+                <div className="header-actions">
+                  {howItWorks && (
+                    <InfoButton
+                      label="How it works"
+                      expanded={showExplainer}
+                      controls={explainerId}
+                      onClick={() => setShowExplainer((open) => !open)}
+                    />
+                  )}
+                </div>
+              </div>
+              {howItWorks && (
+                <div id={explainerId} className="trade-explainer" hidden={!showExplainer}>
+                  {showExplainer && (
+                    <ul className="trade-explainer__note">
+                      <li>The order skips the public mempool.</li>
+                      <li>A solver fills it at the quoted price.</li>
+                      {!isNonEvmOrigin && !zkMoneyDestination && (
+                        <li>No deposits, no account. Sign from your own wallet.</li>
+                      )}
+                      <li>Privacy is part of the trading fee, never an extra charge.</li>
+                      <li>
+                        The fee pays the solver, Xochi and the app or agent that routed the order.
+                      </li>
+                    </ul>
+                  )}
+                </div>
+              )}
+              <p
+                id={settlementCaptionId}
+                className={`type-btn__meta${selectedModeFix ? " type-btn__meta--fix" : ""}`}
+                role="status"
               >
-                <span className="type-btn__head">
-                  <PrivacyBars count={2} active={!zkMoneyDestination && settlement === "stealth"} />
-                  Stealth
+                {selectedModeFix ?? MODE_META[selectedMode]}
+                {selectedMode === "shielded" && (
+                  <span className="shielded-deposit-note">{SHIELDED_DEPOSIT_NOTE}</span>
+                )}
+              </p>
+              {!zkMoneyOffered && (
+                <span id={shieldedBlockedId} className="sr-only">
+                  {zkMoneyBlockedReason ?? "Unavailable"}
                 </span>
-                {/* Exactly one line: what the mode does when it is available,
-                otherwise the one fix. Never both, and never a badge on top. */}
-                <span
-                  className={`type-btn__meta${stealthFix !== null && !destinationFixExplained ? " type-btn__meta--fix" : ""}`}
-                >
-                  {stealthFixLine}
-                </span>
-              </button>
-              <button
-                className={`type-btn type-btn--privacy ${zkMoneyDestination ? "active" : ""}`}
-                onClick={handleZkMoneySelect}
-                aria-pressed={zkMoneyDestination}
-                disabled={!zkMoneyOffered}
-                aria-describedby={!zkMoneyOffered ? "zk-money-blocked-reason" : undefined}
-              >
-                <span className="type-btn__head">
-                  <PrivacyBars count={3} active={zkMoneyDestination} />
-                  <span>Shielded</span>
-                </span>
-                <span
-                  id={!zkMoneyOffered ? "zk-money-blocked-reason" : undefined}
-                  className={`type-btn__meta${!zkMoneyOffered ? " type-btn__meta--fix" : ""}`}
-                >
-                  {zkMoneyOffered ? "Send to zk.money" : (zkMoneyBlockedReason ?? "Unavailable")}
-                </span>
-              </button>
+              )}
             </div>
-            <div className="header-actions">
-              <button
-                className={`settings-btn ${showSettings ? "active" : ""}`}
-                onClick={() => setShowSettings(!showSettings)}
-                aria-label="Settings"
-                title="Settings"
-              >
-                <svg
-                  viewBox="0 0 16 16"
-                  width="14"
-                  height="14"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                >
-                  <circle cx="8" cy="8" r="2.5" />
-                  <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" />
-                </svg>
-              </button>
-            </div>
-          </div>
+          )}
 
           {/* The live Stealth networks the picker would offer for this source,
           before Stealth is chosen. Guidance only: eligibility stays with the
           exact live routes. The open picker's own guidance replaces this line. */}
-          {stealthHintChainNames && (
-            <div id="stealth-destinations" className="settlement-caption">
+          {!sendRecipient && stealthHintChainNames && (
+            <div id="stealth-destinations" className="sr-only">
               Stealth destinations: <strong>{stealthHintChainNames} only.</strong>
             </div>
           )}
 
-          {zkMoneyDestination && (
+          {zkMoneyDestination && (!sendRecipient || isTronChainId(fromChainId)) && (
             <div className="zkmoney-privacy">
-              <p>
-                {isTronChainId(fromChainId) && "Your TRON send is public. "}
-                {ZKMONEY_PRIVACY_COPY}
-              </p>
-              <a href={ZKMONEY_ACCOUNT_URL} target="_blank" rel="noopener noreferrer">
+              {isTronChainId(fromChainId) && <p>Your TRON send is public.</p>}
+              <a
+                hidden={!!sendRecipient}
+                href={ZKMONEY_ACCOUNT_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 Need a zk.money account? Create one <span aria-hidden="true">↗</span>
                 <span className="sr-only"> (opens in new tab)</span>
               </a>
@@ -408,57 +485,36 @@ export function SwapPanel({
 
           {/* Always mounted so the live region exists before a tap needs an answer. */}
           <div className="settlement-caption" aria-live="polite" data-notice={notice ?? undefined}>
-            {notice === "stealth_needs_wallet" ? (
-              <div className="settlement-caption__notice">
-                <span>{STEALTH_NEEDS_WALLET_CAPTION}</span>
-                <button type="button" onClick={connectWallet}>
-                  Connect wallet
-                </button>
-              </div>
-            ) : !zkMoneyDestination && settlement === "stealth" && stealthFix === "wallet" ? (
-              <span>{STEALTH_NEEDS_WALLET_CAPTION}</span>
-            ) : !zkMoneyDestination && settlement === "stealth" && stealthFix === "setup" ? (
+            {!sendRecipient &&
+            !zkMoneyDestination &&
+            settlement === "stealth" &&
+            stealthFix === "setup" &&
+            !swapRecipientIssue ? (
               <div className="settlement-caption__notice">
                 <span>{stealthSetupError ?? "Sign once to set up Stealth."}</span>
                 <button type="button" onClick={() => handleSettlementChange("public")}>
-                  Use Public
+                  Use Public instead
                 </button>
               </div>
             ) : notice === "shielded_soon" || settlement === "shielded" ? (
-              <span>Direct Aztec settlement isn't available yet.</span>
+              <span>Shielded is unavailable for this route.</span>
             ) : null}
           </div>
 
-          {/* Settings dropdown */}
-          {showSettings && (
-            <div className="settings-panel">
-              <div className="settings-row">
-                <span className="settings-label">Slippage</span>
-                <SlippageSelector
-                  value={slippageBps}
-                  options={SLIPPAGE_OPTIONS}
-                  onChange={setSlippageBps}
-                />
-              </div>
-              <div className="settings-row settings-row--tier">
-                <TierProgress
-                  trustScore={trustScore}
-                  compact={false}
-                  trustEconomicsLive={features.trustEconomicsLive}
-                />
-              </div>
-              {intent.permitType === "permit2" && (
-                <div className="settings-row">
-                  <span className="settings-label">Authorization</span>
-                  <PermitBadge
-                    permitType={intent.permitType}
-                    tokenSymbol={fromToken.symbol}
-                    isSigned={intent.approval === "covered"}
-                    needsPermit={true}
-                  />
-                </div>
-              )}
-            </div>
+          {/* Someone else's meta-address from Send > Stealth. Shown for as long
+              as it holds, so the quote below is never read as paying this wallet. */}
+          {!sendRecipient && !swapRecipient && stealthRecipient && settlement === "stealth" && (
+            <section className="stealth-payee-note" aria-label="Stealth recipient">
+              <p>
+                <strong>Pays someone else's stealth keys.</strong> The payout lands at a one-time
+                address only they can find and claim. It will not appear in your Claims.
+              </p>
+              <MetaAddressValue encoded={stealthRecipient.encoded} />
+              <p>{STEALTH_PRIVACY_LIMITS}</p>
+              <button type="button" className="send-secondary" onClick={clearStealthRecipient}>
+                Pay my own keys instead
+              </button>
+            </section>
           )}
 
           {/* From input */}
@@ -466,7 +522,7 @@ export function SwapPanel({
             <div className="input-header">
               <span className="input-header__lead">
                 <label className="input-label" htmlFor="swap-pay-amount">
-                  Send
+                  Pay
                 </label>
                 <AmountRevealToggle fit={sendFit} controls="swap-pay-row" />
               </span>
@@ -530,24 +586,28 @@ export function SwapPanel({
                   />
                 </span>
               )}
-              <TokenSelector
-                chainId={fromChainId}
-                value={fromToken}
-                onChange={handleFromTokenChange}
-                onChainChange={handleFromChainChange}
-                showChain
-                isSource
-                policy={policy}
-                chainIds={sourceChainIds}
-                tokensByChain={originTokensByChain}
-                classify={classifyOriginToken}
-                chainBlockedReason={originChainBlockedReason}
-              />
+              {sendRecipient ? (
+                <span className="token-symbol">{fromToken.symbol}</span>
+              ) : (
+                <TokenSelector
+                  chainId={fromChainId}
+                  value={fromToken}
+                  onChange={handleFromTokenChange}
+                  onChainChange={handleFromChainChange}
+                  showChain
+                  isSource
+                  policy={policy}
+                  chainIds={sourceChainIds}
+                  tokensByChain={originTokensByChain}
+                  classify={classifyOriginToken}
+                  chainBlockedReason={originChainBlockedReason}
+                />
+              )}
             </div>
           </div>
 
           {/* Contextual wrap guidance: native ETH isn't directly tradeable */}
-          {showWrapNudge && (
+          {!sendRecipient && showWrapNudge && (
             <div className="wrap-nudge" role="note">
               <span className="wrap-nudge__icon" aria-hidden="true">
                 i
@@ -567,42 +627,44 @@ export function SwapPanel({
 
           {/* Swap connector: the flip control alone. The route it implies is
               stated in the quote panel, labelled, where it can be read. */}
-          <div className="swap-divider">
-            {/* Disabled and explained from the SAME expression the handler
+          {!sendRecipient && (
+            <div className="swap-divider">
+              {/* Disabled and explained from the SAME expression the handler
                 guards on (`flipBlockedReason`), so the button cannot be
                 clickable on a pair the handler drops on the floor. The reason
                 names the chain and the direction: the pair fails because one of
                 the two corridors is not open yet, which is a different fact from
                 "this chain is non-EVM" and one the user can act on. */}
-            <button
-              className="swap-btn"
-              onClick={handleSwapTokens}
-              disabled={flipBlockedReason !== null}
-              aria-label="Swap direction"
-              title={flipBlockedReason ?? "Swap direction"}
-            >
-              <svg
-                className="swap-icon-svg"
-                viewBox="0 0 20 16"
-                width="18"
-                height="15"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{ transform: `rotate(${swapTurns * 180}deg)` }}
-                aria-hidden="true"
+              <button
+                className="swap-btn"
+                onClick={handleSwapTokens}
+                disabled={flipBlockedReason !== null}
+                aria-label="Swap direction"
+                title={flipBlockedReason ?? "Swap direction"}
               >
-                {/* Two of the system chevrons, back-to-back: up on top, down on
+                <svg
+                  className="swap-icon-svg"
+                  viewBox="0 0 20 16"
+                  width="18"
+                  height="15"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{ transform: `rotate(${swapTurns * 180}deg)` }}
+                  aria-hidden="true"
+                >
+                  {/* Two of the system chevrons, back-to-back: up on top, down on
                 bottom (bidirectional = swap). Rotating 180deg on each flip
                 spins the pair, and the glyph is rotationally symmetric so it
                 always settles clean. Shares its DNA with <Chevron>. */}
-                <path d="M5 6L10 1L15 6" />
-                <path d="M5 10L10 15L15 10" />
-              </svg>
-            </button>
-          </div>
+                  <path d="M5 6L10 1L15 6" />
+                  <path d="M5 10L10 15L15 10" />
+                </svg>
+              </button>
+            </div>
+          )}
 
           {/* To input */}
           <div className="input-group">
@@ -623,29 +685,81 @@ export function SwapPanel({
                   under the recipient field instead, or a read that failed), so
                   an unknown balance never reads as a zero one. */}
               {/* A tag is credited on zk.money, not in the connected wallet. */}
-              {isConnected && !zkMoneyDestination && !cantonDestination && (
-                <span
-                  className="balance-display balance-display--static"
-                  aria-label={
-                    destinationBalance === null
-                      ? `${toToken.symbol} balance on ${EXTENDED_CHAIN_NAMES[toChainId]} is unavailable`
-                      : `Wallet holds ${formatTokenAmount(destinationBalance, toToken.decimals, 2)} ${toToken.symbol} on ${EXTENDED_CHAIN_NAMES[toChainId]}`
-                  }
-                >
-                  Balance:{" "}
-                  {destinationBalance === null
-                    ? `-- ${toToken.symbol}`
-                    : `${formatTokenAmount(destinationBalance, toToken.decimals, 2)} ${toToken.symbol}`}
+              {!sendRecipient &&
+                (!swapRecipient || isNonEvmDest) &&
+                isConnected &&
+                !zkMoneyDestination &&
+                !cantonDestination && (
+                  <span
+                    className="balance-display balance-display--static"
+                    aria-label={
+                      destinationBalance === null
+                        ? `${toToken.symbol} balance on ${EXTENDED_CHAIN_NAMES[toChainId]} is unavailable`
+                        : `Wallet holds ${formatTokenAmount(destinationBalance, toToken.decimals, 2)} ${toToken.symbol} on ${EXTENDED_CHAIN_NAMES[toChainId]}`
+                    }
+                  >
+                    Balance:{" "}
+                    {destinationBalance === null
+                      ? `-- ${toToken.symbol}`
+                      : `${formatTokenAmount(destinationBalance, toToken.decimals, 2)} ${toToken.symbol}`}
+                  </span>
+                )}
+            </div>
+            {!sendRecipient && !isNonEvmDest && (
+              <button
+                ref={recipientTrigger}
+                className="swap-recipient-trigger"
+                type="button"
+                aria-haspopup="dialog"
+                aria-expanded={recipientSheetOpen}
+                disabled={flowOpen || flowReopenable}
+                onClick={() => setRecipientSheetOpen(true)}
+              >
+                <span>To:</span>{" "}
+                <span>
+                  {recipientRetryPending
+                    ? "Resolving recipient…"
+                    : recipientRetryFailed
+                      ? "Choose recipient"
+                      : toLabel ||
+                        (zkMoneyDestination && zkMoneyTag ? `@${zkMoneyTag}` : "Your wallet")}
                 </span>
+              </button>
+            )}
+            {recipientSheetOpen && (
+              <RecipientSheet
+                selected={swapRecipient}
+                mode={selectedMode}
+                onSelect={selectSwapRecipient}
+                onClose={() => setRecipientSheetOpen(false)}
+                portalTarget={recipientTrigger.current}
+              />
+            )}
+            <div className="settlement-caption" role="status">
+              {zkMoneyDestination && <div>Receive changes to DAI on zk.money.</div>}
+              {recipientRetryFailed && <div>Choose the recipient again.</div>}
+              {swapRecipientIssue ??
+                (zkMoneyDestination && !sendRecipient && !zkMoneyTag
+                  ? "Choose a zk.money alias."
+                  : null)}
+              {swapRecipientIssue && selectedMode === "stealth" && swapRecipient?.address && (
+                <div className="settlement-caption__notice">
+                  <button
+                    type="button"
+                    onClick={() => selectSwapRecipient(swapRecipient, "public")}
+                  >
+                    Use Public instead
+                  </button>
+                </div>
               )}
             </div>
-            {stealthDestinationGuidance && (
+            {stealthDestinationGuidance && (!sendRecipient || stealthDestinationIssue) && (
               <div id="stealth-destination-guidance" className="settlement-caption" role="status">
                 {stealthDestinationGuidance.status === "checking" ? (
-                  "Checking live Stealth destinations..."
+                  "Checking Stealth routes…"
                 ) : stealthDestinationGuidance.status === "unavailable" ? (
                   <>
-                    Live Stealth destinations couldn't be verified.
+                    Stealth routes couldn't be verified.
                     {routeCheck.status === "unknown" && (
                       <div className="settlement-caption__notice">
                         <button
@@ -672,8 +786,9 @@ export function SwapPanel({
                         pair.{" "}
                       </>
                     )}
-                    Live Stealth destinations: {liveStealthChainNames}. Choose a receive asset from
-                    the live choices.
+                    {!sendRecipient && !stealthDestinationGuidance.selectedPairSupported && (
+                      <>Choose {liveStealthChainNames}.</>
+                    )}
                   </>
                 )}
               </div>
@@ -690,12 +805,13 @@ export function SwapPanel({
                   id="swap-receive-amount"
                   type="text"
                   className="amount-input output"
-                  placeholder="0"
-                  value={payoutField}
+                  placeholder={guestStealth ? "" : "0"}
+                  value={guestStealth ? "" : payoutField}
                   aria-describedby={
                     stealthDestinationGuidance ? "stealth-destination-guidance" : undefined
                   }
                   readOnly
+                  tabIndex={-1}
                   onClick={
                     receiveFit.truncated || receiveFit.expanded ? receiveFit.toggle : undefined
                   }
@@ -707,25 +823,29 @@ export function SwapPanel({
                   }
                 />
               </span>
-              <TokenSelector
-                chainId={toChainId}
-                value={toToken}
-                onChange={handleToTokenChange}
-                onChainChange={handleToChainChange}
-                showChain
-                isSource={false}
-                policy={policy}
-                chainIds={destinationChainIds}
-                tokensByChain={destinationTokensByChain}
-                classify={classifyDestinationToken}
-                chainBlockedReason={destinationChainBlockedReason}
-                liveStealthDestination={destinationPickerMode === "stealth"}
-                zkMoney={
-                  zkMoneyOffered
-                    ? { selected: zkMoneyDestination, onSelect: handleZkMoneySelect }
-                    : undefined
-                }
-              />
+              {sendRecipient ? (
+                <span className="token-symbol">{toToken.symbol}</span>
+              ) : (
+                <TokenSelector
+                  chainId={toChainId}
+                  value={toToken}
+                  onChange={handleToTokenChange}
+                  onChainChange={handleToChainChange}
+                  showChain
+                  isSource={false}
+                  policy={policy}
+                  chainIds={destinationChainIds}
+                  tokensByChain={destinationTokensByChain}
+                  classify={classifyDestinationToken}
+                  chainBlockedReason={destinationChainBlockedReason}
+                  liveStealthDestination={destinationPickerMode === "stealth"}
+                  zkMoney={
+                    zkMoneyOffered
+                      ? { selected: zkMoneyDestination, onSelect: handleZkMoneySelect }
+                      : undefined
+                  }
+                />
+              )}
             </div>
             {/* Refund address for a deposit-route origin (Tron). The user sends
             from their own wallet to a per-intent address, and if the swap cannot
@@ -798,7 +918,7 @@ export function SwapPanel({
                   <div className="error-text">
                     <span className="error-title">{thinDestination.headline}</span>
                     <span className="error-suggestion">{thinDestination.detail}</span>
-                    {canSwitchDestination && (
+                    {!sendRecipient && canSwitchDestination && (
                       <button
                         type="button"
                         className="btn btn--ghost btn--sm settlement-fallback-btn"
@@ -811,6 +931,10 @@ export function SwapPanel({
                 </div>
               </div>
             )}
+
+            <div className="type-btn__meta" role="status">
+              {guestStealth && "Connect a wallet to price Stealth"}
+            </div>
 
             {/* Recipient address: a non-EVM destination (Tron, Canton) settles to
             an address the user types, not the connected wallet. A Canton party is
@@ -904,41 +1028,6 @@ export function SwapPanel({
                 )}
               </div>
             )}
-            {/* zk.money: one field, the tag. The Worker resolves it at quote time
-            and binds the one-time deposit address it gets; nothing here reads ENS. */}
-            {zkMoneyDestination && (
-              <div className="recipient-field">
-                <div className="recipient-field__head">
-                  <label className="recipient-field__label" htmlFor="swap-recipient-tag">
-                    zk.money tag
-                  </label>
-                </div>
-                <input
-                  id="swap-recipient-tag"
-                  type="text"
-                  className={`recipient-field__input ${
-                    zkMoneyTagError !== null ? "recipient-field__input--invalid" : ""
-                  }`}
-                  placeholder="@yourtag"
-                  value={recipientTag}
-                  onChange={(e) => setRecipientTag(e.target.value)}
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  aria-invalid={zkMoneyTagError !== null}
-                />
-                {zkMoneyTagError !== null ? (
-                  <span className="recipient-field__error">{zkMoneyTagError}</span>
-                ) : (
-                  <span className="recipient-field__hint">
-                    {zkMoneyTag.length > 0
-                      ? `DAI is sent on Ethereum and credited to @${zkMoneyTag}.`
-                      : "The tag that receives the DAI on zk.money."}
-                  </span>
-                )}
-              </div>
-            )}
             {/* The EVM-destination balance used to be restated down here, in
                 smaller type, as "your wallet holds X USDC on Base". The header
                 above now carries it in the same slot the origin uses, so this
@@ -954,7 +1043,7 @@ export function SwapPanel({
         {/* /trade-card__form */}
 
         {/* Quote details -- moves into a second column on wide viewports */}
-        {intent.quote && showReceipt && (
+        {sendQuoteMatches && intent.quote && showReceipt && (
           <div
             className={`trade-card__receipt ${receiptRefreshing ? "trade-card__receipt--refreshing" : ""}`}
             aria-busy={receiptRefreshing}
@@ -978,7 +1067,10 @@ export function SwapPanel({
               trustScore={trustScore}
               trustEconomicsLive={features.trustEconomicsLive}
               quoteExpiresIn={intent.quoteExpiresIn}
-              recipientTag={zkMoneyDestination ? zkMoneyTag : undefined}
+              recipientTag={intent.quote?.recipientTag}
+              swapRecipientLabel={flowDestination.swapRecipientLabel}
+              sendRecipientLabel={flowDestination.sendRecipientDisplay?.label}
+              sendMode={sendRecipient ? sendMode : undefined}
             />
           </div>
         )}
@@ -990,9 +1082,6 @@ export function SwapPanel({
                 <span className="error-icon">{STATUS_GLYPH.liquidity}</span>
                 <div className="error-text">
                   <span className="error-title">Loading routes</span>
-                  <span className="error-suggestion">
-                    Checking supported chains, tokens and privacy options before requesting a quote.
-                  </span>
                 </div>
               </div>
             </div>
@@ -1086,17 +1175,21 @@ export function SwapPanel({
                         (R16); our generic line otherwise. Capped like every
                         other upstream sentence this panel prints. */}
                     <span className="error-suggestion">
-                      {stealthRefusalReason
-                        ? `${truncateServedReason(stealthRefusalReason)} The payout can land in the connected wallet instead.`
-                        : "Send it public instead. The payout lands in the connected wallet."}
+                      {sendRecipient
+                        ? "Go back to Send to change the route."
+                        : stealthRefusalReason
+                          ? truncateServedReason(stealthRefusalReason)
+                          : "Try the Public route."}
                     </span>
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm settlement-fallback-btn"
-                      onClick={() => handleSettlementChange("public")}
-                    >
-                      Use Public for this trade
-                    </button>
+                    {!sendRecipient && (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm settlement-fallback-btn"
+                        onClick={() => handleSettlementChange("public")}
+                      >
+                        Use Public instead
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1175,7 +1268,8 @@ export function SwapPanel({
           stealth-fallback notice above supersedes the generic error when it is a
           settlement-mode rejection, and the guidance blocks above supersede it
           on a below-the-minimum decline and on a refused Canton quote. */}
-          {!routeBlocked &&
+          {sendQuoteMatches &&
+            !routeBlocked &&
             !orderOutOfBounds &&
             !excessiveSlippage &&
             !flowOpen &&
@@ -1201,21 +1295,20 @@ export function SwapPanel({
           a private payout. The diagnosis above stays as it is (it names what the
           solver rejected); this only adds back the one-tap switch, which drops
           the private-payout fields the solver would not accept. */}
-          {!routeBlocked &&
+          {!sendRecipient &&
+            !routeBlocked &&
             !orderOutOfBounds &&
             !excessiveSlippage &&
             !flowOpen &&
             stealthRequestRejected && (
               <div className="settlement-fallback" role="status">
-                <span className="settlement-fallback-note">
-                  Send this one public instead. The payout lands in the connected wallet.
-                </span>
+                <span className="settlement-fallback-note">Try the Public route.</span>
                 <button
                   type="button"
                   className="btn btn--ghost btn--sm settlement-fallback-btn"
                   onClick={() => handleSettlementChange("public")}
                 >
-                  Switch to Public
+                  Use Public instead
                 </button>
               </div>
             )}
@@ -1225,6 +1318,10 @@ export function SwapPanel({
             className={`submit-btn ${intent.isLoading ? "loading" : ""} ${!isConnected ? "submit-btn--connect" : ""}`}
             data-state={isConnected ? intent.status : undefined}
             disabled={
+              (!!sendRecipient &&
+                isConnected &&
+                !flowReopenable &&
+                (!sendQuoteMatches || cta.action === "useMax")) ||
               (setupAction && stealthSetupLoading) ||
               (isConnected &&
                 // A pending network switch keeps the button live (it triggers the
@@ -1272,105 +1369,6 @@ export function SwapPanel({
                   : "Set up Stealth"
               : cta.label}
           </button>
-
-          {!isConnected && intent.quote?.preview && intent.quote.canSolve && (
-            <div className="preview-disclosure" role="note">
-              <p>
-                Quotes are free to explore. Priced at the standard tier
-                {features.trustEconomicsLive ? "; higher trust tiers pay less." : "."}
-              </p>
-              <p>The quote stays on screen while the wallet connects.</p>
-            </div>
-          )}
-
-          {/* How it works (collapsed by default; a host may drop it) */}
-          {howItWorks && (
-            <div className="trade-explainer">
-              <button
-                type="button"
-                className="trade-explainer__toggle"
-                onClick={() => setShowExplainer((v) => !v)}
-                aria-expanded={showExplainer}
-                aria-controls="trade-explainer-steps"
-              >
-                <span className="trade-explainer__title">How it works</span>
-                <Chevron open={showExplainer} className="trade-explainer__chevron" />
-              </button>
-              {showExplainer && (
-                <div id="trade-explainer-steps">
-                  <div className="trade-explainer__steps">
-                    <div className="trade-explainer__step">
-                      <span className="trade-explainer__icon">1</span>
-                      <div>
-                        <span className="trade-explainer__label">Sign an intent</span>
-                        <span className="trade-explainer__desc">
-                          The order skips the public mempool
-                        </span>
-                      </div>
-                    </div>
-                    <div className="trade-explainer__step">
-                      <span className="trade-explainer__icon">2</span>
-                      <div>
-                        <span className="trade-explainer__label">One solver fills it</span>
-                        <span className="trade-explainer__desc">At the quoted price</span>
-                      </div>
-                    </div>
-                    <div className="trade-explainer__step">
-                      <span className="trade-explainer__icon">3</span>
-                      <div>
-                        <span className="trade-explainer__label">Get paid</span>
-                        <span className="trade-explainer__desc">
-                          Public wallet or a stealth address
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  {/* Custody + routing (fable pass-1, 3.1). Lived under the action
-                    as a standing one-liner; moved in here so the CTA is the only
-                    thing under the form asking to be read. It claims only what is
-                    true today: self-custody via the user's own wallet signature,
-                    and the ORDER routing privately to the solver. Scoped to the
-                    order on purpose: the solver's pull and settlement
-                    transactions land on public chains and the activity feed links
-                    their hashes, so an absolute "never publicly visible" claim
-                    would be false. The mempool clause is dropped rather than
-                    moved, because step 1 above already states it. Custody copy
-                    upgrades when escrow ships (register R18). Hidden on a
-                    deposit-route origin (Tron): that flow IS a deposit to a
-                    per-intent address with no wallet signature, so every clause
-                    here is false on it, and TRON_ORIGIN_LIVE is only an env flag
-                    away from making that live. */}
-                  {!isNonEvmOrigin && (
-                    <p className="trade-explainer__note">
-                      No deposits, no account. Sign from a self-custody wallet; the order goes
-                      privately to the solver.
-                    </p>
-                  )}
-                  <p className="trade-explainer__note">
-                    Privacy is part of the trading fee, never an extra charge.
-                    {features.trustEconomicsLive &&
-                      " Deeper privacy unlocks as the trust score grows."}
-                  </p>
-                  {/* Who the fee pays, moved out of the quote drawer: the drawer
-                      shows the split, this says what each party is. */}
-                  <p className="trade-explainer__note">
-                    The fee pays the solver that fills the order, Xochi for running the protocol,
-                    and the app or agent that routed it.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-          {/* Without the explainer the card still says, in one line, who holds
-              the funds and what privacy costs (decided 2026-10-31): a host may
-              drop the disclosure, not the facts. */}
-          {!howItWorks && (
-            <p className="trade-explainer__note">
-              {isNonEvmOrigin
-                ? "Privacy is part of the trading fee, never an extra charge."
-                : "Self-custody: you sign from your own wallet. Privacy is part of the trading fee, never an extra charge."}
-            </p>
-          )}
         </div>
         {/* /trade-card__actions */}
       </div>
@@ -1395,6 +1393,8 @@ export function SwapPanel({
         fromChainId={fromChainId}
         toChainId={toChainId}
         destination={flowDestination}
+        swapRecipientLabel={flowDestination.swapRecipientLabel}
+        stealthPayee={flowStealthPayee}
         isCrossChain={isCrossChain}
         estimatedDuration={isCrossChain ? ESTIMATED_CROSS_CHAIN_SEC : ESTIMATED_SINGLE_CHAIN_SEC}
         startTime={executionStartTime || undefined}
@@ -1413,7 +1413,7 @@ export function SwapPanel({
         // the prop stays absent there. Gated on the dispatched order's own
         // destination, like the modal ending.
         onGoToClaims={
-          flowDestination.type !== "stealth" || claimInXochiApp
+          flowDestination.type !== "stealth" || flowStealthPayee === "other" || claimInXochiApp
             ? undefined
             : (onGoToClaims ??
               (() => {

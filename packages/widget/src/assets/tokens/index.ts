@@ -1,4 +1,5 @@
 import ethSvg from "./eth.svg?no-inline";
+import eurcPng from "./eurc.png?no-inline";
 import usdcPng from "./usdc.png?no-inline";
 import usdtPng from "./usdt.png?no-inline";
 import usdgPng from "./usdg.png?no-inline";
@@ -17,6 +18,7 @@ export const TOKEN_ICONS: Record<string, string> = {
   WETH: ethSvg,
   wstETH: wstethPng,
   USDC: usdcPng,
+  EURC: eurcPng,
   USDC_E: usdcPng,
   USDT: usdtPng,
   USDG: usdgPng,

@@ -36,7 +36,7 @@ const PERMIT_INFO: Record<PermitType, PermitInfo> = {
   erc3009: {
     label: "ERC-3009",
     shortDesc: "Direct transfer authorization",
-    benefit: "No approval TX needed - sign once, transfer directly. Used by USDC.",
+    benefit: "No approval TX needed, sign once, transfer directly. Used by USDC.",
     gasless: true,
   },
   permit2: {
@@ -53,7 +53,7 @@ const PERMIT_INFO: Record<PermitType, PermitInfo> = {
   },
   none: {
     label: "Approval",
-    shortDesc: "On-chain approval",
+    shortDesc: "Onchain approval",
     benefit: "Requires approval transaction (gas fee). Fallback for older tokens.",
     gasless: false,
   },

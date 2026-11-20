@@ -31,7 +31,7 @@ const USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 /** Oxide DAI on Aztec (corridor manifest), 18 decimals. */
 const OXDAI = "0x11d2bed21a36289fd6f6a6af93a546b5be7115caf957f0f700f42d56e25fe0a3";
 const COMMAND = `xochi-recipient receipt ${INTENT_ID}`;
-const AWAITING = "Paid on Aztec. Waiting for the recipient to confirm receipt.";
+const AWAITING = "Shielded payout sent. Waiting for the recipient to confirm receipt.";
 
 /** A shielded order as the owner's history serves it, two hours after submit. */
 const historyRow = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
@@ -86,17 +86,14 @@ afterEach(() => {
 
 /**
  * Open the Activity tab and expand the one row it shows, once its badge reads
- * `badge`. A live row opens the strip by itself; a settled one waits for the
- * toggle. Clicking before the row settles would hit the live copy it replaces.
+ * `badge`. Clicking before the row settles would hit the live copy it replaces.
  */
 const expandRow = async (badge: string): Promise<void> => {
   fireEvent.click(screen.getByRole("tab", { name: /^Activity/ }));
-  const toggle = screen.getByRole("button", { name: "Toggle activity" });
   const found = await waitFor(() => {
     // Not the loading skeleton, which shares the class.
     const rowButton = document.querySelector<HTMLElement>(".activity-row-wrapper > .activity-row");
     if (rowButton?.querySelector(".activity-status-badge")?.textContent === badge) return rowButton;
-    if (toggle.getAttribute("aria-expanded") === "false") fireEvent.click(toggle);
     throw new Error(`no activity row reading ${badge}`);
   }, WAIT);
   fireEvent.click(found);
@@ -118,12 +115,14 @@ describe("a shielded payout waiting on the recipient", () => {
     await renderTrade(<Trade look={FULL_LOOK} />, { connected: true });
     await expandRow("Settling");
 
-    expect(row().querySelector(".activity-chain-route")?.textContent).toMatch(/Aztec\s*Shielded$/);
+    expect(row().querySelector(".activity-chain-route")?.textContent).toMatch(
+      /zk\.money\s*Shielded$/,
+    );
+    expect(row().textContent).toContain("Amounts and participants hidden inside zk.money.");
+    expect(row().textContent).toContain("Deposit is public on Ethereum.");
     // After the token icon's fallback letter, when it has no image.
     expect(row().querySelector(".to-token")?.textContent).toMatch(/^\D?1\.69 OXDAI$/);
-    expect(document.querySelector(".activity-strip__latest")?.textContent).toMatch(
-      /USDC -> \D?OXDAI/,
-    );
+    expect(row().querySelector(".from-token")?.textContent).toMatch(/USDC$/);
     expect(headline()).toBe(AWAITING);
     expect(row().textContent).not.toMatch(/hello@xochi\.fi/);
     // Behind the client kill switch: the receipt endpoints 404 until it flips.

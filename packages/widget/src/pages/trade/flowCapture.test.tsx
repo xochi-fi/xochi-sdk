@@ -90,7 +90,13 @@ const intentAt = (status: IntentStatus, legsWithheld: boolean | null): UseIntent
 let setIntent: (next: UseIntentReturn) => void = noop;
 
 /** The swap panel's flow group with nothing but its capture write observable. */
-function FlowProbe({ initial }: { initial: UseIntentReturn }) {
+function FlowProbe({
+  initial,
+  payee = "self",
+}: {
+  initial: UseIntentReturn;
+  payee?: "self" | "other";
+}) {
   const [intent, set] = useState(initial);
   setIntent = set;
   useSwapFlow({
@@ -121,6 +127,8 @@ function FlowProbe({ initial }: { initial: UseIntentReturn }) {
     clearRecipient: noop,
     restoreRecipientTag: noop,
     restoreRefundAddress: noop,
+    stealthPayee: payee,
+    restoreStealthRecipient: noop,
     flowOpen: true,
     setFlowOpen: noop,
     resumed: null,
@@ -177,7 +185,7 @@ describe("the flow capture carries the served legs_withheld verdict", () => {
       />,
       { connected: true },
     );
-    fireEvent.click(screen.getByRole("button", { name: "Toggle activity" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Activity/ }));
     fireEvent.click(document.querySelector(".activity-row") as HTMLElement);
     expect(screen.getByRole("button", { name: LINKS_SIGN_IN_LABEL })).not.toBeNull();
   });
@@ -219,5 +227,65 @@ describe("the flow capture carries the machine's failure verdict", () => {
     act(() => setIntent(failedAt("may-have-moved")));
     expect(stored()?.intentStatus).toBe("failed");
     expect(stored()?.data.substatus ?? null).toBeNull();
+  });
+});
+
+// A Stealth order to someone else's meta-address (Send > Stealth): the row
+// keeps only the fact, never their keys, and offers this wallet no claim.
+describe("the flow capture of a Stealth send to someone else", () => {
+  const feed = (record: NonNullable<ReturnType<typeof stored>>, onClaimNudge = noop) =>
+    renderTrade(
+      <ActivityFeed
+        activities={[record]}
+        isLoading={false}
+        error={null}
+        hasMore={false}
+        isConnected
+        connectedWallet={TEST_ACCOUNT}
+        needsSignIn={false}
+        isSigningIn={false}
+        onSignIn={noop}
+        onRefresh={noop}
+        onLoadMore={noop}
+        onClaimNudge={onClaimNudge}
+      />,
+      { connected: true },
+    );
+
+  it("stores the marker and no key material, and offers no claim", async () => {
+    await renderTrade(<FlowProbe initial={intentAt("settling", null)} payee="other" />, {
+      connected: true,
+    });
+    act(() => setIntent(intentAt("completed", false)));
+    const record = stored();
+    if (!record) throw new Error("expected the captured record");
+    expect(record.data.settlementType).toBe("stealth");
+    expect(record.data.stealthPayee).toBe("other");
+    const raw = Array.from({ length: window.localStorage.length }, (_, i) => {
+      const key = window.localStorage.key(i) ?? "";
+      return `${key}=${window.localStorage.getItem(key) ?? ""}`;
+    }).join("\n");
+    expect(raw).toContain(INTENT_ID);
+    expect(raw).not.toMatch(/st:eth|spending|viewing|pub_?key/i);
+    cleanup();
+
+    await feed(record);
+    fireEvent.click(screen.getByRole("button", { name: /^Activity/ }));
+    fireEvent.click(document.querySelector(".activity-row") as HTMLElement);
+    expect(screen.queryByRole("button", { name: "Go to claims" })).toBeNull();
+  });
+
+  it("keeps the claim on the wallet's own Stealth order", async () => {
+    await renderTrade(<FlowProbe initial={intentAt("settling", null)} />, { connected: true });
+    act(() => setIntent(intentAt("completed", false)));
+    const record = stored();
+    if (!record) throw new Error("expected the captured record");
+    expect(record.data.stealthPayee).toBeUndefined();
+    cleanup();
+
+    await feed(record);
+    fireEvent.click(screen.getByRole("button", { name: /^Activity/ }));
+    fireEvent.click(document.querySelector(".activity-row") as HTMLElement);
+    expect(screen.getByRole("button", { name: "Go to claims" })).not.toBeNull();
   });
 });

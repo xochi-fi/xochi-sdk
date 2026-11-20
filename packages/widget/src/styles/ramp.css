@@ -1,0 +1,543 @@
+/* Live Peer rail availability (Trade/Buy, Send/payment app). One column at
+   the card's width, 44px targets, and state carried by text: the status
+   colour only repeats what the status label already says. */
+
+.ramp-rails .send-field__label {
+  font-size: 0.75rem;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.ramp-rails {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.ramp-facts__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.125rem;
+  margin-inline-end: -0.875rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  letter-spacing: normal;
+  color: var(--text-secondary);
+}
+
+.ramp-facts__list[hidden] {
+  display: none;
+}
+
+.ramp-facts__list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.ramp-rails__group {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.ramp-rails__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ramp-rail {
+  box-sizing: border-box;
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  min-height: 44px;
+  padding: 0.7rem 0.8rem;
+  background: var(--panel-bg);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-card);
+}
+
+.ramp-rail--selectable {
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.ramp-rail--selectable input {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin: 0.1rem 0 0;
+  accent-color: var(--muted-gold);
+}
+
+.ramp-rail--selectable:has(input:checked) {
+  border-color: var(--muted-gold-25);
+  box-shadow: 0 0 0 1px var(--muted-gold-25);
+}
+
+.ramp-rail--selectable:has(input:focus-visible) {
+  outline: 2px solid var(--muted-gold);
+  outline-offset: 2px;
+}
+
+.ramp-rail__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.ramp-rail__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.6rem;
+  align-items: baseline;
+}
+
+.ramp-rail__name {
+  font-weight: 600;
+  color: var(--pearl-cream);
+}
+
+.ramp-rail__status {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+
+.ramp-rail__status--available {
+  color: var(--color-success);
+}
+
+.ramp-rail__text {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ramp-rail--selectable {
+    transition: none;
+  }
+}
+
+/* High contrast: the chosen rail and the status lines keep a system-colour
+   edge, since forced colours drop the box-shadow that marks the choice. */
+@media (forced-colors: active) {
+  .ramp-rail--selectable:has(input:checked) {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+  .ramp-order__headline,
+  .ramp-facts,
+  .ramp-rail {
+    border-color: CanvasText;
+  }
+}
+
+/* Resumed and in-progress Peer purchases (W3). The step heading takes focus
+   on resume and on return from Peer, so it carries a visible focus ring. */
+
+.onramp-resume,
+.onramp-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.onramp-steps {
+  padding: 0.75rem;
+  background: var(--inset-bg);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-card);
+}
+
+.onramp-steps__title {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.onramp-steps__title:focus-visible {
+  outline: 2px solid var(--muted-gold);
+  outline-offset: 2px;
+}
+
+/* Buy's own buttons (review, wallet steps, resume) carry no class of their
+   own: one secondary look, 44px, full width at the card's single column. */
+.onramp-review button:not([class]),
+.onramp-resume button:not([class]),
+.onramp-steps button:not([class]),
+.send-card > button:not([class]) {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-block: 0.5rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-control);
+  background: var(--panel-bg);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+.onramp-review button:not([class]):disabled,
+.onramp-resume button:not([class]):disabled,
+.onramp-steps button:not([class]):disabled,
+.send-card > button:not([class]):disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.onramp-review button:focus-visible,
+.onramp-resume button:focus-visible,
+.onramp-steps button:focus-visible,
+.onramp-review input:focus-visible,
+.send-card > button:focus-visible {
+  outline: 2px solid var(--muted-gold);
+  outline-offset: 2px;
+}
+.onramp-review {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.onramp-review label {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  min-height: 44px;
+  cursor: pointer;
+}
+.onramp-review input[type="checkbox"] {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0.1rem 0 0;
+}
+
+.ramp-resume__blocked {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.ramp-route {
+  margin-block: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--line-subtle);
+  background: var(--inset-bg);
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  border-radius: var(--radius-card);
+}
+.ramp-route__address,
+.ramp-route dd {
+  overflow-wrap: anywhere;
+}
+.ramp-route__fields {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+  margin-block: 1rem;
+}
+.ramp-route__fields label {
+  display: grid;
+  gap: 0.35rem;
+}
+.ramp-route__fields select,
+.ramp-route__fields input,
+.ramp-route button {
+  min-height: 44px;
+  max-width: 100%;
+}
+/* The shared primary button keeps its own look inside a route card. */
+.ramp-route button:not(.submit-btn) {
+  display: block;
+  width: 100%;
+  margin-block: 0.5rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-control);
+  background: var(--panel-bg);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+.ramp-route button:not(.submit-btn):disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.ramp-route button:focus-visible,
+.ramp-route select:focus-visible,
+.ramp-route input:focus-visible {
+  outline: 2px solid var(--muted-gold);
+  outline-offset: 2px;
+}
+.ramp-route h3 {
+  margin-bottom: 0.6rem;
+  font-size: 1rem;
+}
+.ramp-route p {
+  margin-block: 0.6rem;
+}
+.ramp-route dt {
+  color: var(--text-secondary);
+  margin-top: 0.6rem;
+}
+.ramp-route dd {
+  margin-left: 0;
+}
+.ramp-route__fields select,
+.ramp-route__fields input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.5rem;
+  background: var(--panel-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-control);
+  font: inherit;
+}
+
+.ramp-guest-apps {
+  display: flex;
+  align-items: center;
+  gap: clamp(2px, 2cqi, 8px);
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.ramp-tile-group {
+  min-inline-size: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  container-type: inline-size;
+}
+
+.ramp-tile-group legend {
+  margin-bottom: 8px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.ramp-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@container (width < 300px) {
+  .ramp-tile-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container (min-width: 375px) {
+  .ramp-tile-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* Keep these surfaces in sync with the contrast inputs in RailTiles. */
+.ramp-tile {
+  --rail-tile-bg: #12121a;
+  --rail-selected-icon: var(--rail-icon-dim, currentColor);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  box-sizing: border-box;
+  min-block-size: 3.75rem;
+  gap: 2px;
+  min-width: 0;
+  padding: 2px 6px;
+  container-type: inline-size;
+  color: inherit;
+  background: var(--rail-tile-bg);
+  border: 2px solid var(--panel-border);
+  border-radius: var(--radius-card);
+  font: inherit;
+  text-align: left;
+}
+
+[data-theme="dark"] .ramp-tile {
+  --rail-tile-bg: #080808;
+  --rail-selected-icon: var(--rail-icon-dark, currentColor);
+}
+
+[data-theme="light"] .ramp-tile {
+  --rail-tile-bg: #f5f3ef;
+  --rail-selected-icon: var(--rail-icon-light, currentColor);
+}
+
+label.ramp-tile,
+button.ramp-tile {
+  cursor: pointer;
+}
+
+.ramp-tile:has(:checked) {
+  border-color: var(--rail-brand, var(--muted-gold));
+}
+
+.ramp-tile__text {
+  min-width: 0;
+  max-width: 100%;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+  line-height: 1.1;
+}
+
+.ramp-tile__name,
+.ramp-tile__status small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.ramp-tile__status small {
+  font-size: 0.75rem;
+}
+
+.ramp-tile__status {
+  display: block;
+  margin-block-start: 2px;
+}
+
+.ramp-tile__check {
+  position: absolute;
+  inset-block-start: 4px;
+  inset-inline-end: 6px;
+}
+
+.ramp-tile__icon-slot {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+
+.ramp-tile__logo {
+  background: currentColor;
+  mask: var(--rail-logo) center / contain no-repeat;
+}
+
+.ramp-tile:has(:checked) .ramp-tile__logo {
+  background: var(--rail-selected-icon);
+}
+
+@media (forced-colors: active) {
+  .ramp-tile__logo {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
+
+  .ramp-tile:has(:checked) .ramp-tile__logo {
+    background: CanvasText;
+  }
+}
+
+.ramp-tile-setup {
+  grid-column: 1 / -1;
+}
+
+.ramp-unavailable details {
+  border-bottom: 1px solid var(--panel-border);
+  padding-block: 6px;
+}
+
+.ramp-unavailable summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.ramp-unavailable__reason {
+  display: block;
+  color: var(--text-secondary);
+}
+
+.ramp-unavailable__reason,
+.ramp-unavailable p,
+.ramp-unavailable li {
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.ramp-unavailable summary > * {
+  margin-inline-end: 8px;
+}
+
+.launch-screen--fixed .ramp-bottom-action {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  background: var(--obsidian);
+  padding-block: var(--ramp-action-inset);
+}
+
+/* Leave one action bar of scroll room so the last row can clear the sticky CTA. */
+:root {
+  --ramp-action-inset: 4px;
+  --ramp-action-target: 44px;
+  --ramp-action-space: calc(var(--ramp-action-target) + 2 * var(--ramp-action-inset));
+}
+
+.ramp-bottom-action .send-cta {
+  margin: 0;
+  min-block-size: var(--ramp-action-target);
+  padding-block: 0;
+  line-height: 1.4;
+}
+
+.launch-screen--fixed:has(
+  .widget-panel:not([hidden]) > .widget-panel:not([hidden]) .ramp-bottom-action .send-cta
+) {
+  padding-block-end: var(--ramp-action-space);
+  scroll-padding-block-end: var(--ramp-action-space);
+}
+
+.ramp-unavailable summary {
+  min-height: 32px;
+  align-content: center;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.ramp-unavailable summary .ramp-tile__logo {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.ramp-unavailable summary span {
+  color: var(--text-secondary);
+}

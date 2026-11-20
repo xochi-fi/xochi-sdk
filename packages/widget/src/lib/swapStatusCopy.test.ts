@@ -137,7 +137,7 @@ describe("describeSwapState: a shielded payout waiting on the recipient", () => 
     });
     expect(copy).toEqual({
       tone: "progress",
-      headline: "Paid on Aztec. Waiting for the recipient to confirm receipt.",
+      headline: "Shielded payout sent. Waiting for the recipient to confirm receipt.",
     });
   });
 
@@ -151,7 +151,9 @@ describe("describeSwapState: a shielded payout waiting on the recipient", () => 
         elapsedMs,
         substatus: "awaiting_recipient",
       });
-      expect(copy?.headline).toBe("Paid on Aztec. Waiting for the recipient to confirm receipt.");
+      expect(copy?.headline).toBe(
+        "Shielded payout sent. Waiting for the recipient to confirm receipt.",
+      );
       expect(copy?.detail).toBeUndefined();
     }
   });

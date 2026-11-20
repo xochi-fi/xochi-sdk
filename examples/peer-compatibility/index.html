@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Peer compatibility probe</title>
+  </head>
+  <body>
+    <h1>Peer compatibility probe</h1>
+    <p>
+      Read-only compatibility checks. No signatures, provider login, or transactions. Results are
+      not executable offers.
+    </p>
+    <form id="probe">
+      <p>
+        <label
+          >Environment
+          <select name="environment">
+            <option>production</option>
+            <option>preproduction</option>
+            <option>staging</option>
+          </select></label
+        >
+      </p>
+      <p>
+        <label
+          >Public wallet address
+          <input name="address" required pattern="0x[0-9a-fA-F]{40}" autocomplete="off"
+        /></label>
+      </p>
+      <p>
+        <label
+          >Base USDC atomic amount (6 decimals)
+          <input name="amount" required pattern="[1-9][0-9]*" value="25000000"
+        /></label>
+      </p>
+      <p>
+        <label
+          >Fiat currency (ISO code) <input name="currency" required pattern="[A-Z]{3}" value="USD"
+        /></label>
+      </p>
+      <p>
+        <label
+          >Payment platform
+          <input name="platform" required pattern="[a-z][a-z0-9_]{0,31}" value="venmo"
+        /></label>
+      </p>
+      <button type="submit" disabled>Check live capabilities</button>
+      <button type="button" id="connect" disabled>Request Peer extension connection</button>
+    </form>
+    <pre id="result" aria-live="polite"></pre>
+    <script type="module" src="/browser.mjs"></script>
+  </body>
+</html>

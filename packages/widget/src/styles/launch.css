@@ -79,6 +79,27 @@
   padding-inline: 0.5rem;
 }
 
+/* Keep the top-level tabs inside the card column at narrow widths. Flex
+   wrapping keeps the visual order aligned with the tablist's arrow keys. */
+.launch-screen > .widget-bar {
+  container-type: inline-size;
+}
+
+.launch-screen > .widget-bar > .widget-tabs {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.launch-screen > .widget-bar > .widget-tabs > .widget-tabs__tab {
+  min-width: 44px;
+}
+
+@container (max-width: 320px) {
+  .launch-screen > .widget-bar > .widget-tabs > .widget-tabs__tab {
+    min-height: 44px;
+  }
+}
+
 .account-chip {
   flex-shrink: 0;
   margin-left: auto;
@@ -160,7 +181,7 @@ html:has(.launch-screen--fixed) .modal-content {
   color: var(--pearl-cream);
   background: var(--muted-gold-subtle);
   border: 1px solid var(--muted-gold-25);
-  border-radius: 12px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition:
     background var(--duration-fast) var(--ease-smooth),
@@ -182,7 +203,7 @@ html:has(.launch-screen--fixed) .modal-content {
   font-weight: 700;
   color: var(--obsidian);
   background: var(--muted-gold);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }
 
 .claims-nudge__arrow {
@@ -194,7 +215,7 @@ html:has(.launch-screen--fixed) .modal-content {
 .assets-strip {
   background: var(--panel-bg-subtle);
   border: 1px solid var(--panel-border);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   backdrop-filter: blur(12px);
   overflow: hidden;
 }
@@ -253,7 +274,7 @@ html:has(.launch-screen--fixed) .modal-content {
   color: var(--text-secondary);
   padding: 0.15rem 0.45rem;
   border: 1px solid var(--panel-border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   white-space: nowrap;
 }
 
@@ -326,7 +347,7 @@ html:has(.launch-screen--fixed) .modal-content {
   padding: 0.45rem;
   background: var(--muted-gold-subtle);
   border: 1px solid var(--panel-border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   color: var(--muted-gold);
   font-family: var(--font-mono);
   font-size: 0.75rem;
@@ -375,12 +396,13 @@ html:has(.launch-screen--fixed) .modal-content {
 .activity-strip {
   background: var(--panel-bg-subtle);
   border: 1px solid var(--panel-border);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   backdrop-filter: blur(12px);
   overflow: hidden;
 }
 
 .activity-strip__summary {
+  font: inherit;
   width: 100%;
   display: flex;
   align-items: center;
@@ -450,7 +472,7 @@ html:has(.launch-screen--fixed) .modal-content {
   font-variant-numeric: tabular-nums;
   padding: 0.1rem 0.4rem;
   border: 1px solid var(--panel-border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   color: var(--text-muted);
   white-space: nowrap;
 }
@@ -610,7 +632,7 @@ html:has(.launch-screen--fixed) .modal-content {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   padding: 0.1rem 0.4rem;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--panel-border);
 }
 
@@ -649,7 +671,7 @@ html:has(.launch-screen--fixed) .modal-content {
   padding: 0.4rem 0.5rem;
   background: var(--panel-bg-subtle);
   border: 1px solid var(--panel-border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   color: var(--pearl-cream);
   font-family: var(--font-mono);
   font-size: 0.8125rem;
@@ -694,7 +716,7 @@ html:has(.launch-screen--fixed) .modal-content {
   padding: 0.6rem;
   background: var(--panel-bg-subtle);
   border: 1px solid var(--panel-border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .agents-connect__warning {
@@ -729,7 +751,7 @@ html:has(.launch-screen--fixed) .modal-content {
   padding: 0.4rem 0.5rem;
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   color: var(--pearl-cream);
   font-family: var(--font-mono);
   font-size: 0.75rem;
@@ -756,7 +778,7 @@ html:has(.launch-screen--fixed) .modal-content {
   color: var(--muted-gold);
   background: var(--muted-gold-subtle);
   border: 1px solid var(--muted-gold-25);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 0.35rem 0.6rem;
   cursor: pointer;
 }
@@ -770,4 +792,51 @@ html:has(.launch-screen--fixed) .modal-content {
   margin: 0;
   font-size: 0.7rem;
   color: var(--color-warning);
+}
+
+.launch-screen > .widget-bar > .widget-tabs {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+}
+
+.launch-screen > .widget-bar .widget-tabs__tab {
+  min-height: 44px;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+}
+
+.launch-screen > .widget-bar .widget-tabs__tab.active {
+  border-bottom-color: currentColor;
+}
+
+.activity-history {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.activity-history > li {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.activity-strip__stat {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.activity-strip__toolbar {
+  justify-content: flex-end;
+}
+
+.activity-strip__stat {
+  margin-inline-end: auto;
 }

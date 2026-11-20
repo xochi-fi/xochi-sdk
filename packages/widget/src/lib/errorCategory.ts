@@ -97,7 +97,7 @@ function copyFor(failure: Failure, originTokens: readonly string[]): Copy {
       return {
         message: "Still finishing this swap",
         suggestion:
-          "We're checking this on-chain. Give it a few minutes and check back, and don't resubmit.",
+          "We're checking this onchain. Give it a few minutes and check back, and don't resubmit.",
         category: "unavail",
       };
     case "no_liquidity":

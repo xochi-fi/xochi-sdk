@@ -26,6 +26,7 @@ import {
   SITE_URL as CONFIGURED_SITE_URL,
   WALLETCONNECT_PROJECT_ID,
 } from "./config.js";
+import { isFirstPartyHost } from "./lib/hostBridge.js";
 import type { HostConnection } from "@xochi/widget-lib";
 
 // Robinhood Chain is an Arbitrum Orbit L2 (native gas ETH, stablecoin USDG). It
@@ -184,6 +185,16 @@ const SITE_URL = (typeof window !== "undefined" && window.location.origin) || CO
  */
 export const HOST_WALLET_ID = "xochiHost";
 
+/** A relay can see the signature that derives the Stealth keys. */
+export function refusesStealth(connector: { readonly id: string } | undefined): boolean {
+  if (connector?.id !== HOST_WALLET_ID) return false;
+  return !(
+    "firstPartyHost" in connector &&
+    typeof connector.firstPartyHost === "function" &&
+    connector.firstPartyHost() === true
+  );
+}
+
 export function hostWallet(bridge: HostConnection): Wallet {
   return {
     id: HOST_WALLET_ID,
@@ -204,6 +215,7 @@ export function hostWallet(bridge: HostConnection): Wallet {
         return {
           ...base,
           ...walletDetails,
+          firstPartyHost: () => isFirstPartyHost(bridge),
           isAuthorized() {
             return bridge.autoConnect() ? base.isAuthorized.call(this) : Promise.resolve(false);
           },

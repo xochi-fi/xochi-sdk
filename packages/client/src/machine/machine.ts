@@ -286,7 +286,7 @@ export type MsgBody =
   | { type: "QuoteRequested"; amount: string }
   /** `key` is a fresh idempotency key, used only if none is held for this amount. */
   | { type: "AllocateRequested"; key: string; ref: string }
-  | { type: "RefreshRequested" }
+  | { type: "RefreshRequested"; forceRefresh?: boolean }
   | { type: "SignRequested" }
   | { type: "PullSignRequested" }
   | { type: "CancelSignRequested" }
@@ -540,8 +540,9 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
         ? startQuote(m, fx, msg.now, {
             ...quoteOpts(m.amount),
             forceRefresh:
-              typeof m.intent.error !== "string" &&
-              m.intent.error?.errorCategory === "tag_resolution_unavailable",
+              msg.forceRefresh === true ||
+              (typeof m.intent.error !== "string" &&
+                m.intent.error?.errorCategory === "tag_resolution_unavailable"),
           })
         : m;
 

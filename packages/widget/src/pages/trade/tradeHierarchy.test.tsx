@@ -14,8 +14,8 @@
  *
  * What must stay true:
  *   - The trade card comes first; balances, activity, and trust/claims all
- *     follow it, in that order (Swap, Activity, Claims tab panels).
- *   - One contextual wallet action (the form CTA). The connected wallet's
+ *     follow it, in that order (Trade, Activity, Claims tab panels).
+ *   - One contextual wallet action on screen (the form CTA). The connected wallet's
  *     account chip renders nothing while disconnected. The standalone
  *     WalletLinkPrompt banner and the AssetsStrip disconnected connect prompt
  *     were both retired for repeating it; the strip renders nothing at all
@@ -68,7 +68,7 @@ const LANDMARKS = [
   { name: "trade card", selector: ".trade-card" },
   { name: "holdings strip", selector: ".assets-strip" },
   { name: "activity feed", selector: ".launch-txlog" },
-  { name: "trust/claims", selector: '[aria-label="Private receiving"]' },
+  { name: "trust/claims", selector: '[aria-label="Stealth receiving"]' },
 ] as const;
 
 const LANDMARK_QUERY = LANDMARKS.map((l) => l.selector).join(", ");
@@ -83,9 +83,11 @@ const pageOrder = (root: ParentNode): string[] =>
 // The settlement-mode buttons are excluded: an unavailable mode's one line can
 // name its fix ("Connect a wallet" on Stealth), but the button is the mode
 // toggle, not a wallet action, and tapping it never opens the connect modal.
+// Hidden tab panels are excluded too: each tab (Send's destinations included)
+// carries its own contextual CTA, and only the visible one is on the page.
 const walletAsks = (root: ParentNode): string[] =>
   [...root.querySelectorAll("button")]
-    .filter((b) => !b.closest('[aria-label="Settlement privacy"]'))
+    .filter((b) => !b.closest('[aria-label="Settlement privacy"]') && !b.closest("[hidden]"))
     .map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "")
     .filter((label) => /connect|link .*wallet|sign in/i.test(label));
 
@@ -110,7 +112,7 @@ describe("widget-first page order", () => {
     // comes first in the document" even if a landmark is re-parented into a
     // wrapper, where a shared-parent index comparison would not.
     const activity = container.querySelector(".launch-txlog");
-    const trust = container.querySelector('[aria-label="Private receiving"]');
+    const trust = container.querySelector('[aria-label="Stealth receiving"]');
     expect(
       activity!.compareDocumentPosition(trust!) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
@@ -226,7 +228,7 @@ describe("assurance copy lives in How it works", () => {
   it("states the mempool claim once, in the steps", async () => {
     const { container } = await renderTrade(<SwapPanel />);
     fireEvent.click(explainerToggle());
-    const steps = document.getElementById("trade-explainer-steps");
+    const steps = document.getElementById(explainerToggle().getAttribute("aria-controls")!);
     expect(steps).not.toBeNull();
     expect(steps!.textContent).toContain("skips the public mempool");
     // Step 1 already carries the clause, so the moved sentence dropped it: one

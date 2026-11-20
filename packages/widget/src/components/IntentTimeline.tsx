@@ -1,3 +1,5 @@
+import { ShieldedDisclosure } from "../pages/send/ShieldedDisclosure.js";
+import { sentToRecipient, type SendRecipientDisplay } from "../pages/send/sendCopy.js";
 /**
  * IntentTimeline Component
  *
@@ -40,6 +42,9 @@ interface IntentTimelineProps {
    * delivered copy must not read like a public fill (xochi#376).
    */
   isStealth?: boolean;
+  /** `"other"`: the Stealth payout is someone else's to claim, not this wallet's. */
+  stealthPayee?: "self" | "other";
+  sendRecipientDisplay?: SendRecipientDisplay;
   /**
    * Deposit route (Tron origin): the user sends from an external wallet and
    * nothing is signed, so the timeline opens on the deposit rather than a
@@ -111,6 +116,8 @@ export function IntentTimeline({
   settlementChainId,
   substatus,
   isStealth,
+  stealthPayee,
+  sendRecipientDisplay,
   isDeposit,
   startTime,
   estimatedDuration = ESTIMATED_CROSS_CHAIN_SEC,
@@ -216,7 +223,10 @@ export function IntentTimeline({
     >
       {/* Progress bar */}
       <div className="timeline-progress">
-        <div className="timeline-progress-fill" style={{ width: `${progress}%` }} />
+        <div
+          className="timeline-progress-fill"
+          style={{ transform: `scaleX(${progress / 100})` }}
+        />
       </div>
 
       {/* Stage indicators */}
@@ -256,14 +266,23 @@ export function IntentTimeline({
         })}
       </div>
 
+      {sendRecipientDisplay?.mode === "Shielded" && (
+        <p>
+          <ShieldedDisclosure />
+        </p>
+      )}
       {/* Status text */}
       <div className="timeline-status">
         <span className="timeline-status-text">
           {delivered
-            ? isStealth
-              ? "Landed at the private address. Preparing the claim."
-              : "Funds delivered. Finalizing the swap."
-            : getStatusMessage(status, isCrossChain)}
+            ? sendRecipientDisplay
+              ? `${sentToRecipient(sendRecipientDisplay)}.`
+              : isStealth
+                ? stealthPayee === "other"
+                  ? "Landed at the recipient's one-time stealth address."
+                  : "Landed at the one-time stealth address. Preparing the claim."
+                : "Funds delivered. Finalizing the swap."
+            : getStatusMessage(status, isCrossChain, sendRecipientDisplay !== undefined)}
         </span>
         {timeInfo && isInFlight && !delivered && (
           <span className="timeline-time">{timeInfo.elapsedFormatted}</span>
@@ -273,7 +292,9 @@ export function IntentTimeline({
       {delivered && (
         <p className="timeline-overdue">
           {isStealth
-            ? "The funds landed at a one-time private address that only the connected wallet can spend from. The claim is still being set up. Safe to close this."
+            ? stealthPayee === "other"
+              ? "The funds landed at a one-time stealth address only the recipient can spend from. They claim it with their own stealth keys. Safe to close this."
+              : "The funds landed at a one-time stealth address that only the connected wallet can spend from. The claim is still being set up. Safe to close this."
             : tabsShown
               ? "Funds arrived. Finalizing the last step. Safe to close this and check Activity."
               : "Funds arrived. Finalizing the last step. Safe to close this."}
@@ -335,7 +356,7 @@ function formatDuration(seconds: number): string {
   return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
 }
 
-function getStatusMessage(status: IntentStatus, isCrossChain: boolean): string {
+function getStatusMessage(status: IntentStatus, isCrossChain: boolean, isSend: boolean): string {
   const messages: Record<IntentStatus, string> = {
     idle: "Ready",
     pending: "Pending...",
@@ -343,7 +364,7 @@ function getStatusMessage(status: IntentStatus, isCrossChain: boolean): string {
     quoted: "Quote ready",
     signing: "Confirm in wallet...",
     awaiting_deposit: "Waiting for the deposit...",
-    executing: isCrossChain ? "Submitting to bridge..." : "Executing swap...",
+    executing: isCrossChain ? "Submitting to bridge..." : isSend ? "Sending…" : "Executing swap...",
     bridging: "Bridging across chains...",
     settling: "Settling on destination...",
     completed: "Complete",

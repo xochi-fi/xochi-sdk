@@ -14,6 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertPeerLock, PEER_SDK_VERSION } from "./verify-peer-graph.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -30,12 +31,12 @@ const exactVersion = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const prerequisites = Object.entries(widgetManifest.dependencies).filter(([name]) =>
   name.startsWith("@xochi/"),
 );
+assert(
+  typeof widgetManifest.version === "string" && exactVersion.test(widgetManifest.version),
+  "Assign the widget release candidate version before verification",
+);
+assert(!widgetManifest.xochiRehearsalOnly, "Use the real source package metadata");
 if (publishedDependencies) {
-  assert(
-    typeof widgetManifest.version === "string" && exactVersion.test(widgetManifest.version),
-    "Published-dependencies gate blocked: assign the real approved widget source version before release verification",
-  );
-  assert(!widgetManifest.xochiRehearsalOnly, "Rehearsal metadata cannot qualify a release");
   for (const name of ["@xochi/client", "@xochi/signer", "@xochi/widget-lib"]) {
     assert(
       prerequisites.some(([dependency]) => dependency === name),
@@ -158,12 +159,6 @@ for (const name of publishedDependencies
     }
   }
   assert(existsSync(join(stage, "dist")), `${name}: build before packing`);
-  if (name === "widget" && !manifest.version) {
-    assert(!publishedDependencies, "Release verification must never invent a widget version");
-    // Metadata inherited from the extracted host manifest, not an approved npm release version.
-    manifest.version = "0.1.0";
-    manifest.xochiRehearsalOnly = true;
-  }
   writeFileSync(join(stage, "package.json"), JSON.stringify(manifest, null, 2));
   const packed = JSON.parse(
     run("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", artifacts], stage),
@@ -210,6 +205,13 @@ writeFileSync(
       name: "widget-packed-consumer",
       private: true,
       type: "module",
+      overrides: {
+        "@walletconnect/core": "^2.26.0",
+        "@walletconnect/ethereum-provider": "^2.26.0",
+        "@walletconnect/sign-client": "^2.26.0",
+        "@walletconnect/universal-provider": "^2.26.0",
+        "@walletconnect/utils": "^2.26.0",
+      },
     },
     null,
     2,
@@ -251,20 +253,24 @@ for (const prerequisite of publishedPrerequisites) {
     `${prerequisite.name}: registry integrity mismatch`,
   );
 }
-if (publishedDependencies) {
-  for (const [path, entry] of Object.entries(installedLock.packages)) {
-    if (!path || path === "node_modules/@xochi/widget") continue;
-    assert(
-      typeof entry.resolved === "string" && entry.resolved.startsWith(registry),
-      `${path}: published-dependencies mode requires default public-registry resolution`,
-    );
+const localArtifacts = new Map(records.map((record) => [`node_modules/${record.name}`, record]));
+for (const [path, entry] of Object.entries(installedLock.packages)) {
+  if (!path) continue;
+  assert(!entry.link, `${path}: consumer must not use links`);
+  const local = localArtifacts.get(path);
+  if (local) {
+    assert.equal(entry.version, local.packedVersion, `${path}: wrong installed version`);
+    assert.equal(resolve(consumer, entry.resolved.replace(/^file:/, "")), local.file);
+    assert.equal(entry.integrity, `sha512-${Buffer.from(local.sha512, "hex").toString("base64")}`);
+  } else {
+    assert(entry.resolved?.startsWith(registry), `${path}: public registry resolution required`);
   }
 }
-const lock = readFileSync(join(consumer, "package-lock.json"), "utf8");
-assert(
-  !/npm\.pkg\.github\.com|@xochi-fi\/|workspace:|git\+ssh|git@github/.test(lock),
-  "private dependency or workspace alias in installed closure",
-);
+for (const path of localArtifacts.keys()) {
+  assert(installedLock.packages[path], `${path}: local tarball was not installed`);
+}
+assertPeerLock(installedLock);
+console.log(`PASS: one public Peer SDK (${PEER_SDK_VERSION}); no @zkp2p/cash`);
 const peerCheck = spawnSync("npm", ["ls", "react", "react-dom", "--json"], {
   cwd: consumer,
   env,
@@ -279,24 +285,72 @@ assert(
 );
 const peerGraph = JSON.parse(peerCheck.stdout);
 const reactPeerValidation = {
-  valid: peerCheck.status === 0,
+  valid: peerCheck.status === 0 && (peerGraph.problems ?? []).length === 0,
   react: peerGraph.dependencies?.react?.version,
   reactDom: peerGraph.dependencies?.["react-dom"]?.version,
   problems: peerGraph.problems ?? [],
 };
-assert(
-  reactPeerValidation.valid || reactPeerValidation.problems.length > 0,
-  `React peer validation returned no usable result: ${peerCheck.stderr}`,
-);
-if (publishedDependencies) {
-  assert(
-    reactPeerValidation.valid,
-    `Published-dependencies gate blocked by React peers: ${reactPeerValidation.problems.join("; ")}`,
+const failures = [];
+if (reactPeerValidation.valid) {
+  console.log(
+    `PASS: React peer closure (React ${reactPeerValidation.react}, React DOM ${reactPeerValidation.reactDom}, zero problems)`,
   );
-} else if (!reactPeerValidation.valid) {
-  console.warn("RELEASE BLOCKER — React peer closure:", reactPeerValidation.problems.join("; "));
+} else {
+  const failure = `React peer closure: ${reactPeerValidation.problems.join("; ") || peerCheck.stderr}`;
+  console.error(`FAIL: ${failure}`);
+  failures.push(failure);
 }
+const verify = (label, command, args) => {
+  try {
+    console.log(run(command, args));
+    console.log(`PASS: ${label}`);
+    return "passed";
+  } catch (error) {
+    console.error(`FAIL: ${label}`, error.stdout || error.message);
+    failures.push(label);
+    return "failed";
+  }
+};
+console.log(
+  run("node", [
+    "--input-type=module",
+    "-e",
+    `import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { atomic, parseRamp, rampOutcome } from '@xochi/client';
+const cjs = createRequire(import.meta.url)('@xochi/client');
+const schema = JSON.parse(readFileSync(new URL(import.meta.resolve('@xochi/client/ramp/contract.schema.json')), 'utf8'));
+const fixtures = JSON.parse(readFileSync(new URL(import.meta.resolve('@xochi/client/ramp/conformance.json')), 'utf8'));
+assert.equal(schema.$id, 'https://xochi.fi/contracts/ramp/1');
+assert.equal(atomic(90071992547409931234567890n), '90071992547409931234567890');
+assert.equal(cjs.atomic(90071992547409931234567890n), '90071992547409931234567890');
+for (const row of fixtures.wire_cases) {
+  const parsed = parseRamp(row.input);
+  assert.equal(parsed.ok, row.valid, row.id);
+  assert.deepEqual(cjs.parseRamp(row.input), parsed, row.id);
+  if (parsed.ok && parsed.value.kind === 'snapshot' && row.expected_outcome) {
+    assert.equal(rampOutcome(parsed.value).state, row.expected_outcome, row.id);
+  }
+}
+for (const row of fixtures.atomic_cases) {
+  if (row.valid) assert.equal(atomic(row.value), row.value);
+  else assert.throws(() => atomic(row.value));
+}
+console.log(JSON.stringify({ contract_version: fixtures.contract_version, wire_vectors: fixtures.wire_cases.length, atomic_vectors: fixtures.atomic_cases.length, formats: ['esm', 'cjs'] }));`,
+  ]),
+);
 const installedRoot = join(consumer, "node_modules/@xochi/widget");
+const peerTypeReferences = globSync("dist/**/*.d.{ts,mts,cts}", { cwd: installedRoot }).filter(
+  (path) => readFileSync(join(installedRoot, path), "utf8").includes("@zkp2p/sdk"),
+);
+if (peerTypeReferences.length) {
+  const failure = `Packed widget declarations reference @zkp2p/sdk: ${peerTypeReferences.join(", ")}`;
+  console.error(`FAIL: ${failure}`);
+  failures.push(failure);
+} else {
+  console.log("PASS: packed widget declarations have no @zkp2p/sdk references");
+}
 const installed = json(join(installedRoot, "package.json"));
 assertExports(installed, installedRoot, new Set(globSync("**/*", { cwd: installedRoot })));
 const asset = globSync("dist/assets/*", { cwd: installedRoot }).find((path) =>
@@ -344,10 +398,14 @@ import { Widget, configureWidget } from '@xochi/widget';
 import { Configurator } from '@xochi/widget/configurator';
 import * as model from '@xochi/widget/configurator-model';
 import widgetAsset from '@xochi/widget/assets/${basename(asset)}';
+import { atomic, parseRamp, type AtomicAmount } from '@xochi/client';
 import '@xochi/widget/styles.css';
 configureWidget({ apiUrl: 'http://localhost:8788', development: true,
   solverPin: { erc3009Allowlist: [], permit2Allowlist: [], requirePin: true }, depositAttestationSigner: '' });
 void model;
+const exact: AtomicAmount = atomic('90071992547409931234567890');
+void exact;
+void parseRamp({ contract_version: 'ramp/1', kind: 'error', code: 'capabilities_unavailable' });
 void import('@xochi/widget/integration');
 document.documentElement.dataset.widgetAsset = widgetAsset;
 createRoot(document.getElementById('root')!).render(<StrictMode><Suspense fallback={null}>
@@ -355,8 +413,8 @@ createRoot(document.getElementById('root')!).render(<StrictMode><Suspense fallba
 </Suspense></StrictMode>);
 `,
 );
-console.log(run("npx", ["--no-install", "tsc"]));
-console.log(run("npx", ["--no-install", "vite", "build"]));
+const declarations = verify("Strict TypeScript declarations", "npx", ["--no-install", "tsc"]);
+const consumerBuild = verify("Widget production build", "npx", ["--no-install", "vite", "build"]);
 writeFileSync(
   join(consumer, "configurator-only.html"),
   '<!doctype html><html><body><div id="root"></div><script type="module" src="/configurator-only.tsx"></script></body></html>',
@@ -384,12 +442,20 @@ export default defineConfig({
 });
 `,
 );
-console.log(run("npx", ["--no-install", "vite", "build", "--config", "configurator.config.mjs"]));
+const configuratorBuild = verify("Wallet-free configurator production build", "npx", [
+  "--no-install",
+  "vite",
+  "build",
+  "--config",
+  "configurator.config.mjs",
+]);
 const result = {
   mode,
-  state: publishedDependencies
-    ? "LOCAL WIDGET ARTIFACT VERIFIED AGAINST PUBLISHED DEPENDENCIES — NOT PUBLISHED OR DEPLOYED"
-    : "LOCAL-ARTIFACT REHEARSAL ONLY — NOT RELEASE QUALIFICATION",
+  state: failures.length
+    ? "CONSUMER VERIFICATION FAILED"
+    : publishedDependencies
+      ? "LOCAL WIDGET ARTIFACT VERIFIED AGAINST PUBLISHED DEPENDENCIES — NOT PUBLISHED OR DEPLOYED"
+      : "LOCAL-ARTIFACT REHEARSAL ONLY — NOT RELEASE QUALIFICATION",
   widgetSourceVersion: widgetManifest.version ?? null,
   prerequisiteProvenance: publishedDependencies
     ? "public npm registry"
@@ -401,9 +467,13 @@ const result = {
   consumer,
   credentialFreeInstall: true,
   privateRegistryDependency: false,
-  declarations: "tsc passed without skipLibCheck",
-  consumerBuild: "Vite production build passed",
-  configuratorWalletBoundary: "Installed Vite graph contains no wallet providers or wallet SDKs",
+  peerSdkVersion: PEER_SDK_VERSION,
+  declarations,
+  peerTypeReferences,
+  consumerBuild,
+  configuratorBuild,
+  failures,
 };
 writeFileSync(join(rehearsal, "verification.json"), JSON.stringify(result, null, 2));
 console.log(JSON.stringify(result, null, 2));
+assert.equal(failures.length, 0, failures.join("\n"));

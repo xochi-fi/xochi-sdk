@@ -21,6 +21,7 @@ export * from "./capabilities.js";
 export * from "./routeModel.js";
 export * from "./settlementEligibility.js";
 export * from "./trustFeatures.js";
+export * from "./ramp.js";
 export * from "./escrow.js";
 export type {
   MethodPin,
@@ -50,3 +51,8 @@ export type {
   SolverCapabilities,
   ZkMoneyRouteDestination,
 } from "@xochi/signer";
+export * from "./rampDiscovery.js";
+export * from "./rampProvider.js";
+export * from "./rampOperationStore.js";
+export * from "./rampClient.js";
+export * from "./xochiRampLeg.js";

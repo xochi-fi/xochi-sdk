@@ -13,8 +13,7 @@ export const ZKMONEY_ACTIVITY_URL = "https://wallet.zk.money/activity";
 
 export const ZKMONEY_ACCOUNT_URL = "https://wallet.zk.money/";
 
-export const ZKMONEY_PRIVACY_COPY =
-  "Inside zk.money on Aztec, amounts and participants are hidden from public view. Ethereum deposits and withdrawals stay public and may be correlated.";
+export const ZKMONEY_PRIVACY_COPY = "Amounts and participants hidden inside zk.money.";
 
 /** zk.money's fixed deposit fee, stated once beside the quote. */
 export const ZKMONEY_ARRIVAL_NOTE = "zk.money charges about $0.35 on arrival";
@@ -39,7 +38,7 @@ export function zkMoneyTagValid(tag: string): boolean {
 /** The tag's own field error, or null while empty or valid. */
 export function zkMoneyTagError(tag: string): string | null {
   if (tag.length === 0 || zkMoneyTagValid(tag)) return null;
-  return "Use 1–63 letters, numbers or hyphens.";
+  return "Use 1 to 63 letters, numbers or hyphens.";
 }
 
 /**

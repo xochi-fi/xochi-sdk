@@ -1014,13 +1014,6 @@
   pointer-events: none;
 }
 
-.reading-progress-bar {
-  height: 100%;
-  background: linear-gradient(90deg, var(--axol-coral), var(--decentralized-coral));
-  box-shadow: 0 0 8px var(--muted-gold-30);
-  transition: width 0.15s ease-out;
-}
-
 /* ============================================================
    Scroll to top button
    ============================================================ */
@@ -1104,4 +1097,8 @@
   .glyph-chevron {
     transition: none;
   }
+}
+
+.swap-recipient-sheet .recipient-field__label {
+  font-size: 0.75rem;
 }

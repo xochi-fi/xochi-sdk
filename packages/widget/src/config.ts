@@ -1,12 +1,37 @@
+import { firstPartyOrigins } from "./lib/hostOrigin.js";
+import { parseEmbedParams, type EmbedParams } from "@xochi/widget-lib";
 import { SUPPORTED_CHAIN_IDS, type PinnedEscrows, type PinnedPullRecipients } from "@xochi/client";
 
 /** Deployment settings only. Trading policy and security checks remain in the public packages. */
 export interface WidgetSettings {
   apiUrl: string;
+  /** Non-production Peer deployments require explicit host configuration. */
+  peerEnvironment?: "production" | "preproduction" | "staging";
+  /**
+   * Peer referral code (six alphanumeric characters) attached to payment-app
+   * cash-out deposits. Unset by default, and then no code is sent. Enable only
+   * after legal sign-off on Peer referral income; never hard-coded.
+   */
+  peerReferralCode?: string;
+  /**
+   * Per-operation canary cap: the most Base USDC (canonical atomic units, e.g.
+   * "5000000" for 5 USDC) one payment-app cash-out may deposit. Unset means no
+   * cap beyond Peer's own live limits.
+   */
+  offrampCanaryCapAtomic?: string;
+  /**
+   * The Buy equivalent: the most Base USDC (canonical atomic units) one Peer
+   * purchase may receive. Unset means no cap beyond Peer's own live limits.
+   */
+  onrampCanaryCapAtomic?: string;
   authApiUrl?: string;
   development?: boolean;
   appVersion?: string;
   siteUrl?: string;
+  /** Require this exact parent origin for iframe bridge messages when configured. */
+  hostOrigin?: string;
+  /** Space-separated explicit origins allowed to relay Stealth setup. */
+  firstPartyHosts?: string;
   walletConnectProjectId?: string;
   rpcUrls?: Partial<
     Record<
@@ -34,10 +59,16 @@ export interface WidgetSettings {
   escrows?: PinnedEscrows;
 }
 
+export let PEER_ENVIRONMENT: NonNullable<WidgetSettings["peerEnvironment"]> = "production";
+export let PEER_REFERRAL_CODE: string | undefined;
+export let OFFRAMP_CANARY_CAP_ATOMIC: string | undefined;
+export let ONRAMP_CANARY_CAP_ATOMIC: string | undefined;
 export let API_URL = "https://api.xochi.fi";
 export let AUTH_API_URL = API_URL;
 export let isDevelopment = false;
 export let APP_VERSION = "dev";
+export let FIRST_PARTY_HOST_ORIGINS: readonly string[] = [];
+export let HOST_ORIGIN: string | undefined;
 export let SITE_URL = "https://xochi.fi";
 export let WALLETCONNECT_PROJECT_ID = "a992784b090fa32d560ea6d4136d431f";
 export let RPC_URLS: NonNullable<WidgetSettings["rpcUrls"]> = {};
@@ -60,10 +91,36 @@ let configured = false;
 export function configureWidget(settings: WidgetSettings): void {
   if (configured)
     throw new Error("Widget settings are immutable for this document; reload to change them.");
+  if (
+    settings.peerEnvironment !== undefined &&
+    !["production", "preproduction", "staging"].includes(settings.peerEnvironment)
+  )
+    throw new Error("Invalid Peer environment");
+  if (
+    settings.peerReferralCode !== undefined &&
+    !/^[A-Za-z0-9]{6}$/.test(settings.peerReferralCode)
+  )
+    throw new Error("Invalid Peer referral code");
+  if (
+    settings.offrampCanaryCapAtomic !== undefined &&
+    !/^[1-9][0-9]{0,30}$/.test(settings.offrampCanaryCapAtomic)
+  )
+    throw new Error("Invalid cash-out canary cap");
+  if (
+    settings.onrampCanaryCapAtomic !== undefined &&
+    !/^[1-9][0-9]{0,30}$/.test(settings.onrampCanaryCapAtomic)
+  )
+    throw new Error("Invalid purchase canary cap");
+  PEER_ENVIRONMENT = settings.peerEnvironment ?? "production";
+  PEER_REFERRAL_CODE = settings.peerReferralCode;
+  OFFRAMP_CANARY_CAP_ATOMIC = settings.offrampCanaryCapAtomic;
+  ONRAMP_CANARY_CAP_ATOMIC = settings.onrampCanaryCapAtomic;
   API_URL = settings.apiUrl;
   AUTH_API_URL = settings.authApiUrl || API_URL;
   isDevelopment = settings.development ?? false;
   APP_VERSION = settings.appVersion ?? "dev";
+  HOST_ORIGIN = settings.hostOrigin;
+  FIRST_PARTY_HOST_ORIGINS = firstPartyOrigins(settings.firstPartyHosts ?? "");
   SITE_URL = settings.siteUrl || "https://xochi.fi";
   WALLETCONNECT_PROJECT_ID = settings.walletConnectProjectId ?? WALLETCONNECT_PROJECT_ID;
   RPC_URLS = Object.freeze({ ...settings.rpcUrls });
@@ -122,3 +179,39 @@ export const TIMEOUTS = {
 } as const;
 
 export const RETRY = { maxAttempts: 3, baseDelay: 1_000, maxDelay: 10_000 } as const;
+
+/** UI defaults and restrictions only; live capabilities remain the execution authority.
+ * Read on mount (including after updateParams navigates the existing iframe).
+ * Trade amount is intentionally excluded from this ramp/IA config surface.
+ */
+export type WidgetEmbedConfig = Pick<
+  EmbedParams,
+  | "initialTab"
+  | "tabs"
+  | "initialMode"
+  | "modes"
+  | "sendDestinations"
+  | "fiatCurrency"
+  | "rampProviders"
+>;
+
+/** Read the shared embed contract, preserving empty lists after legacy entries are dropped. */
+export function readWidgetEmbedConfig(
+  search = typeof window === "undefined" ? "" : window.location.search,
+): WidgetEmbedConfig {
+  const { initialTab, tabs, initialMode, modes, sendDestinations, fiatCurrency, rampProviders } =
+    parseEmbedParams(search);
+  return {
+    ...(initialTab === undefined || (tabs !== undefined && !tabs.includes(initialTab))
+      ? {}
+      : { initialTab }),
+    ...(tabs === undefined ? {} : { tabs }),
+    ...(initialMode === undefined || (modes !== undefined && !modes.includes(initialMode))
+      ? {}
+      : { initialMode }),
+    ...(modes === undefined ? {} : { modes }),
+    ...(sendDestinations === undefined ? {} : { sendDestinations }),
+    ...(fiatCurrency === undefined ? {} : { fiatCurrency }),
+    ...(rampProviders === undefined ? {} : { rampProviders }),
+  };
+}

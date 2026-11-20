@@ -6,3 +6,5 @@ export * from "./pages/configurator/paramsDraft.js";
 export * from "./pages/configurator/previewModel.js";
 export * from "./pages/configurator/routePicks.js";
 export * from "./pages/configurator/snippets.js";
+
+export * from "./pages/configurator/surfaceParams.js";

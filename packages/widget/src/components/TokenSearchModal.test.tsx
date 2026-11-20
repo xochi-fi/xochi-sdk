@@ -137,7 +137,6 @@ describe("TokenSearchModal capability inventory", () => {
         classify={available}
         initialChainId={BASE}
         zkMoney={{ selected: false }}
-        showAztecUnavailable
       />,
     );
 

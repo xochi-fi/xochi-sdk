@@ -693,18 +693,6 @@
   border-bottom: 1px solid var(--panel-border);
 }
 
-.activity-signin__text {
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-}
-
-.activity-signin__note {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: var(--text-faint);
-}
-
 .trade-link,
 .retry-btn {
   padding: 0.5rem 1rem;

@@ -102,6 +102,8 @@ export interface UseIntentParams {
   };
   /** Pause the pre-expiry quote auto-refresh (e.g. while a confirm modal is open). */
   paused?: boolean;
+  /** Independently reviewed legs keep their held quote until expiry; refresh only on a user action. */
+  manualQuoteRefresh?: boolean;
   /** Referral and promo codes the host set on the frame (`ref`, `promo`), sent on every quote. */
   ref?: string;
   promo?: string;
@@ -212,7 +214,7 @@ export interface UseIntentReturn {
 
   // Quote refresh
   quoteExpiresIn: number | null;
-  refreshQuote: () => void;
+  refreshQuote: (forceRefresh?: boolean) => void;
 
   /**
    * Live race telemetry for the in-flight intent, empty until Riddler emits
@@ -243,6 +245,7 @@ interface Bindings {
   ctxKey: string;
   /** Current exact live-route settlement authority; read again when async wallet work returns. */
   settlementAuthorized: boolean;
+  manualQuoteRefresh: boolean;
   render: (model: Model) => void;
   signTypedDataAsync: SignTypedDataAsync;
   ensureSession: () => Promise<string | null>;
@@ -361,7 +364,7 @@ function createRuntime(initial: Model): Runtime {
       case "Timer": {
         const call = effect.call;
         clearTimer(call.timer);
-        if (call.op === "clear") return;
+        if (call.op === "clear" || (call.timer === "refresh" && io.manualQuoteRefresh)) return;
         const fire = () => dispatch({ type: "TimerFired", timer: call.timer });
         const handle = call.repeat
           ? setInterval(fire, call.ms)
@@ -584,6 +587,7 @@ export function useIntent(params: UseIntentParams): UseIntentReturn {
     ctx,
     ctxKey,
     settlementAuthorized,
+    manualQuoteRefresh: params.manualQuoteRefresh === true,
     render: setModel,
     signTypedDataAsync,
     ensureSession,
@@ -674,9 +678,12 @@ export function useIntent(params: UseIntentParams): UseIntentReturn {
     if (settlementAuthorized) dispatch({ type: "PullSignRequested" });
   }, [dispatch, settlementAuthorized]);
   const reset = useCallback(() => dispatch({ type: "ResetRequested" }), [dispatch]);
-  const refreshQuote = useCallback((): void => {
-    if (settlementAuthorized) dispatch({ type: "RefreshRequested" });
-  }, [dispatch, settlementAuthorized]);
+  const refreshQuote = useCallback(
+    (forceRefresh = false): void => {
+      if (settlementAuthorized) dispatch({ type: "RefreshRequested", forceRefresh });
+    },
+    [dispatch, settlementAuthorized],
+  );
 
   useEffect(() => {
     if (previousQuoteKey.current === quoteKey) return;

@@ -49,11 +49,14 @@ import {
   type SelectableChainId,
 } from "@xochi/client";
 import { findTokenBySymbol } from "./config.js";
+import type { ResolvedRecipient } from "../../lib/recipient/index.js";
+import { rememberRecipient } from "../../lib/recipient/recent.js";
+import { rememberSendIntent } from "../send/sendRetry.js";
 import { planResume, shouldCaptureToActivity } from "./resumeSwap.js";
 import type { ResumedSwap } from "./resumeSwap.js";
 import type { RouteCheck, SwapRouteLegs } from "./useSwapRoute.js";
 import type { SettlementFix } from "../../lib/settlementAvailability.js";
-import type { DepositActivity } from "../../types/activity.js";
+import type { DepositActivity, SwapActivityItem } from "../../types/activity.js";
 import {
   upsertLocalSwap,
   toActivityStatus,
@@ -63,6 +66,8 @@ import {
 import { verifyStoredDeposit } from "@xochi/client";
 import { DEPOSIT_ATTESTATION_PIN } from "../../config.js";
 import { normalizeZkMoneyTag, zkMoneyTagValid } from "./zkMoney.js";
+import type { SendRecipientDisplay } from "../send/sendCopy.js";
+import type { StealthRecipient } from "../send/stealthRecipient.js";
 
 // The submit button's label while the selected privacy mode is unavailable.
 // "wallet" never shows here: the disconnected branch outranks it.
@@ -108,6 +113,9 @@ export interface SwapPrefill {
   fromToken: string;
   toToken: string;
   fromAmount: string;
+  fromSend?: true;
+  swapRecipientRetry?: { input?: string; zkMoneyDestination?: boolean };
+  sendRecipientDisplay?: SendRecipientDisplay;
   /**
    * Settlement mode of the original order, restored on retry (Phase 6).
    * Absent on rows captured before the field existed, which reads as public.
@@ -115,10 +123,19 @@ export interface SwapPrefill {
   settlement?: SettlementType;
   recipientTag?: string;
   refundAddress?: string;
+  /**
+   * Another person's stealth meta-address, from Send > Stealth: public keys
+   * only, and only with `settlement: "stealth"`. Absent pays the wallet's own
+   * keys.
+   */
+  stealthRecipient?: StealthRecipient;
+  /** A history row's marker that its order paid someone else's keys. */
+  stealthPayee?: "other";
 }
 
 export interface UseSwapFlowParams {
   prefill: SwapPrefill | null | undefined;
+  sendRecipient?: ResolvedRecipient;
   intent: UseIntentReturn;
   isConnected: boolean;
   address: string | undefined;
@@ -145,12 +162,19 @@ export interface UseSwapFlowParams {
   /** The selected mode's fix; non-null blocks submit until the user acts. */
   settlementFix: SettlementFix | null;
   destination: IntentDestination;
+  swapRecipientLabel?: string;
+  swapRecipient?: ResolvedRecipient | null;
+  swapRecipientRetryInput?: string;
+  restoreSwapRecipient?: (retry: SwapPrefill["swapRecipientRetry"]) => void;
   recipientMissing: boolean;
   recipientInvalid: boolean;
   restoreSettlement: (next: SettlementType) => void;
   clearRecipient: () => void;
   restoreRecipientTag: (tag: string) => void;
   restoreRefundAddress: (address: string) => void;
+  /** The live form's payee: someone else's meta-address (`"other"`) or the wallet's own keys. */
+  stealthPayee: "self" | "other";
+  restoreStealthRecipient: (next: StealthRecipient | null) => void;
   /** Flow-modal state, held by the composition (it also pauses the quote). */
   flowOpen: boolean;
   setFlowOpen: (open: boolean) => void;
@@ -166,6 +190,17 @@ export interface SwapCta {
   action: "submit" | "useMax";
 }
 
+type ActivityRecipientDisplay = Pick<
+  SwapActivityItem["data"],
+  "sendRecipientDisplay" | "swapRecipientLabel" | "swapRecipientRetryInput"
+>;
+
+type FlowDestination = IntentDestination &
+  ActivityRecipientDisplay & {
+    sendRecipient?: ResolvedRecipient;
+    swapRecipient?: ResolvedRecipient | null;
+  };
+
 export interface UseSwapFlowResult {
   handleMarketSubmit: () => Promise<void>;
   handleConfirmSwap: () => void;
@@ -175,7 +210,9 @@ export interface UseSwapFlowResult {
   handleCloseFlow: () => void;
   handleStartOver: () => void;
   flowReopenable: boolean;
-  flowDestination: IntentDestination;
+  flowDestination: FlowDestination;
+  /** Whose keys the modal's Stealth ending describes, bound like `flowDestination`. */
+  flowStealthPayee: "self" | "other";
   executionStartTime: number | null;
   resumedDeposit: DepositActivity | null;
   /** The one CTA, from one precedence chain: label and action cannot disagree. */
@@ -185,6 +222,7 @@ export interface UseSwapFlowResult {
 
 export function useSwapFlow({
   prefill,
+  sendRecipient,
   intent,
   isConnected,
   address,
@@ -205,12 +243,18 @@ export function useSwapFlow({
   settlement,
   settlementFix,
   destination,
+  swapRecipientLabel,
+  swapRecipient,
+  swapRecipientRetryInput,
+  restoreSwapRecipient,
   recipientMissing,
   recipientInvalid,
   restoreSettlement,
   clearRecipient,
   restoreRecipientTag,
   restoreRefundAddress,
+  stealthPayee,
+  restoreStealthRecipient,
   flowOpen,
   setFlowOpen,
   resumed,
@@ -228,7 +272,10 @@ export function useSwapFlow({
   // through `flowDestination` below; null whenever no order is in flight. A
   // resumed order was never confirmed here, so its bound copy is the record's
   // (`resumedDestination` below).
-  const [executedDestination, setExecutedDestination] = useState<IntentDestination | null>(null);
+  const [executedDestination, setExecutedDestination] = useState<FlowDestination | null>(null);
+  // Bound and released with `executedDestination`: who the dispatched Stealth
+  // order pays, which the live form can no longer change.
+  const [executedPayee, setExecutedPayee] = useState<"self" | "other" | null>(null);
 
   /**
    * True while the panel is showing a RESUMED intent, i.e. one restored from the
@@ -241,9 +288,14 @@ export function useSwapFlow({
 
   // Tag labels on a held quote describe its accepted recipient, not edits to
   // the form behind the modal. The quote remains the funding authority.
-  const quotedDestination: IntentDestination = intent.quote
-    ? { ...destination, recipientTag: intent.quote.recipientTag }
-    : destination;
+  const sendRecipientDisplay =
+    sendRecipient && prefill?.fromSend ? prefill.sendRecipientDisplay : undefined;
+  const quotedDestination: FlowDestination = {
+    ...destination,
+    recipientTag: intent.quote ? intent.quote.recipientTag : destination.recipientTag,
+    ...(sendRecipientDisplay && { sendRecipientDisplay, sendRecipient }),
+    ...(swapRecipientLabel && { swapRecipientLabel, swapRecipientRetryInput, swapRecipient }),
+  };
 
   /**
    * Deposit facts for a RESUMED deposit swap, so the flow modal can rebuild the
@@ -271,6 +323,7 @@ export function useSwapFlow({
   // on its chain; if a leg cannot be resolved (unknown/unsupported token or a
   // non-EVM chain), it leaves the panel untouched and tells the user.
   const appliedPrefillNonce = useRef<number | null>(null);
+  const routeBeforeSend = useRef<SwapRouteLegs | null>(null);
   useEffect(() => {
     if (!prefill || prefill.nonce === appliedPrefillNonce.current) return;
     appliedPrefillNonce.current = prefill.nonce;
@@ -300,7 +353,24 @@ export function useSwapFlow({
       showToast("Couldn't reload that trade. Set it up again.", "error");
       return;
     }
+    // A history row that paid someone else's keys keeps no keys to pay again,
+    // and retrying it as-is would pay this wallet's own keys instead.
+    if (
+      prefill.stealthPayee === "other" &&
+      prefill.stealthRecipient === undefined &&
+      !prefill.swapRecipientRetry
+    ) {
+      showToast("That send paid someone else's stealth keys. Start it again from Send.", "error");
+      return;
+    }
+    if (prefill.stealthRecipient !== undefined && prefill.settlement !== "stealth") {
+      showToast("Couldn't reload that trade. Set it up again.", "error");
+      return;
+    }
 
+    routeBeforeSend.current = prefill.fromSend
+      ? (routeBeforeSend.current ?? { fromChainId, toChainId, fromToken, toToken })
+      : null;
     intent.reset();
     // Restore the order's selected mode even if its route is no longer
     // authorized. It stays selected with its fix shown; no quote is requested
@@ -323,6 +393,8 @@ export function useSwapFlow({
           : "public",
     );
     clearRecipient();
+    restoreSwapRecipient?.(prefill.swapRecipientRetry);
+    restoreStealthRecipient(prefill.stealthRecipient ?? null);
     restoreRecipientTag(recipientTag ?? "");
     restoreRefundAddress(prefill.refundAddress ?? "");
     applyRoute({
@@ -330,10 +402,17 @@ export function useSwapFlow({
       toChainId: prefill.toChainId,
       fromToken: nextFromToken,
       toToken: nextToToken,
-      zkMoneyDestination: recipientTag !== undefined,
+      zkMoneyDestination:
+        recipientTag !== undefined || prefill.swapRecipientRetry?.zkMoneyDestination === true,
     });
     try {
-      setAmount(formatTokenAmount(BigInt(prefill.fromAmount), nextFromToken.decimals, 6));
+      setAmount(
+        formatTokenAmount(
+          BigInt(prefill.fromAmount),
+          nextFromToken.decimals,
+          nextFromToken.decimals,
+        ),
+      );
     } catch {
       setAmount("");
     }
@@ -364,8 +443,12 @@ export function useSwapFlow({
 
     // planResume returns null on a leg it cannot render faithfully, in which
     // case the panel is left alone; the feed still shows and advances the swap.
-    const plan = planResume(findResumableSwap(address));
+    const record = findResumableSwap(address);
+    const plan = planResume(record);
     if (!plan) return;
+    const display = record?.data as ActivityRecipientDisplay | undefined;
+    const send = display?.sendRecipientDisplay;
+    const swapLabel = display?.swapRecipientLabel;
 
     resumedForAddress.current = address;
     applyRoute({
@@ -387,11 +470,23 @@ export function useSwapFlow({
     // gets the same treatment a live one gets rather than being trusted because
     // it was ours once. Starting null also means no unproven address can flash
     // on screen while the check runs.
+    const destination: FlowDestination = {
+      ...plan.destination,
+      sendRecipientDisplay:
+        (send?.mode === "Stealth" || send?.mode === "Shielded") &&
+        typeof send.label === "string" &&
+        send.label.length <= 255
+          ? send
+          : undefined,
+      swapRecipientLabel:
+        typeof swapLabel === "string" && swapLabel.length <= 255 ? swapLabel : undefined,
+    };
     setResumed({
       intentId: plan.intentId,
       toAmount: plan.toAmount,
       deposit: null,
-      destination: plan.destination,
+      destination,
+      stealthPayee: plan.stealthPayee,
     });
     // Elapsed counts from the original submit, not from now: a user ten minutes
     // into a settling swap must not be told they just started.
@@ -471,6 +566,8 @@ export function useSwapFlow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address, flowOpen, intent.status]);
 
+  const recentSwapId = useRef<string | null>(null);
+
   // Log a submitted swap to the local activity feed. Trading is wallet-first, so
   // the Member-gated history endpoint returns nothing here; persisting locally is
   // what makes the feed reflect the user's own trades. Keyed on intentId+status,
@@ -510,6 +607,20 @@ export function useSwapFlow({
     // is live, so that was dropping production swaps, and Tron ORIGIN is the
     // flow where losing the tab is the NORMAL case, because the user has to
     // leave the browser for a Tron wallet to send at all.
+    if (intent.intentId && executedDestination?.sendRecipientDisplay) {
+      rememberSendIntent(intent.intentId, executedDestination.sendRecipientDisplay);
+      if (intent.status === "completed" && executedDestination.sendRecipient) {
+        rememberRecipient(executedDestination.sendRecipient);
+      }
+    }
+    if (
+      executedDestination?.swapRecipient &&
+      recentSwapId.current !== intent.intentId &&
+      (intent.status !== "failed" || intent.receipt.phase === "may-have-moved")
+    ) {
+      recentSwapId.current = intent.intentId;
+      rememberRecipient(executedDestination.swapRecipient);
+    }
     upsertLocalSwap(owner, {
       id: intent.intentId,
       type: "swap",
@@ -554,6 +665,15 @@ export function useSwapFlow({
             : "public"
           : settlement,
         recipientTag: executedDestination?.recipientTag ?? intent.quote?.recipientTag,
+        ...({
+          sendRecipientDisplay: executedDestination?.sendRecipientDisplay,
+          swapRecipientLabel: executedDestination?.swapRecipientLabel,
+          swapRecipientRetryInput: executedDestination?.swapRecipientRetryInput,
+        } satisfies ActivityRecipientDisplay),
+        // The marker only, never the keys (see SwapActivity.stealthPayee).
+        ...((executedDestination ? executedPayee : stealthPayee) === "other" && {
+          stealthPayee: "other" as const,
+        }),
         isCrossChain: fromChainId !== toChainId,
         // The VERIFIED deposit binding, stored verbatim, so a resumed swap gets
         // a usable screen back rather than a modal with no address on it.
@@ -631,7 +751,8 @@ export function useSwapFlow({
   const quoteStale =
     intent.quotedFromAmount !== null && intent.quotedFromAmount !== amountBigInt.toString();
 
-  const hasCurrentSettlementAuthority = routeCheck.status === "supported" && settlementFix === null;
+  const hasCurrentSettlementAuthority =
+    routeCheck.status === "supported" && settlementFix === null && !recipientInvalid;
 
   // Invalidate only a quote that is still provably pre-dispatch. During a
   // wallet prompt, cancelSign arbitrates the race with execute: false means the
@@ -646,6 +767,7 @@ export function useSwapFlow({
     setFlowOpen(false);
     setExecutionStartTime(null);
     setExecutedDestination(null);
+    setExecutedPayee(null);
     return true;
   }, [intent.status, intent.cancelSign, intent.reset, setFlowOpen]);
 
@@ -698,7 +820,14 @@ export function useSwapFlow({
         );
         return;
       }
-      if (await intent.allocateDepositRoute()) setFlowOpen(true);
+      setExecutedDestination(quotedDestination);
+      setExecutedPayee(stealthPayee);
+      if (await intent.allocateDepositRoute()) {
+        setFlowOpen(true);
+      } else {
+        setExecutedDestination(null);
+        setExecutedPayee(null);
+      }
       return;
     }
     if (!intent.canSign) {
@@ -729,6 +858,8 @@ export function useSwapFlow({
     switchChainAsync,
     intent.canSign,
     quoteStale,
+    quotedDestination,
+    stealthPayee,
     intent.canAllocateDepositRoute,
     intent.allocateDepositRoute,
     insufficientBalance,
@@ -739,6 +870,35 @@ export function useSwapFlow({
     invalidateHeldQuote,
     showToast,
     setFlowOpen,
+  ]);
+
+  // Leaving Send discards a held quote and clears the payee from the shared Swap form.
+  // A dispatched order keeps the display data captured with its execution destination.
+  useEffect(() => {
+    const previousRoute = routeBeforeSend.current;
+    if (previousRoute && prefill == null) {
+      const cancelled = invalidateHeldQuote();
+      if (executedDestination && !cancelled) return;
+      routeBeforeSend.current = null;
+      restoreSettlement("public");
+      clearRecipient();
+      restoreSwapRecipient?.(undefined);
+      restoreStealthRecipient(null);
+      restoreRecipientTag("");
+      applyRoute(previousRoute);
+      setAmount("");
+    }
+  }, [
+    prefill,
+    invalidateHeldQuote,
+    executedDestination,
+    restoreSettlement,
+    clearRecipient,
+    restoreSwapRecipient,
+    restoreStealthRecipient,
+    restoreRecipientTag,
+    applyRoute,
+    setAmount,
   ]);
 
   // Confirm in the modal -> sign. Recheck exact route and settlement authority
@@ -752,6 +912,7 @@ export function useSwapFlow({
     }
     setExecutionStartTime(Date.now());
     setExecutedDestination(quotedDestination);
+    setExecutedPayee(stealthPayee);
     intent.sign();
   }, [
     hasCurrentSettlementAuthority,
@@ -760,6 +921,7 @@ export function useSwapFlow({
     intent.sign,
     invalidateHeldQuote,
     quotedDestination,
+    stealthPayee,
   ]);
 
   // A dismissed wallet prompt has not dispatched anything. End the machine's
@@ -770,6 +932,7 @@ export function useSwapFlow({
     if (!intent.cancelSign()) return;
     setExecutionStartTime(null);
     setExecutedDestination(null);
+    setExecutedPayee(null);
   }, [intent]);
 
   // Single close for the flow modal.
@@ -826,6 +989,7 @@ export function useSwapFlow({
       intent.reset();
       setExecutionStartTime(null);
       setExecutedDestination(null);
+      setExecutedPayee(null);
       // `resumed` needs no clearing here: it is keyed to the intent id, so the
       // reset above already stops it applying. Left to be dropped on the next
       // resume rather than cleared on one of several exit paths, since missing
@@ -858,6 +1022,7 @@ export function useSwapFlow({
     intent.reset();
     setExecutionStartTime(null);
     setExecutedDestination(null);
+    setExecutedPayee(null);
   }, [intent, address, setFlowOpen]);
 
   // In flight with the modal closed: the CTA is the way back into the
@@ -879,6 +1044,7 @@ export function useSwapFlow({
           action: "useMax",
         }
       : null;
+  const namedSwapLabel = swapRecipientLabel ? `Swap to ${swapRecipientLabel}` : undefined;
   const ctaChoice: string | SwapCta = flowReopenable
     ? "View order progress"
     : !isConnected
@@ -915,13 +1081,19 @@ export function useSwapFlow({
                           : intent.canAllocateDepositRoute
                             ? intent.error
                               ? "Try reserving route again"
-                              : "Review & reserve route"
+                              : (namedSwapLabel ?? "Review & reserve route")
                             : intent.error
                               ? "Quote failed"
                               : intent.canSign
                                 ? quoteStale
                                   ? "Updating quote..."
-                                  : `Swap ${fromToken.symbol} ${GLYPH.flow} ${toToken.symbol}`
+                                  : sendRecipientDisplay
+                                    ? `Send ${formatTokenAmount(amountBigInt, fromToken.decimals, fromToken.decimals)} ${fromToken.symbol} with ${sendRecipientDisplay.mode}`
+                                    : (namedSwapLabel ??
+                                      (fromChainId !== toChainId &&
+                                      fromToken.symbol === toToken.symbol
+                                        ? `Bridge ${fromToken.symbol}`
+                                        : `Swap ${fromToken.symbol} ${GLYPH.flow} ${toToken.symbol}`))
                                 : "Getting quote...";
   const cta: SwapCta =
     typeof ctaChoice === "string" ? { label: ctaChoice, action: "submit" } : ctaChoice;
@@ -940,6 +1112,8 @@ export function useSwapFlow({
     // a resume), the live form's otherwise. Never the live toggle for an
     // executed order (see executedDestination above).
     flowDestination: executedDestination ?? resumedDestination ?? quotedDestination,
+    flowStealthPayee:
+      executedPayee ?? (isResumedIntent ? (resumed.stealthPayee ?? "self") : null) ?? stealthPayee,
     executionStartTime,
     resumedDeposit,
     needsChainSwitch,

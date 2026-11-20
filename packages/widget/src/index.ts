@@ -10,7 +10,12 @@ export function applyInitialWidgetTheme(search: string): void {
   if (fixed !== null) applyTheme(fixed);
 }
 
-export { configureWidget, type WidgetSettings } from "./config.js";
+export {
+  configureWidget,
+  readWidgetEmbedConfig,
+  type WidgetEmbedConfig,
+  type WidgetSettings,
+} from "./config.js";
 
 // Static imports would initialize wallet providers before deployment settings and browser shims.
 /** Complete trading widget. Configure once and render inside React Suspense. */
@@ -19,3 +24,4 @@ export const Widget = lazy(async () => {
   await import("./browser.js");
   return import("./EmbedApp.js");
 });
+export * from "./ramp/peer/index.js";

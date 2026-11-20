@@ -42,3 +42,62 @@ it.each([
   if (!caps) throw new Error("Capability fixture is invalid");
   expect(model.embedOffer(caps, "live").sourceChainIds.includes(5042)).toBe(offered);
 });
+
+it.each([undefined, "production", "preproduction", "staging"] as const)(
+  "selects Peer environment only from runtime settings: %s",
+  async (peerEnvironment) => {
+    vi.resetModules();
+    const config = await import("./config.js");
+    expect(config.PEER_ENVIRONMENT).toBe("production");
+    config.configureWidget({
+      apiUrl: "https://api.example.test",
+      peerEnvironment,
+      solverPin: { erc3009Allowlist: [], permit2Allowlist: [], requirePin: true },
+      depositAttestationSigner: "",
+    });
+    expect(config.PEER_ENVIRONMENT).toBe(peerEnvironment ?? "production");
+    const { peerConfiguration } = await import("./ramp/peer/discovery.js");
+    expect(peerConfiguration()).toEqual(
+      peerConfiguration({ environment: peerEnvironment ?? "production" }),
+    );
+  },
+);
+
+it("keeps the Peer referral code and both canary caps unset unless configured", async () => {
+  vi.resetModules();
+  const config = await import("./config.js");
+  const base = {
+    apiUrl: "https://api.example.test",
+    solverPin: { erc3009Allowlist: [], permit2Allowlist: [], requirePin: true },
+    depositAttestationSigner: "",
+  };
+  config.configureWidget(base);
+  expect(config.PEER_REFERRAL_CODE).toBeUndefined();
+  expect(config.OFFRAMP_CANARY_CAP_ATOMIC).toBeUndefined();
+  expect(config.ONRAMP_CANARY_CAP_ATOMIC).toBeUndefined();
+
+  vi.resetModules();
+  const set = await import("./config.js");
+  set.configureWidget({
+    ...base,
+    peerReferralCode: "ABC123",
+    offrampCanaryCapAtomic: "5000000",
+    onrampCanaryCapAtomic: "7000000",
+  });
+  expect(set.PEER_REFERRAL_CODE).toBe("ABC123");
+  expect(set.OFFRAMP_CANARY_CAP_ATOMIC).toBe("5000000");
+  expect(set.ONRAMP_CANARY_CAP_ATOMIC).toBe("7000000");
+
+  for (const bad of [
+    { peerReferralCode: "abc" },
+    { peerReferralCode: "ABC-12" },
+    { offrampCanaryCapAtomic: "5.0" },
+    { offrampCanaryCapAtomic: "0" },
+    { onrampCanaryCapAtomic: "1e6" },
+    { onrampCanaryCapAtomic: "0" },
+  ]) {
+    vi.resetModules();
+    const fresh = await import("./config.js");
+    expect(() => fresh.configureWidget({ ...base, ...bad })).toThrow();
+  }
+});

@@ -120,11 +120,11 @@
   --shadow-blockchain: #e0ddd6;
 
   /* Text scale, and the theme that needed this most.
-     Contrast is against this theme's card surface, rgb(254,253,253), which is
-     --panel-bg (rgba(255,255,255,0.85)) composited over --obsidian (#f5f3ef).
+     Contrast is against this theme's card surface, rgb(248,244,235), which is
+     --panel-bg (rgba(248,244,234,0.85)) composited over --obsidian (#f5f3ef).
      Note the direction: here the card is LIGHTER than the page it sits on, so
      for dark ink the card is the flattering surface, the opposite of the dark
-     themes. Text on the bare page reads slightly lower (--text-dim 4.72:1),
+     themes. Text on the bare page reads at a similar contrast (--text-dim 4.54:1),
      still over AA. Every ratio below is asserted by textContrast.test.ts.
 
      It had inherited the dark themes' alphas without accounting for the flip.
@@ -141,11 +141,11 @@
      collapsed --text-muted and --text-dim to 0.02 apart, which reproduced the
      one-rung-two-names defect this whole change exists to remove. */
   --pearl-cream: #1a1a1c;
-  --text-emphasis: rgba(26, 26, 28, 0.8); /* 9.10:1 */
-  --text-strong: rgba(26, 26, 28, 0.74); /* 7.33:1  (was 0.7  = 6.37) */
-  --text-secondary: rgba(26, 26, 28, 0.69); /* 6.16:1  (was 0.65 = 5.38) */
-  --text-muted: rgba(26, 26, 28, 0.64); /* 5.17:1  (was 0.5  = 3.31, under AA) */
-  --text-dim: rgba(26, 26, 28, 0.6); /* 4.53:1  (was 0.3  = 1.93, unreadable) */
+  --text-emphasis: rgba(26, 26, 28, 0.8); /* 8.61:1 */
+  --text-strong: rgba(26, 26, 28, 0.74); /* 6.99:1  (was 0.7  = 6.37) */
+  --text-secondary: rgba(26, 26, 28, 0.69); /* 5.90:1  (was 0.65 = 5.38) */
+  --text-muted: rgba(26, 26, 28, 0.64); /* 5.05:1  (was 0.5  = 3.31, under AA) */
+  --text-dim: rgba(26, 26, 28, 0.61); /* 4.56:1  (was 0.3  = 1.93, unreadable) */
   --line-subtle: rgba(26, 26, 28, 0.08);
   --line-strong: rgba(26, 26, 28, 0.62);
   --crypto-frost: #0a0a0c;
@@ -160,7 +160,11 @@
   --muted-gold-30: rgba(122, 110, 90, 0.25);
   --muted-coral: rgba(180, 120, 60, 0.5);
 
-  --axol-coral: #b8802e;
+  --axol-coral: #70420f;
+  --coral-10: rgba(184, 128, 46, 0.1);
+  --coral-15: rgba(184, 128, 46, 0.15);
+  --coral-20: rgba(184, 128, 46, 0.2);
+  --coral-30: rgba(184, 128, 46, 0.3);
   --decentralized-coral: #b54e40;
   --cryptowave-sky: #2a7498;
   --node-indigo: #28338b;
@@ -170,7 +174,7 @@
   --pearl-violet: rgba(40, 51, 139, 0.1);
   --pearl-blue: rgba(42, 116, 152, 0.1);
 
-  --panel-bg: rgba(255, 255, 255, 0.85);
+  --panel-bg: rgba(248, 244, 234, 0.85);
   --panel-bg-elevated: rgba(255, 255, 255, 0.95);
   --panel-bg-subtle: rgba(255, 255, 255, 0.6);
   --panel-border: rgba(26, 26, 28, 0.1);

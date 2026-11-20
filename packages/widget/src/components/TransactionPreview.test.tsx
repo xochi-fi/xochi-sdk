@@ -2,7 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, screen } from "@testing-library/react";
-import { mapQuoteResponse, QuoteResponseSchema } from "@xochi/client";
+import { mapQuoteResponse, QuoteResponseSchema, SIMPLE_ACCOUNT_FACTORY } from "@xochi/client";
 import { TransactionPreview } from "./TransactionPreview.js";
 import { apiStub, renderTrade } from "../pages/trade/harness.js";
 import { quoteWire } from "../test/intentHarness.js";
@@ -25,7 +25,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("Aztec route labeling", () => {
+describe("zk.money route labeling", () => {
   it("names a non-shielded Aztec destination Stealth", async () => {
     await renderTrade(
       <TransactionPreview
@@ -49,7 +49,30 @@ describe("Aztec route labeling", () => {
 
     const route = screen.getByText(/arrives in/).textContent ?? "";
     expect(route).toContain("arrives in Stealth");
-    expect(route).toContain("on Aztec");
+    expect(route).toContain("on zk.money");
     expect(route).not.toContain("Shielded");
   });
+});
+
+it("keeps the own-wallet claim disclosure for a Stealth swap", async () => {
+  await renderTrade(
+    <TransactionPreview
+      quote={{ ...quote, claimInfo: { factoryAddress: SIMPLE_ACCOUNT_FACTORY, salt: 0 } }}
+      fromAmount="1000000000000000000"
+      fromSymbol="DAI"
+      fromDecimals={18}
+      toSymbol="DAI"
+      toDecimals={18}
+      fromChainId={1}
+      toChainId={1}
+      destination={{ type: "stealth", shielded: false }}
+      onConfirm={() => {}}
+      onCancel={() => {}}
+      isLoading={false}
+      approval="none"
+    />,
+  );
+
+  expect(screen.getByText(/only the connected wallet controls/)).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Confirm swap" })).toBeTruthy();
 });

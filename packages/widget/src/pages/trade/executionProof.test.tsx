@@ -215,7 +215,9 @@ describe("stealth ending is its own state (4.6)", () => {
     );
 
   it("titles the stealth completion as a landing, not a finished swap", () => {
-    expect(stealthSuccess().container.textContent).toContain("Landed at the private address");
+    expect(stealthSuccess().container.textContent).toContain(
+      "Landed at the one-time stealth address",
+    );
     cleanup();
     // The contrast is the point: the same variant on a public route says the
     // swap is done, because there it is.
@@ -302,7 +304,7 @@ describe("stealth ending is its own state (4.6)", () => {
         }}
       />,
     );
-    expect(screen.getByText("Landed at the private address")).toBeTruthy();
+    expect(screen.getByText("Landed at the one-time stealth address")).toBeTruthy();
     screen.getByRole("button", { name: "Claim payment" }).click();
     expect(handed).toBe(1);
   });

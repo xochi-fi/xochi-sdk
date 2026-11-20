@@ -10,6 +10,7 @@ import { parseCapabilities } from "@xochi/signer";
 import { FALLBACK_CAPABILITIES } from "../../lib/capabilities.js";
 import { FRAME_FIELDS, embedOffer } from "../trade/embedParams.js";
 import { EMBED_PARAM } from "@xochi/widget-lib";
+import { SURFACE_FIELDS } from "./surfaceParams.js";
 import { FIELD_BY_KEY, readParamsDraft } from "./paramsDraft.js";
 import { findTokenBySymbol } from "../trade/config.js";
 
@@ -59,16 +60,32 @@ const LIVE = embedOffer(caps, true);
 const FALLBACK = embedOffer(FALLBACK_CAPABILITIES, false);
 
 /** The keys the frame resolves. */
-const FRAME_KEYS = FRAME_FIELDS.map((field) => EMBED_PARAM[field]);
+const FRAME_KEYS = [...FRAME_FIELDS, ...SURFACE_FIELDS].map((field) => EMBED_PARAM[field]);
 
 describe("readParamsDraft", () => {
   it("recognises every parameter the frame reads", () => {
     expect(Object.keys(FIELD_BY_KEY).sort()).toEqual([...FRAME_KEYS].sort());
     for (const key of FRAME_KEYS) {
-      const { problems } = readParamsDraft(`${key}=`, LIVE);
+      const { problems, params } = readParamsDraft(`${key}=`, LIVE);
+      if (["tabs", "modes", "sendDestinations", "rampProviders"].includes(key)) {
+        expect(problems, key).toEqual([]);
+        expect(params, key).toEqual({ [key]: [] });
+        continue;
+      }
       expect(problems, key).toHaveLength(1);
       expect(problems[0], key).toMatch(new RegExp(`^${key} needs a value`));
     }
+  });
+
+  it("accepts public narrowing and rejects inconsistent initial selections", () => {
+    expect(
+      readParamsDraft(
+        "tabs=trade,send\ninitialTab=trade\nmodes=offramp\ninitialMode=offramp\nsendDestinations=address\nfiatCurrency=USD\nrampProviders=peer",
+        LIVE,
+      ).problems,
+    ).toEqual([]);
+    expect(readParamsDraft("tabs=send\ninitialTab=trade", LIVE).problems).toHaveLength(1);
+    expect(readParamsDraft("modes=onramp\ninitialMode=swap", LIVE).problems).toHaveLength(1);
   });
 
   it("gives examples that apply when typed as they are shown", () => {
@@ -76,6 +93,7 @@ describe("readParamsDraft", () => {
       for (const key of FRAME_KEYS) {
         // Take the example out of the message a user actually reads.
         const [message] = readParamsDraft(`${key}=`, offer).problems;
+        if (message === undefined) continue;
         const example = /, like (\S+)\.$/.exec(message)?.[1];
         expect(example, message).toMatch(new RegExp(`^${key}=`));
         expect(readParamsDraft(example ?? "", offer).problems, example).toEqual([]);

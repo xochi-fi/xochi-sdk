@@ -1,0 +1,124 @@
+/* Trade/Cash out cash-out: review, wallet steps and order progress.
+   Text stays on the shared scale; status is said in words, not only colour. */
+
+.send-check {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  min-height: 44px;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.send-check input {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0.1rem 0 0;
+  appearance: none;
+  display: grid;
+  place-content: center;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-xs);
+  background: var(--inset-bg);
+  color: var(--text-emphasis);
+  cursor: pointer;
+}
+
+.send-check input:focus {
+  outline: 2px solid var(--pearl-cream);
+  outline-offset: 2px;
+}
+
+.send-check input:checked::after {
+  content: "";
+  width: 0.35rem;
+  height: 0.65rem;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: translateY(-1px) rotate(45deg);
+}
+
+@media (forced-colors: active) {
+  .send-check input {
+    appearance: auto;
+  }
+
+  .send-check input:focus {
+    outline-color: Highlight;
+  }
+
+  .send-check input:checked::after {
+    content: none;
+  }
+}
+
+.ramp-order__headline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-card);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.ramp-order__headline strong {
+  color: var(--text-emphasis);
+}
+
+.ramp-order__headline--done {
+  background: color-mix(in srgb, var(--color-success) 12%, var(--panel-bg));
+}
+
+.ramp-order__headline--attention {
+  background: color-mix(in srgb, var(--color-warning) 12%, var(--panel-bg));
+}
+
+.ramp-order__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.ramp-order__step--done,
+.ramp-order__step--current {
+  color: var(--text-emphasis);
+}
+
+.ramp-order__step--current {
+  font-weight: 600;
+}
+
+.ramp-rails .send-review__facts dd {
+  overflow-wrap: anywhere;
+}
+
+.offramp-route-fields {
+  min-inline-size: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.ramp-amount-row {
+  align-items: end;
+}
+
+.send-review__title {
+  text-wrap: balance;
+}
+
+.ramp-receipt a {
+  color: var(--text-emphasis);
+  text-underline-offset: 0.15em;
+}

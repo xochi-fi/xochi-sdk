@@ -12,7 +12,6 @@ import {
 import type { Token } from "../types/intent.js";
 import { TokenIcon } from "./TokenIcon.js";
 import { CHAIN_SHORT_NAMES, EXTENDED_CHAIN_NAMES, type SelectableChainId } from "@xochi/client";
-import { POPULAR_SYMBOLS } from "../lib/displayFallbacks.js";
 
 const SHORT_NAMES: Readonly<Record<number, string | undefined>> = CHAIN_SHORT_NAMES;
 
@@ -35,7 +34,6 @@ export interface TokenSearchModalProps {
   onChainSelect?: (selection: ChainSelection) => void;
   chainBlockedReason?: (chainId: SelectableChainId) => string | null;
   zkMoney?: { readonly selected: boolean };
-  showAztecUnavailable?: boolean;
   portalTarget?: HTMLElement | null;
 }
 
@@ -69,24 +67,6 @@ function buildTokenList(
     ...rows.filter(({ availability }) => isSelectable(availability)),
     ...rows.filter(({ availability }) => !isSelectable(availability)),
   ];
-}
-
-function splitPopular(rows: readonly TokenRow[]): { popular: Token[]; rest: readonly TokenRow[] } {
-  const popular: Token[] = [];
-  const seen = new Set<string>();
-
-  for (const { token, availability } of rows) {
-    if (
-      POPULAR_SYMBOLS.includes(token.symbol) &&
-      !seen.has(token.symbol) &&
-      isSelectable(availability)
-    ) {
-      popular.push(token);
-      seen.add(token.symbol);
-    }
-  }
-
-  return { popular, rest: rows };
 }
 
 function tokenKey(token: Token): string {
@@ -123,7 +103,6 @@ export function TokenSearchModal({
   onChainSelect,
   chainBlockedReason,
   zkMoney,
-  showAztecUnavailable = false,
   portalTarget,
 }: TokenSearchModalProps) {
   const initialVisibleChain =
@@ -171,18 +150,13 @@ export function TokenSearchModal({
     mode === "chain" &&
     zkMoney &&
     (normalizedChainSearch === "" || "zk.money".includes(normalizedChainSearch));
-  const showAztecNetwork =
-    mode === "chain" &&
-    showAztecUnavailable &&
-    (normalizedChainSearch === "" || "aztec".includes(normalizedChainSearch));
   const hasVisibleNetwork =
-    showAllNetwork || Boolean(showZkMoneyNetwork) || showAztecNetwork || filteredChains.length > 0;
+    showAllNetwork || Boolean(showZkMoneyNetwork) || filteredChains.length > 0;
 
   const tokens = useMemo(
     () => buildTokenList(chainIds, tokensByChain, selectedChainId, tokenSearch, classify),
     [chainIds, tokensByChain, selectedChainId, tokenSearch, classify],
   );
-  const { popular, rest } = useMemo(() => splitPopular(tokens), [tokens]);
   const showAllChains = selectedChainId === null;
 
   useEffect(() => {
@@ -218,15 +192,15 @@ export function TokenSearchModal({
         target === tokenSearchRef.current
           ? event.key === "ArrowDown"
             ? 0
-            : Math.max(rest.length - 1, 0)
-          : Math.max(0, Math.min(focusedIndex + delta, rest.length - 1));
+            : Math.max(tokens.length - 1, 0)
+          : Math.max(0, Math.min(focusedIndex + delta, tokens.length - 1));
       setFocusedIndex(next);
       requestAnimationFrame(() => {
         const rows = listRef.current?.querySelectorAll<HTMLElement>(".token-search-row");
         rows?.[next]?.focus();
       });
     },
-    [focusedIndex, mode, onClose, rest.length],
+    [focusedIndex, mode, onClose, tokens.length],
   );
 
   const handleOverlayClick = useCallback(
@@ -317,22 +291,6 @@ export function TokenSearchModal({
               </button>
             )}
 
-            {showAztecNetwork && (
-              <button
-                type="button"
-                className="token-search-chain-item token-search-chain-item--blocked"
-                aria-disabled="true"
-              >
-                <img src={AZTEC_ICON} alt="" className="token-search-chain-icon" />
-                <span className="token-search-chain-copy">
-                  <span>Aztec</span>
-                  <span className="token-search-chain-reason">
-                    Direct Aztec settlement isn't available yet.
-                  </span>
-                </span>
-              </button>
-            )}
-
             {!hasVisibleNetwork && <div className="token-search-empty">No networks found</div>}
 
             {filteredChains.map((chainId) => {
@@ -378,33 +336,14 @@ export function TokenSearchModal({
                 </div>
               </div>
 
-              {!tokenSearch && popular.length > 0 && (
-                <>
-                  <div className="token-search-section-label">Popular</div>
-                  <div className="token-search-popular">
-                    {popular.map((token) => (
-                      <button
-                        type="button"
-                        key={tokenKey(token)}
-                        className="token-search-popular-chip"
-                        onClick={() => onSelect(token)}
-                      >
-                        <TokenIcon symbol={token.symbol} className="token-search-chip-icon" />
-                        {token.symbol}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-
               <div className="token-search-section-label">
                 {tokenSearch ? "Results" : "All tokens"}
               </div>
               <div className="token-search-list" ref={listRef}>
-                {rest.length === 0 ? (
+                {tokens.length === 0 ? (
                   <div className="token-search-empty">No tokens found</div>
                 ) : (
-                  rest.map(({ token, availability }, index) => {
+                  tokens.map(({ token, availability }, index) => {
                     const selected =
                       selectedToken?.address === token.address &&
                       selectedToken.chainId === token.chainId;

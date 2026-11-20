@@ -90,7 +90,7 @@ async function openFrame(search: string, body: unknown = LIVE_CAPABILITIES) {
 }
 const sendRow = (): HTMLElement => document.getElementById("swap-pay-row") as HTMLElement;
 const receiveRow = (): HTMLElement => document.getElementById("swap-receive-row") as HTMLElement;
-const payAmount = (): HTMLInputElement => screen.getByLabelText<HTMLInputElement>("Send");
+const payAmount = (): HTMLInputElement => screen.getByLabelText<HTMLInputElement>("Pay");
 const unit = (row: HTMLElement): string =>
   `${row.querySelector(".token-symbol")?.textContent} on ${row.querySelector(".chain-badge__name")?.textContent}`;
 const stealthSelected = (): string | null =>
@@ -113,10 +113,10 @@ const tokenSymbols = (dialog: HTMLElement): string[] =>
   );
 
 async function waitForLiveGuidance() {
-  await waitFor(
-    () => expect(guidance()?.textContent).toContain("Live Stealth destinations:"),
-    WAIT,
-  );
+  await waitFor(() => {
+    expect(stealthSelected()).toBe("true");
+    expect(guidance()?.textContent).not.toMatch(/Checking|couldn.t be verified/);
+  }, WAIT);
 }
 
 function expectNoSignatures(walletMethods: readonly string[]) {
@@ -338,10 +338,10 @@ describe("live Stealth receive choices", () => {
     const networks = await openReceiveNetworks();
     await waitFor(() => expect(networkNames(networks)).toContain("zk.money"), WAIT);
     expect(networkNames(networks)).toEqual(
-      expect.arrayContaining(["Base", "Ethereum", "Arbitrum", "Optimism", "Aztec"]),
+      expect.arrayContaining(["Base", "Ethereum", "Arbitrum", "Optimism"]),
     );
     fireEvent.click(within(networks).getByRole("button", { name: "zk.money" }));
-    expect(await screen.findByLabelText("zk.money tag", {}, WAIT)).toBeTruthy();
+    expect(await screen.findByText("Choose a zk.money alias.", {}, WAIT)).toBeTruthy();
     expect(screen.getByRole("button", { name: /^Shielded/ }).getAttribute("aria-pressed")).toBe(
       "true",
     );

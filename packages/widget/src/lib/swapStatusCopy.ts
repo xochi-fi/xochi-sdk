@@ -93,7 +93,7 @@ const DELIVERED_STUCK =
  * Paid on Aztec, completed only by the recipient's signed receipt. Waiting is on
  * the recipient, not on us, so no elapsed time turns it into a support case.
  */
-const AWAITING_RECIPIENT = "Paid on Aztec. Waiting for the recipient to confirm receipt.";
+const AWAITING_RECIPIENT = "Shielded payout sent. Waiting for the recipient to confirm receipt.";
 
 /** In-flight states where a cross-chain hint / slow reassurance applies. */
 const IN_FLIGHT: ReadonlySet<IntentStatus> = new Set([

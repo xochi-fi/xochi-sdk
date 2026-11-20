@@ -20,12 +20,13 @@ import {
   EXTENDED_CHAIN_NAMES as CHAIN_NAMES,
   destinationDisclosure,
   extractPullAmount,
-  isTronChainId,
 } from "@xochi/client";
 import { usePrices } from "../hooks/usePrices.js";
 import { quoteExpiryLabel } from "../lib/quoteCountdown.js";
 import { servedFees } from "../lib/feesLabel.js";
 import { paymentSummary } from "../lib/paymentSummary.js";
+import { confirmSend, type SendRecipientDisplay } from "../pages/send/sendCopy.js";
+import { ShieldedDisclosure } from "../pages/send/ShieldedDisclosure.js";
 import { TokenIcon } from "./TokenIcon.js";
 import { useClaimInXochiApp, useWidgetTabsShown } from "./widgetTabsContext.js";
 import { CHAIN_ICONS, AZTEC_ICON } from "../assets/chains/index.js";
@@ -47,6 +48,7 @@ interface TransactionPreviewProps {
   fromChainId: SelectableChainId;
   toChainId: SelectableChainId;
   destination: IntentDestination;
+  sendRecipientDisplay?: SendRecipientDisplay;
   onConfirm: () => void;
   onCancel: () => void;
   isLoading: boolean;
@@ -75,9 +77,9 @@ export function TransactionPreview({
   fromDecimals,
   toSymbol,
   toDecimals,
-  fromChainId,
   toChainId,
   destination,
+  sendRecipientDisplay,
   onConfirm,
   onCancel,
   isLoading,
@@ -131,9 +133,8 @@ export function TransactionPreview({
   const destLabel = destinationDisclosure(destination).label;
   const settlementVenue: { name: string; icon: string } =
     destination.type === "aztec"
-      ? { name: "Aztec", icon: AZTEC_ICON }
+      ? { name: "zk.money", icon: AZTEC_ICON }
       : { name: CHAIN_NAMES[toChainId], icon: CHAIN_ICONS[toChainId] };
-  const isPrivate = destination.type === "aztec" || destination.type === "stealth";
 
   // A deposit route first (the solver's own value is wrong there), then the
   // server-supplied method, then permit inference.
@@ -240,20 +241,10 @@ export function TransactionPreview({
               </span>
               <span className="tx-preview-detail">
                 {destination.recipientTag !== undefined ? (
-                  // A tag is credited on zk.money from a one-time Ethereum
-                  // deposit address the quote bound; the venue is zk.money.
-                  <>
-                    Public {toSymbol} deposit on Ethereum for @{destination.recipientTag} on
-                    zk.money.
-                    {isTronChainId(fromChainId) && " Your TRON send is public."} Aztec credit is
-                    separate.
-                  </>
+                  <>To @{destination.recipientTag} on zk.money</>
                 ) : (
                   <>
                     arrives in {destLabel}
-                    {/* The canonical settlement mode and the badge answer different
-                  questions: how the route works, and whether it is private. */}
-                    {isPrivate && <span className="tx-preview-badge">Private</span>}
                     {" on "}
                     {settlementVenue.icon && (
                       <img src={settlementVenue.icon} alt="" className="inline-chain-icon" />
@@ -289,19 +280,29 @@ export function TransactionPreview({
           {/* Stealth claim info (shown for stealth/shielded settlements). The
             settlement venue is already on the arrives line, so this is just the
             claim mechanics, kept to one line. */}
-          {quote.claimInfo && (
+          {(destination.recipientTag !== undefined ||
+            (destination.type === "aztec" && destination.shielded)) && (
+            <p className="tx-preview-claim-note">
+              <ShieldedDisclosure />
+            </p>
+          )}
+          {sendRecipientDisplay?.mode === "Stealth" ? (
+            <p className="tx-preview-claim-note">
+              Lands at a one-time stealth address controlled by {sendRecipientDisplay.label}’s keys.
+            </p>
+          ) : !sendRecipientDisplay && quote.claimInfo ? (
             <div className="tx-preview-claim-info">
-              <span className="tx-preview-claim-value">Gasless claim (ERC-4337)</span>
+              <span className="tx-preview-claim-value">No gas needed to claim</span>
               <span className="tx-preview-claim-note">
                 Lands in a one-time account only the connected wallet controls.{" "}
                 {tabsShown
-                  ? "Claim anytime from the Claims tab, no gas."
+                  ? "Claim anytime from the Claims tab."
                   : claimInXochiApp
-                    ? "Claim anytime in the Xochi app with the receiving wallet, no gas."
-                    : "Claim anytime on the full widget, which opens in a new tab, no gas."}
+                    ? "Claim anytime in the Xochi app with the receiving wallet."
+                    : "Claim anytime on the full widget, which opens in a new tab."}
               </span>
             </div>
-          )}
+          ) : null}
 
           {/* The panel's payment vocabulary. The signature count is left to the
             note below, which is read off the same pull authorization. */}
@@ -323,7 +324,13 @@ export function TransactionPreview({
         </button>
         <button className="modal-btn modal-btn--confirm" onClick={onConfirm} disabled={isLoading}>
           {isLoading && <span className="spinner spinner--small" />}
-          {isDepositRoute ? "Continue" : isLoading ? "Signing..." : "Confirm swap"}
+          {isDepositRoute
+            ? "Continue"
+            : isLoading
+              ? "Signing..."
+              : sendRecipientDisplay
+                ? confirmSend(sendRecipientDisplay)
+                : "Confirm swap"}
         </button>
       </div>
 

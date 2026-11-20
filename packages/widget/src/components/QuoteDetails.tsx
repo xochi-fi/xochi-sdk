@@ -47,7 +47,11 @@ import { quoteCost } from "../lib/quoteCost.js";
 import { formatUsd, approxUsd, splitUsd, decomposeMarketGap } from "../lib/receiptCost.js";
 import { paymentSummary } from "../lib/paymentSummary.js";
 import { GLYPH, SEVERITY_GLYPH } from "../lib/glyphs.js";
-import { payoutHeadline } from "../pages/trade/settlementCopy.js";
+import {
+  payoutHeadline,
+  SHIELDED_DESCRIPTION,
+  SHIELDED_DEPOSIT_NOTE,
+} from "../pages/trade/settlementCopy.js";
 import { ZKMONEY_ARRIVAL_NOTE } from "../pages/trade/zkMoney.js";
 import { useState } from "react";
 import defiLlamaIcon from "../assets/defillama.svg?no-inline";
@@ -111,10 +115,13 @@ interface QuoteDetailsProps {
    */
   quoteExpiresIn?: number | null;
   /**
-   * The zk.money tag this quote pays (no `@`). The headline names the tag and
-   * the amount as approximate, because zk.money takes its fee on arrival.
+   * The zk.money tag this quote pays (no `@`). Arrival fees are disclosed separately.
    */
   recipientTag?: string;
+  swapRecipientLabel?: string;
+  sendRecipientLabel?: string;
+  /** The Send payee and route are already displayed above the receipt. */
+  sendMode?: "Stealth" | "Shielded";
 }
 
 // ============================================================
@@ -137,6 +144,9 @@ export function QuoteDetails({
   trustEconomicsLive = false,
   quoteExpiresIn,
   recipientTag,
+  swapRecipientLabel,
+  sendRecipientLabel,
+  sendMode,
 }: QuoteDetailsProps) {
   const { prices, livePrices } = usePrices();
   // Live prints only: graded against a static fallback (months-stale ETH 3200)
@@ -173,7 +183,7 @@ export function QuoteDetails({
   // Honest settlement confirmation, read from the quote's own options rather than
   // just the user's pick. Public is always available; stealth is tier-gated and
   // the quote reports availability + reason. This surfaces whether the order
-  // actually settles privately, including the case where stealth was requested
+  // actually settles with Stealth, including the case where stealth was requested
   // but this quote can't honor it.
   const stealthOption = quote.settlementOptions?.find((o) => o.type === "stealth");
   const wantsPrivate = settlement === "stealth";
@@ -181,10 +191,12 @@ export function QuoteDetails({
   const privateBlocked = wantsPrivate && stealthOption !== undefined && !stealthOption.available;
   const settlementState = privateConfirmed ? "private" : privateBlocked ? "blocked" : "public";
   const settlementDesc = privateConfirmed
-    ? "Settles to a one-time stealth address only the connected wallet controls."
+    ? swapRecipientLabel
+      ? "Goes to the recipient’s one-time stealth address."
+      : "Settles to a one-time stealth address only the connected wallet controls."
     : privateBlocked
-      ? `${stealthOption?.reason ?? "Private settlement unavailable"}. This order settles to the connected wallet.`
-      : "Goes to the connected wallet, visible on-chain.";
+      ? `${stealthOption?.reason ?? "Stealth settlement unavailable"}.`
+      : "Goes to the connected wallet, visible onchain.";
 
   // Every cost figure on this panel (fee anatomy, its denomination, the served
   // fees and their dollar companion) comes from one pure derivation, which the
@@ -400,7 +412,9 @@ export function QuoteDetails({
   // request this quote cannot honour settles public, and says so.
   const routeLabel =
     fromChainId === toChainId ? fromChainName : `${fromChainName} ${GLYPH.flow} ${toChainName}`;
-  const privacyLabel = privateConfirmed ? "Stealth" : "Public";
+  const payee = sendRecipientLabel ?? swapRecipientLabel ?? (recipientTag && `@${recipientTag}`);
+  const privacyLabel =
+    recipientTag !== undefined ? "Shielded" : privateConfirmed ? "Stealth" : "Public";
 
   return (
     <div className="quote-details">
@@ -411,8 +425,8 @@ export function QuoteDetails({
           floods the screen-reader queue. */}
       <div className="quote-headline">
         <p className="quote-headline__main">
-          {recipientTag !== undefined
-            ? `@${recipientTag} receives ≈ ${payoutLabel} ${toSymbol}`
+          {payee
+            ? `${payee} receives ${payoutLabel} ${toSymbol}, paid as quoted or fully refunded.`
             : payoutHeadline(`${payoutLabel} ${toSymbol}`)}
         </p>
         {refresh && (
@@ -421,7 +435,15 @@ export function QuoteDetails({
           </span>
         )}
       </div>
-      {recipientTag !== undefined && <p className="quote-meta">{ZKMONEY_ARRIVAL_NOTE}</p>}
+      {recipientTag !== undefined && (
+        <>
+          <p className="quote-meta">
+            {SHIELDED_DESCRIPTION}
+            <span className="shielded-deposit-note">{SHIELDED_DEPOSIT_NOTE}</span>
+          </p>
+          <p className="quote-meta">{ZKMONEY_ARRIVAL_NOTE}</p>
+        </>
+      )}
 
       {hasGap && (
         <p className={`quote-gap ${gapSeverity === "normal" ? "" : gapSeverity}`}>
@@ -440,22 +462,23 @@ export function QuoteDetails({
       {/* Settlement confirmation: only when it adds something the toggle does not
           already say -- the quote confirms private settlement, or stealth was
           requested but this route can only settle public. */}
-      {settlementState !== "public" && (
-        <div className={`quote-settlement quote-settlement--${settlementState}`}>
-          <div className="quote-settlement__head">
-            <span className="quote-settlement__label">Settlement</span>
-            <span className="quote-settlement__badge">
-              {privateConfirmed ? "Private" : "! Public"}
-            </span>
-          </div>
-          <p className="quote-settlement__desc">{settlementDesc}</p>
-        </div>
+      {sendMode === "Shielded" ? null : sendMode === "Stealth" ? (
+        privateConfirmed && (
+          <p className="quote-meta">Goes to the recipient's one-time stealth address.</p>
+        )
+      ) : (
+        <>
+          {settlementState !== "public" && (
+            <div className={`quote-settlement quote-settlement--${settlementState}`}>
+              <p className="quote-settlement__desc">{settlementDesc}</p>
+            </div>
+          )}
+          <p className={`quote-meta quote-route ${sameAsset && rateFlagged ? "warning" : ""}`}>
+            {sameAsset && rateFlagged && "! "}
+            <span>{routeLabel}</span> <span>{privacyLabel}</span>
+          </p>
+        </>
       )}
-
-      <p className={`quote-meta quote-route ${sameAsset && rateFlagged ? "warning" : ""}`}>
-        {sameAsset && rateFlagged && "! "}
-        {routeLabel} {GLYPH.sep} {privacyLabel}
-      </p>
 
       {/* Gas state and what the wallet will ask for, per payment method. */}
       <p
@@ -495,8 +518,10 @@ export function QuoteDetails({
       {rateFlagged && (
         <p className="quote-rate-flag">
           The payout is about {stableShortfall?.toFixed(1)}% less than the amount sent on a
-          stablecoin pair. On small orders this is mostly network settlement cost. Increase the
-          amount so more is received{settlementState === "private" ? ", or switch to Public" : ""}.
+          stablecoin pair. On small orders this is mostly network settlement cost.{" "}
+          {sendMode
+            ? `Back to Send to increase the amount${sendMode === "Stealth" ? " or choose Send publicly instead if offered" : ""}.`
+            : `Increase the amount so more is received${settlementState === "private" ? ", or use Public instead" : ""}.`}
         </p>
       )}
 
@@ -528,7 +553,7 @@ export function QuoteDetails({
             <span className="quote-row-label">Market</span>
             <span className="quote-row-value quote-row-value--muted">
               {marketLabel}
-              {spotAgeLabel ? ` ${GLYPH.sep} ${spotAgeLabel}` : ""}{" "}
+              {spotAgeLabel && <small> {spotAgeLabel}</small>}{" "}
               <span
                 className="quote-source"
                 role="img"

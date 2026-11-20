@@ -143,14 +143,13 @@ export function StealthClaims({
   return (
     <div className={`stealth-claims${hasWaiting ? " stealth-claims--waiting" : ""}`}>
       <div className="section-header">
-        <h3 className="section-title">
-          Stealth Payments
+        <div className="section-title">
           {hasWaiting && (
             <span className="stealth-claims-badge" aria-label={`${waitingCount} waiting to claim`}>
-              {waitingCount}
+              {waitingCount} claimable
             </span>
           )}
-        </h3>
+        </div>
         {needsSignIn ? (
           <button
             className="btn btn--secondary btn--sm"
@@ -180,28 +179,6 @@ export function StealthClaims({
           </button>
         )}
       </div>
-
-      {/* The strongest thing we can say to a returning user, and the one the app
-          could never say before: money is here, this is the button. */}
-      {claimableCount > 0 && payments.length === 0 && (
-        <div className="stealth-claims-waiting">
-          {claimableCount === 1 ? "A private payment is" : `${claimableCount} private payments are`}{" "}
-          waiting. {needsSignIn ? "Sign in" : isStealthReady ? "Scan" : "Re-sign"} to move{" "}
-          {claimableCount === 1 ? "it" : "them"} into the connected wallet.
-        </div>
-      )}
-
-      {needsSignIn && (
-        <div className="stealth-claims-empty">
-          Incoming payments are private, so looking for them needs a one-time wallet signature.
-        </div>
-      )}
-
-      {!needsSignIn && !isStealthReady && (
-        <div className="stealth-claims-empty">
-          Keys are locked on this device. Re-sign to unlock them, then scan for payments.
-        </div>
-      )}
 
       {error && <div className="stealth-claims-error">{error}</div>}
 

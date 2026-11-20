@@ -1,10 +1,10 @@
 /**
  * Trade -- the widget.
  *
- * The market swap card plus in-frame tabs at the card's width: Swap (the
- * card), Activity (holdings strip + transaction log) and Claims (private
- * receiving). No site chrome: the widget is served alone, framed by its host
- * (xochi-fi/xochi-widget#20). Most protocol traffic is agents (via the MCP /
+ * Trade (Buy, Swap and Cash out), Send (wallet or Stealth address),
+ * Activity (holdings and transaction logs) and Claims
+ * (private receiving). No site chrome: the widget is served alone, framed by
+ * its host (xochi-fi/xochi-widget#20). Most protocol traffic is agents (via the MCP /
  * OpenAPI surface); this is the simple human path: connect a wallet, swap
  * cross-chain with public or stealth settlement, watch it settle.
  *
@@ -13,9 +13,12 @@
  * claims on the full widget in a tab of its own, opened on Claims.
  */
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useAccount, useConfig } from "wagmi";
 import { watchAccount } from "wagmi/actions";
+import type { ResolvedRecipient } from "../lib/recipient/index.js";
 import { useOrderHistory } from "../hooks/useOrderHistory.js";
 import { useWalletSession } from "../hooks/useWalletSession.js";
 import { useLocalActivity } from "../hooks/useLocalActivity.js";
@@ -32,10 +35,35 @@ import { ActivityFeed } from "../components/ActivityFeed.js";
 import { PrivacyPanel } from "../components/PrivacyPanel.js";
 import { StealthClaims } from "../components/StealthClaims.js";
 import { AccountChip } from "../components/AccountChip.js";
+import { useLocalSends } from "../hooks/useLocalSends.js";
+import { useLocalOfframps } from "../ramp/offramp/OfframpActivityList.js";
+import { useRampSummaries } from "../hooks/useRampSummaries.js";
 import { SwapPanel, type SwapPrefill } from "./trade/SwapPanel.js";
-import { WidgetTabs, widgetTabIds, type WidgetTab, type WidgetTabId } from "./trade/WidgetTabs.js";
+import { PaymentAppSend } from "../ramp/offramp/PaymentAppSend.js";
+import { RAMP_HOST_GATE_COPY, useRampHostGate } from "../lib/rampHostGate.js";
+import { BuyPanel } from "./trade/BuyPanel.js";
+import { CashOutRecovery, PurchaseRecovery } from "./trade/RampRecovery.js";
+import { useRecipientDeps } from "./send/useSendRecipient.js";
+import {
+  recallSendRecipient,
+  rememberSendRecipient,
+  type SendRetryDraft,
+} from "./send/sendRetry.js";
+import type { SendRecipientDisplay } from "./send/sendCopy.js";
+import { resolveRecipient, classifyRecipientInput } from "../lib/recipient/index.js";
+import { parseStealthMetaAddress, abbreviateMetaAddress } from "./send/stealthRecipient.js";
+import { truncateAddress } from "../utils/format.js";
+import { SendPanel } from "./send/SendPanel.js";
+import {
+  WidgetTabs,
+  widgetTabIds,
+  type TradeMode,
+  type WidgetTab,
+  type WidgetTabId,
+} from "./trade/WidgetTabs.js";
 import { SHIELDED_ACCOUNTS_LIVE, STEALTH_CLAIM_LIVE } from "./trade/config.js";
 import { CLAIMS_HASH, claimsPath, type EmbedLook } from "./trade/embedParams.js";
+import { widgetSurfaces } from "./trade/embedNarrowing.js";
 import {
   CLAIM_IN_XOCHI_APP,
   ClaimInXochiAppContext,
@@ -54,9 +82,9 @@ import {
 import { getTokenInfoForChain } from "@xochi/client";
 import type { SwapActivityItem } from "../types/activity.js";
 import { hostBridge } from "../lib/hostBridge.js";
-import type { HostConnection, WalletUi } from "@xochi/widget-lib";
+import { parseEmbedParams, type HostConnection, type WalletUi } from "@xochi/widget-lib";
 
-import { APP_VERSION } from "../config.js";
+import { APP_VERSION, readWidgetEmbedConfig, type WidgetEmbedConfig } from "../config.js";
 
 // Minimum spin time for the activity refresh button, so a fast or no-op refresh
 // still gives visible feedback instead of flickering imperceptibly.
@@ -72,6 +100,13 @@ interface TradeProps {
   look: EmbedLook;
   /** Connection override for focused host/standalone behavior tests. */
   hostConnection?: WalletUiConnection | null;
+  /**
+   * The host's tab/mode/destination narrowing and fiat default. Defaults to
+   * the frame URL's (`readWidgetEmbedConfig`), read once on mount.
+   */
+  embed?: WidgetEmbedConfig;
+  /** Show agent authorization even when this wallet has no agents yet. */
+  enableAgents?: boolean;
 }
 
 function useWalletUi(connection: WalletUiConnection | null): WalletUi {
@@ -89,7 +124,13 @@ function useWalletUi(connection: WalletUiConnection | null): WalletUi {
   return walletUi;
 }
 
-export function Trade({ look, hostConnection = hostBridge }: TradeProps) {
+export function Trade({
+  look,
+  hostConnection = hostBridge,
+  embed,
+  enableAgents = typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("agents") === "1",
+}: TradeProps) {
   const { isConnected, address, connector } = useAccount();
   const config = useConfig();
   const { showToast } = useToast();
@@ -147,13 +188,24 @@ export function Trade({ look, hostConnection = hostBridge }: TradeProps) {
         item.data.fromToken;
       const to =
         getTokenInfoForChain(item.data.toToken, item.data.toChainId)?.symbol ?? item.data.toToken;
-      showToast(`${from} to ${to} swap complete`, "success");
+      const send = item.data.sendRecipientDisplay;
+      showToast(
+        send
+          ? `Sent with ${send.mode} to ${send.label}`
+          : item.data.swapRecipientLabel || item.data.recipientTag
+            ? `Sent to ${item.data.swapRecipientLabel ?? `@${item.data.recipientTag}`}`
+            : `${from} to ${to} swap complete`,
+        "success",
+      );
     },
     [showToast],
   );
   const { swaps: localSwaps, refresh: refreshLocal } = useLocalActivity({
     onComplete: handleSwapComplete,
   });
+  const localSends = useLocalSends();
+  const localOfframps = useLocalOfframps();
+  const localRamps = useRampSummaries();
 
   // Subscribe to the user's authorized agents' streams. Verified agent activity
   // is fed into the same local log (tagged "agent"), so it flows through
@@ -205,7 +257,14 @@ export function Trade({ look, hostConnection = hostBridge }: TradeProps) {
     for (const s of localSwaps) byId.set(s.id, s);
     for (const s of serverSwaps) {
       const local = byId.get(s.id);
-      byId.set(s.id, mergeHistorySwap(s, local));
+      const merged = mergeHistorySwap(s, local);
+      if (merged !== s && local) {
+        merged.data.sendRecipientDisplay = local.data.sendRecipientDisplay;
+        merged.data.stealthPayee = local.data.stealthPayee;
+        merged.data.swapRecipientLabel = local.data.swapRecipientLabel;
+        merged.data.swapRecipientRetryInput = local.data.swapRecipientRetryInput;
+      }
+      byId.set(s.id, merged);
     }
     return [...byId.values()].sort((a, b) => b.timestamp - a.timestamp);
   }, [orders, localSwaps]);
@@ -225,41 +284,86 @@ export function Trade({ look, hostConnection = hostBridge }: TradeProps) {
 
   // In-frame tabs. Claims exists only where its content can render (stealth
   // receive live + a connected wallet); when it disappears while selected (the
-  // wallet disconnects), the selection falls back to Swap. Every panel stays
+  // wallet disconnects), the selection falls back to Trade. Every panel stays
   // mounted and is only hidden, so leaving Swap mid-quote keeps the quote, the
-  // flow modal and every in-progress field exactly as they were.
+  // flow modal and every in-progress field exactly as they were. The same holds
+  // one level down: Trade's Buy | Swap mode and Send's destination kind.
+  //
+  // The three selections use the embed contract's vocabularies (WidgetTabs.tsx),
+  // so frame-URL parameters can seed and narrow them without reshaping this.
+  //
+  // A host can narrow tabs, modes and destinations (embedNarrowing.ts); only
+  // the full layout has them, so a tabless frame stays the Swap card.
+  const { openConnectModal } = useConnectModal();
+  const rampGate = useRampHostGate();
   const tabsBaseId = useId();
-  const claimsAvailable = tabsShown && STEALTH_CLAIM_LIVE && isConnected;
-  const [selectedTab, setSelectedTab] = useState<WidgetTabId>("swap");
-  if (selectedTab === "claims" && !claimsAvailable) setSelectedTab("swap");
-  // Opened from a tabless frame's claim link (`#claims`): land on Claims as
-  // soon as it exists, which is after the wallet reconnects. Any tab the user
-  // picks first wins.
+  const modesBaseId = useId();
+  const [{ surfaces, fiatCurrency, fromChainId }] = useState(() => {
+    const config = tabsShown ? (embed ?? readWidgetEmbedConfig()) : {};
+    return {
+      surfaces: widgetSurfaces(config),
+      fiatCurrency: config.fiatCurrency,
+      fromChainId: parseEmbedParams(window.location.search).fromChainId,
+    };
+  });
+  const tabShown = (tab: WidgetTabId): boolean => !tabsShown || surfaces.tabs.includes(tab);
+  const swapShown = !tabsShown || surfaces.modes.includes("swap");
+  const fallbackTab = surfaces.tabs.find((t) => t !== "claims");
+  const claimsAvailable = tabsShown && STEALTH_CLAIM_LIVE && isConnected && tabShown("claims");
+  const [selectedTab, setSelectedTab] = useState<WidgetTabId>(() =>
+    surfaces.initialTab === "claims" ? (fallbackTab ?? "claims") : (surfaces.initialTab ?? "trade"),
+  );
+  if (selectedTab === "claims" && !claimsAvailable && fallbackTab !== undefined)
+    setSelectedTab(fallbackTab);
+  const [tradeMode, setTradeMode] = useState<TradeMode>(surfaces.initialMode ?? "swap");
+  // Opened from a tabless frame's claim link (`#claims`), or by a host's
+  // `initialTab=claims`: land on Claims as soon as it exists, which is after
+  // the wallet reconnects. Any tab the user picks first wins.
   const [claimsWanted, setClaimsWanted] = useState(
-    () => tabsShown && window.location.hash === CLAIMS_HASH,
+    () => tabsShown && (window.location.hash === CLAIMS_HASH || surfaces.initialTab === "claims"),
   );
   if (claimsWanted && claimsAvailable) {
     setClaimsWanted(false);
     setSelectedTab("claims");
   }
+  const pendingSendRetry = useRef<AbortController | undefined>(undefined);
+  const cancelSendRetry = useCallback(() => pendingSendRetry.current?.abort(), []);
   const selectTab = useCallback((tab: WidgetTabId): void => {
+    if (tab !== "send") pendingSendRetry.current?.abort();
     setClaimsWanted(false);
     setSelectedTab(tab);
+    if (tab !== "send") {
+      setSendQuoteRecipient(undefined);
+      setRetryPrefill((prefill) => (prefill?.fromSend ? null : prefill));
+    }
   }, []);
   const tabs: WidgetTab[] = [
-    { id: "swap", label: "Swap" },
-    { id: "activity", label: "Activity" },
-    ...(claimsAvailable
-      ? [
-          {
-            id: "claims" as const,
-            label: "Claims",
-            count: claimableCount,
-            countLabel: "ready to claim",
-          },
-        ]
-      : []),
-  ];
+    { id: "trade" as const, label: "Trade" },
+    { id: "send" as const, label: "Send" },
+    { id: "activity" as const, label: "Activity" },
+  ].filter((t) => tabShown(t.id));
+  if (claimsAvailable)
+    tabs.push({
+      id: "claims",
+      label: "Claims",
+      count: claimableCount,
+      countLabel: "ready to claim",
+    });
+  const modeTabs: WidgetTab<TradeMode>[] = surfaces.modes.map((mode) => ({
+    id: mode,
+    label: mode === "onramp" ? "Buy" : mode === "offramp" ? "Cash out" : "Swap",
+  }));
+  const modePanelProps = (mode: TradeMode) => {
+    if (!tabsShown) return { className: "widget-panel" } as const;
+    const ids = widgetTabIds(modesBaseId, mode);
+    return {
+      role: "tabpanel",
+      id: ids.panel,
+      "aria-labelledby": ids.tab,
+      hidden: tradeMode !== mode,
+      className: "widget-panel",
+    } as const;
+  };
   const panelProps = (tab: WidgetTabId) => {
     // Without the tab row the swap card is the whole widget, not a tab panel.
     if (!tabsShown) return { className: "widget-panel" } as const;
@@ -277,6 +381,26 @@ export function Trade({ look, hostConnection = hostBridge }: TradeProps) {
   // distinct so re-clicking the same row re-applies (SwapPanel keys off it).
   const [retryPrefill, setRetryPrefill] = useState<SwapPrefill | null>(null);
   const retryNonce = useRef(0);
+  const recipientDeps = useRecipientDeps();
+  const [sendRetry, setSendRetry] = useState<SendRetryDraft>();
+  useEffect(() => cancelSendRetry, [address, cancelSendRetry]);
+  const [sendQuoteRecipient, setSendQuoteRecipient] = useState<ResolvedRecipient>();
+  const showSendQuote = sendQuoteRecipient !== undefined;
+  const tradeSwapMount = useRef<HTMLDivElement>(null);
+  const sendSwapMount = useRef<HTMLDivElement>(null);
+  const [swapSurface] = useState(() => {
+    const element = document.createElement("div");
+    element.className = "send-swap-mount";
+    return element;
+  });
+  // Move one mounted Swap surface between tabs so the quote, confirmations
+  // and any in-progress settlement keep the same lifetime and DOM IDs.
+  useLayoutEffect(() => {
+    const target =
+      selectedTab === "send" && showSendQuote ? sendSwapMount.current : tradeSwapMount.current;
+    if (target) target.append(swapSurface);
+    else swapSurface.remove();
+  }, [selectedTab, showSendQuote, swapShown, swapSurface]);
 
   // A stealth swap settles to a one-time private address the user must claim. When
   // one settles in the full widget, auto-scan so the payment appears in the receive
@@ -386,8 +510,9 @@ export function Trade({ look, hostConnection = hostBridge }: TradeProps) {
 
   const handleRetrySwap = useCallback(
     (item: SwapActivityItem): void => {
+      pendingSendRetry.current?.abort();
       retryNonce.current += 1;
-      setRetryPrefill({
+      const prefill: SwapPrefill = {
         nonce: retryNonce.current,
         fromChainId: item.data.fromChainId,
         toChainId: item.data.toChainId,
@@ -395,13 +520,115 @@ export function Trade({ look, hostConnection = hostBridge }: TradeProps) {
         toToken: item.data.toToken,
         fromAmount: item.data.fromAmount,
         settlement: item.data.settlementType,
+        stealthPayee: item.data.stealthPayee,
         recipientTag: item.data.recipientTag,
         refundAddress: item.data.deposit?.attested.refund_address ?? undefined,
-      });
-      selectTab("swap");
+      };
+      setSendQuoteRecipient(undefined);
+      const send = item.data.sendRecipientDisplay;
+      if (send) {
+        if (!surfaces.tabs.includes("send")) {
+          showToast("Send is unavailable in this widget.", "error");
+          return;
+        }
+        const remembered = recallSendRecipient(item.id);
+        const kind = classifyRecipientInput(send.retryInput ?? "");
+        const input =
+          remembered?.input ??
+          (kind === "ens" || kind === "gns" || kind === "wns" || kind === "zkmoney"
+            ? send.retryInput
+            : undefined);
+        setRetryPrefill(null);
+        setSendRetry({ ...prefill, input, mode: send.mode });
+        selectTab("send");
+
+        const controller = new AbortController();
+        pendingSendRetry.current = controller;
+        const reopen = (recipient: ResolvedRecipient) => {
+          if (controller.signal.aborted) return;
+          const meta = parseStealthMetaAddress(recipient.stealthMetaAddress ?? "");
+          const incomingTag = recipient.shieldedAlias;
+          if (send.mode === "Stealth" ? !meta.ok : !incomingTag) return;
+          const display: SendRecipientDisplay = {
+            mode: send.mode,
+            label: send.label,
+            retryInput: remembered ? undefined : input,
+          };
+          rememberSendRecipient(display, recipient);
+          setRetryPrefill({
+            ...prefill,
+            fromSend: true,
+            sendRecipientDisplay: display,
+            settlement: send.mode === "Stealth" ? "stealth" : "public",
+            stealthRecipient: send.mode === "Stealth" && meta.ok ? meta.recipient : undefined,
+            recipientTag: send.mode === "Shielded" ? incomingTag : undefined,
+          });
+          setSendQuoteRecipient(recipient);
+        };
+        if (remembered) {
+          reopen(remembered);
+        } else if (input && recipientDeps) {
+          void resolveRecipient(input, recipientDeps, controller.signal).then((result) => {
+            if (result.status === "resolved") reopen(result.recipient);
+          });
+        }
+        return;
+      }
+
+      if (
+        item.data.swapRecipientLabel ||
+        prefill.stealthPayee === "other" ||
+        prefill.recipientTag
+      ) {
+        const input = item.data.swapRecipientRetryInput;
+        const kind = classifyRecipientInput(input ?? "");
+        setRetryPrefill({
+          ...prefill,
+          recipientTag: undefined,
+          swapRecipientRetry: {
+            zkMoneyDestination: !!prefill.recipientTag,
+            input:
+              kind === "ens" || kind === "gns" || kind === "wns" || kind === "zkmoney"
+                ? input
+                : undefined,
+          },
+        });
+      } else {
+        setRetryPrefill(prefill);
+      }
+      setTradeMode("swap");
+      selectTab("trade");
     },
-    [selectTab],
+    [recipientDeps, selectTab, showToast, surfaces.tabs],
   );
+
+  const handleSendQuote = (order: Omit<SwapPrefill, "nonce">, recipient: ResolvedRecipient) => {
+    pendingSendRetry.current?.abort();
+    retryNonce.current += 1;
+    const label = recipient.shieldedAlias
+      ? `@${recipient.shieldedAlias}`
+      : (recipient.name ??
+        (recipient.address
+          ? truncateAddress(recipient.address)
+          : abbreviateMetaAddress(recipient.stealthMetaAddress ?? "")));
+    const display: SendRecipientDisplay = {
+      label,
+      mode: recipient.shieldedAlias ? "Shielded" : "Stealth",
+      retryInput: recipient.shieldedAlias
+        ? `${recipient.shieldedAlias}.zk.money`
+        : recipient.kind === "ens" || recipient.kind === "gns" || recipient.kind === "wns"
+          ? recipient.input
+          : undefined,
+    };
+    rememberSendRecipient(display, recipient);
+    setRetryPrefill({
+      ...order,
+      nonce: retryNonce.current,
+      fromSend: true,
+      sendRecipientDisplay: display,
+    });
+    setSendQuoteRecipient(recipient);
+  };
 
   // Report: assemble a failure reference from the history row and fire the same
   // best-effort POST /api/report the live modal uses. It never throws (the
@@ -443,79 +670,192 @@ export function Trade({ look, hostConnection = hostBridge }: TradeProps) {
             {!hostOwnsWalletUi && <AccountChip />}
           </div>
 
-          <div {...panelProps("swap")}>
-            <SwapPanel
-              prefill={retryPrefill}
-              onStealthSettled={handleStealthSettled}
-              onGoToClaims={tabsShown || claimInXochiApp ? undefined : openClaims}
-              howItWorks={look.howItWorks}
-              onConnectRequest={hostOwnsWalletUi ? requestHostConnect : undefined}
-            />
+          {tabsShown && tabs.length === 0 && (
+            <p className="send-note" role="note">
+              This host has not enabled any section of the widget.
+            </p>
+          )}
 
-            <MobileSigningBanner />
+          {tabShown("trade") && (
+            <div {...panelProps("trade")}>
+              {tabsShown && (
+                <div className="widget-bar">
+                  <WidgetTabs
+                    baseId={modesBaseId}
+                    tabs={modeTabs}
+                    active={tradeMode}
+                    onSelect={setTradeMode}
+                    label="Trade mode"
+                    className="widget-tabs trade-modes"
+                  />
+                </div>
+              )}
 
-            {/* Compact claims row, rendered only while something is actually waiting
+              {tabsShown && surfaces.modes.includes("onramp") && (
+                <div {...modePanelProps("onramp")}>
+                  <BuyPanel
+                    active={selectedTab === "trade" && tradeMode === "onramp"}
+                    fiatCurrency={fiatCurrency}
+                    onConnectRequest={hostOwnsWalletUi ? requestHostConnect : openConnectModal}
+                  />
+                </div>
+              )}
+
+              {tabsShown && surfaces.modes.includes("offramp") && (
+                <div {...modePanelProps("offramp")}>
+                  <div className="send-card">
+                    {rampGate === "ready" ? (
+                      <PaymentAppSend
+                        active={selectedTab === "trade" && tradeMode === "offramp"}
+                        fiatCurrency={fiatCurrency}
+                        onConnectRequest={hostOwnsWalletUi ? requestHostConnect : openConnectModal}
+                      />
+                    ) : (
+                      <p className="ramp-resume__blocked" role="status">
+                        {RAMP_HOST_GATE_COPY[rampGate]}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {swapShown && (
+                <div {...modePanelProps("swap")}>
+                  <h2 className="sr-only">Swap</h2>
+                  <div className="send-swap-mount" ref={tradeSwapMount} />
+
+                  <MobileSigningBanner />
+
+                  {/* Compact claims row, rendered only while something is actually waiting
             (the fable pass-1 ruling: claimable settlements surface after the
             card, not as a standing panel). Clicking scans and switches to the
             Claims tab, or without tabs opens the full widget on Claims; there
             it also stays after a stealth swap settles in this frame, even
             before a session can count the payment. */}
-            {STEALTH_CLAIM_LIVE &&
-              (claimableCount > 0 || (!tabsShown && stealthSettledHere)) &&
-              (claimInXochiApp ? (
-                // The host's wallet: no claim here or in a tab of the widget's own.
-                <p className="claims-nudge" role="note">
-                  {claimableCount > 0
-                    ? `${claimableCount} private ${claimableCount === 1 ? "payment is" : "payments are"} ready. `
-                    : "Your private payment landed. "}
-                  {CLAIM_IN_XOCHI_APP}
-                </p>
-              ) : (
-                <button
-                  type="button"
-                  className="claims-nudge"
-                  onClick={tabsShown ? handleClaimNudge : openClaims}
-                >
-                  {claimableCount > 0 ? (
-                    <>
-                      <span className="claims-nudge__count">{claimableCount}</span>
-                      {claimableCount === 1 ? "payment is" : "payments are"} ready to claim
-                    </>
-                  ) : (
-                    "Claim your private payment"
-                  )}
-                  <span className="claims-nudge__arrow" aria-hidden="true">
-                    {"->"}
-                  </span>
-                </button>
-              ))}
-          </div>
+                  {STEALTH_CLAIM_LIVE &&
+                    (claimableCount > 0 || (!tabsShown && stealthSettledHere)) &&
+                    (claimInXochiApp ? (
+                      // The host's wallet: no claim here or in a tab of the widget's own.
+                      <p className="claims-nudge" role="note">
+                        {claimableCount > 0
+                          ? `${claimableCount} ${claimableCount === 1 ? "payment is" : "payments are"} ready to claim. `
+                          : "Your Stealth payment landed. "}
+                        {CLAIM_IN_XOCHI_APP}
+                      </p>
+                    ) : (
+                      <button
+                        type="button"
+                        className="claims-nudge"
+                        onClick={tabsShown ? handleClaimNudge : openClaims}
+                      >
+                        {claimableCount > 0 ? (
+                          <>
+                            <span className="claims-nudge__count">{claimableCount}</span>
+                            {claimableCount === 1 ? "payment is" : "payments are"} ready to claim
+                          </>
+                        ) : (
+                          "Open Claims"
+                        )}
+                        <span className="claims-nudge__arrow" aria-hidden="true">
+                          {"→"}
+                        </span>
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
+          )}
 
-          {tabsShown && (
+          {tabsShown && tabShown("send") && (
+            <div {...panelProps("send")}>
+              <SendPanel
+                active={selectedTab === "send"}
+                initialChain={fromChainId}
+                destinations={surfaces.destinations}
+                showQuote={showSendQuote}
+                retry={sendRetry}
+                onEditRetry={cancelSendRetry}
+                quoteMount={sendSwapMount}
+                onQuote={handleSendQuote}
+                onCloseQuote={() => {
+                  setSendQuoteRecipient(undefined);
+                  setRetryPrefill(null);
+                }}
+                onConnectRequest={hostOwnsWalletUi ? requestHostConnect : undefined}
+              />
+            </div>
+          )}
+
+          {(swapShown || retryPrefill) &&
+            createPortal(
+              <SwapPanel
+                prefill={retryPrefill}
+                sendRecipient={selectedTab === "send" ? sendQuoteRecipient : undefined}
+                onStealthSettled={handleStealthSettled}
+                onGoToClaims={tabsShown || claimInXochiApp ? undefined : openClaims}
+                howItWorks={look.howItWorks && !(selectedTab === "send" && showSendQuote)}
+                onConnectRequest={hostOwnsWalletUi ? requestHostConnect : undefined}
+              />,
+              swapSurface,
+            )}
+
+          {tabsShown && tabShown("activity") && (
             <div {...panelProps("activity")}>
               {/* Holdings breakdown. Disconnected visitors already see balance context
               inline in the pay field ("--"), so the strip's old connect prompt
               would be a second wallet ask; render nothing instead. */}
               {isConnected && <AssetsStrip />}
 
-              <section className="launch-txlog" aria-label="Transaction log">
-                <ActivityFeed
-                  activities={activities}
-                  isLoading={ordersLoading || isRefreshing}
-                  error={ordersError}
-                  hasMore={hasMoreOrders}
-                  isConnected={isConnected}
-                  connectedWallet={address}
-                  sessionWallet={sessionWallet}
-                  needsSignIn={historyNeedsSignIn}
-                  isSigningIn={sessionState === "signing"}
-                  onSignIn={handleActivitySignIn}
-                  onRefresh={refreshActivity}
-                  onLoadMore={loadMoreOrders}
-                  onReportSwap={handleReportSwap}
-                  onRetrySwap={handleRetrySwap}
-                  onClaimNudge={STEALTH_CLAIM_LIVE ? handleClaimNudge : undefined}
+              {/* Narrowing removes ways to start a Peer operation, never the
+                  way back to one already submitted (trade/RampRecovery.tsx). */}
+              {tabsShown && !surfaces.modes.includes("onramp") && <PurchaseRecovery />}
+              {tabsShown && !surfaces.modes.includes("offramp") && (
+                <CashOutRecovery
+                  items={localOfframps}
+                  fiatCurrency={fiatCurrency}
+                  active={selectedTab === "activity"}
                 />
+              )}
+
+              <section className="launch-txlog" aria-label="Transaction log">
+                {!isConnected ? (
+                  <div className="send-card">
+                    <p className="send-note">
+                      See your swaps, sends, purchases and cash outs here.
+                    </p>
+                    <button
+                      className="submit-btn send-cta"
+                      type="button"
+                      onClick={hostOwnsWalletUi ? requestHostConnect : openConnectModal}
+                    >
+                      Connect wallet
+                    </button>
+                  </div>
+                ) : (
+                  <ActivityFeed
+                    activities={activities}
+                    localHistory={{
+                      sends: localSends,
+                      purchases: localRamps,
+                      cashOuts: localOfframps,
+                    }}
+                    isLoading={ordersLoading || isRefreshing}
+                    error={ordersError}
+                    hasMore={hasMoreOrders}
+                    isConnected={isConnected}
+                    enableAgents={enableAgents}
+                    connectedWallet={address}
+                    sessionWallet={sessionWallet}
+                    needsSignIn={historyNeedsSignIn}
+                    isSigningIn={sessionState === "signing"}
+                    onSignIn={handleActivitySignIn}
+                    onRefresh={refreshActivity}
+                    onLoadMore={loadMoreOrders}
+                    onReportSwap={handleReportSwap}
+                    onRetrySwap={swapShown ? handleRetrySwap : undefined}
+                    onClaimNudge={STEALTH_CLAIM_LIVE ? handleClaimNudge : undefined}
+                  />
+                )}
               </section>
             </div>
           )}
@@ -528,7 +868,7 @@ export function Trade({ look, hostConnection = hostBridge }: TradeProps) {
           notices) carry the education. */}
           {claimsAvailable && (
             <div {...panelProps("claims")}>
-              <section className="launch-stealth" aria-label="Private receiving">
+              <section className="launch-stealth" aria-label="Stealth receiving">
                 <PrivacyPanel
                   trustScore={trustScore}
                   disclosuresLive={features.verificationBetaLive}

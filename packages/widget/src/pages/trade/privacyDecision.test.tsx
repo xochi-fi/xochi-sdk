@@ -138,7 +138,7 @@ const selected = (): string[] =>
 const stealthOffered = (): Promise<void> =>
   waitFor(() => {
     expect((mode("Stealth") as HTMLButtonElement).disabled).toBe(false);
-    expect(mode("Stealth").textContent).not.toContain("Loading routes");
+    expect(mode("Stealth").getAttribute("title")).not.toBe("Loading Stealth routes");
   }, WAIT);
 
 /** The pay-amount field. Queried by id: its placeholder is a bare "0". */
@@ -158,10 +158,10 @@ const notices = (): string[] =>
     (s): s is string => s !== null,
   );
 
-/** The one-line slots under a mode button, and how many of them are a fix. */
-const metaLines = (name: "Public" | "Stealth" | "Shielded") => {
-  const lines = mode(name).querySelectorAll(".type-btn__meta");
-  return { lines: lines.length, fixes: mode(name).querySelectorAll(".type-btn__meta--fix").length };
+/** The selected mode's single caption, referenced by the segment group. */
+const modeCaption = (): HTMLElement | null => {
+  const group = screen.getByRole("group", { name: "Settlement privacy" });
+  return document.getElementById(group.getAttribute("aria-describedby") ?? "");
 };
 
 function RefreshCapabilities() {
@@ -176,15 +176,16 @@ async function chooseEthereumDestination(): Promise<void> {
 }
 
 describe("peer options with non-color cues", () => {
-  it("offers three privacy choices with supporting descriptions", async () => {
+  it("offers three compact choices and one caption for the selected mode", async () => {
     await renderTrade(<SwapPanel />);
     const group = screen.getByRole("group", { name: "Settlement privacy" });
-    expect(group.querySelectorAll("button")).toHaveLength(3);
-    // Text, not colour: each option carries exactly one line of words. PrivacyBars
-    // carries the ordering graphically and is tested in PrivacyBars.test.tsx.
-    for (const name of ["Public", "Stealth", "Shielded"] as const) {
-      expect(metaLines(name).lines).toBe(1);
-    }
+    expect(
+      within(group)
+        .getAllByRole("button")
+        .map((button) => button.textContent?.trim()),
+    ).toEqual(["Public", "Stealth", "Shielded"]);
+    expect(group.querySelector(".type-btn__meta")).toBeNull();
+    expect(modeCaption()?.textContent).toBe("Recipient and amount visible");
   });
 });
 
@@ -197,8 +198,15 @@ describe("zk.money privacy shortcut", () => {
 
     fireEvent.click(mode("Shielded"));
     expect(screen.getByRole("button", { name: "On zk.money - Change network" })).toBeTruthy();
-    expect(screen.getByLabelText("zk.money tag")).toBeTruthy();
+    expect(screen.getByText("Choose a zk.money alias.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "To: Your wallet" }));
+    expect(screen.getByLabelText("Name or address")).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     expect(selected()).toEqual(["Shielded"]);
+    expect(modeCaption()?.textContent).toContain(
+      "Amounts and participants hidden inside zk.money.",
+    );
+    expect(screen.getByText("Deposit is public on Ethereum.")).toBeTruthy();
     // The tag rail stays Public internally; Stealth is still navigation out.
     expect((mode("Stealth") as HTMLButtonElement).disabled).toBe(false);
     expect(mode("Stealth").getAttribute("aria-pressed")).toBe("false");
@@ -214,9 +222,8 @@ describe("zk.money privacy shortcut", () => {
     const reasonId = shielded.getAttribute("aria-describedby");
     expect(reasonId).toBeTruthy();
     const reason = reasonId ? document.getElementById(reasonId) : null;
-    expect(reason?.textContent).not.toBe("Send to zk.money");
-    expect(reason?.textContent?.trim()).not.toBe("");
-    expect(reason?.classList.contains("type-btn__meta--fix")).toBe(true);
+    expect(reason?.textContent).toBe("zk.money is not advertised.");
+    expect(modeCaption()?.textContent).toBe("Recipient and amount visible");
   });
 });
 
@@ -241,16 +248,14 @@ describe("stealth blockers are triaged, not collapsed", () => {
     );
     await renderTrade(<SwapPanel />);
     await stealthOffered();
-    expect(metaLines("Stealth")).toEqual({ lines: 1, fixes: 1 });
+    expect(modeCaption()?.textContent).toBe("Recipient and amount visible");
     expect(document.querySelector("#stealth-destinations")?.textContent).toBe(
       "Stealth destinations: Ethereum only.",
     );
     expect(mode("Stealth").getAttribute("aria-describedby")).toBe("stealth-destinations");
     fireEvent.click(mode("Stealth"));
     expect(captionNotice()).toBeNull();
-    expect(document.querySelector(".settlement-caption[aria-live]")?.textContent).toContain(
-      "Stealth derives its one-time address from a connected wallet.",
-    );
+    expect(document.querySelector(".settlement-caption[aria-live]")?.textContent).toBe("");
     // The picker's exact-route guidance replaces the network hint, never stacks on it.
     expect(document.querySelector("#stealth-destinations")).toBeNull();
     expect(mode("Stealth").hasAttribute("aria-describedby")).toBe(false);
@@ -300,17 +305,20 @@ describe("stealth blockers are triaged, not collapsed", () => {
     vi.stubGlobal("fetch", apiStub({ "/api/capabilities": PUBLIC_ONLY_CAPABILITIES }));
     await renderTrade(<SwapPanel />, { connected: true });
 
-    await waitFor(() => expect(mode("Stealth").textContent).toContain("Try another route"), WAIT);
     expect((mode("Stealth") as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(mode("Stealth"));
     expect(selected()).toEqual(["Stealth"]);
-    expect(document.querySelector("#stealth-destination-guidance")?.textContent).toContain(
-      "No live Stealth destinations",
+    await waitFor(
+      () =>
+        expect(document.querySelector("#stealth-destination-guidance")?.textContent).toContain(
+          "No live Stealth destinations",
+        ),
+      WAIT,
     );
     expect(document.querySelector<HTMLButtonElement>(".submit-btn")?.disabled).toBe(true);
   });
 
-  it("preserves Stealth through the hosted-wallet EIP-1193 bridge", async () => {
+  it("refuses Stealth key setup through a third-party wallet relay", async () => {
     const walletMethods: string[] = [];
     vi.stubGlobal(
       "fetch",
@@ -325,14 +333,14 @@ describe("stealth blockers are triaged, not collapsed", () => {
     await chooseEthereumDestination();
 
     await waitFor(() => expect(selected()).toEqual(["Stealth"]), WAIT);
-    expect(metaLines("Stealth")).toEqual({ lines: 1, fixes: 1 });
+    expect(modeCaption()?.textContent).toBe("Set up Stealth");
     expect(walletMethods).not.toContain("personal_sign");
     expect(walletMethods).not.toContain("eth_sign");
     fireEvent.click(screen.getByRole("button", { name: "Set up Stealth" }));
-    await waitFor(() => expect(metaLines("Stealth")).toEqual({ lines: 1, fixes: 0 }), WAIT);
-    expect(
-      walletMethods.some((method) => method === "personal_sign" || method === "eth_sign"),
-    ).toBe(true);
+    await screen.findByText("Connect a wallet in the widget to set up Stealth.", {}, WAIT);
+    expect(modeCaption()?.textContent).toBe("Set up Stealth");
+    expect(walletMethods).not.toContain("personal_sign");
+    expect(walletMethods).not.toContain("eth_sign");
   });
 
   it("keeps Stealth selected but blocks it when a refresh removes route support", async () => {
@@ -361,7 +369,7 @@ describe("stealth blockers are triaged, not collapsed", () => {
     );
     expect((mode("Stealth") as HTMLButtonElement).disabled).toBe(false);
     expect(selected()).toEqual(["Stealth"]);
-    expect(metaLines("Stealth")).toEqual({ lines: 1, fixes: 1 });
+    expect(modeCaption()?.textContent).toBe("Try another route");
     expect(screen.queryByText(/Stealth pays out on/)).toBeNull();
     expect(document.querySelector<HTMLButtonElement>(".submit-btn")?.disabled).toBe(true);
   });
@@ -380,8 +388,10 @@ describe("stealth blockers are triaged, not collapsed", () => {
     });
     await renderTrade(<SwapPanel />);
 
-    expect(mode("Stealth").querySelector(".type-btn__meta--fix")?.textContent).toBe(
-      "Loading routes",
+    expect(mode("Stealth").getAttribute("title")).toBe("Loading Stealth routes");
+    fireEvent.click(mode("Stealth"));
+    expect(document.getElementById("stealth-destination-guidance")?.textContent).toContain(
+      "Checking Stealth routes",
     );
 
     finishLoad(
@@ -391,10 +401,7 @@ describe("stealth blockers are triaged, not collapsed", () => {
       }),
     );
     await waitFor(
-      () =>
-        expect(mode("Stealth").querySelector(".type-btn__meta--fix")?.textContent).toBe(
-          "Connect a wallet",
-        ),
+      () => expect(modeCaption()?.textContent).toBe("Recipient hidden, amount visible"),
       WAIT,
     );
   });
@@ -407,12 +414,11 @@ describe("stealth blockers are triaged, not collapsed", () => {
 
     await waitFor(
       () =>
-        expect(mode("Stealth").querySelector(".type-btn__meta--fix")?.textContent).toBe(
-          "Route data unavailable",
+        expect(mode("Stealth").getAttribute("title")).toBe(
+          "Stealth route data could not be loaded",
         ),
       WAIT,
     );
-    expect(mode("Stealth").getAttribute("title")).toBe("Stealth route data could not be loaded");
     expect((mode("Stealth") as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(mode("Stealth"));
     expect(selected()).toEqual(["Stealth"]);
@@ -439,7 +445,10 @@ describe("stealth blockers are triaged, not collapsed", () => {
     await renderTrade(<SwapPanel />, { connected: true });
 
     await waitFor(
-      () => expect(mode("Stealth").textContent).toContain("Route data unavailable"),
+      () =>
+        expect(mode("Stealth").getAttribute("title")).toBe(
+          "Stealth route data could not be loaded",
+        ),
       WAIT,
     );
     expect((mode("Stealth") as HTMLButtonElement).disabled).toBe(false);
@@ -461,7 +470,10 @@ describe("stealth blockers are triaged, not collapsed", () => {
     await renderTrade(<SwapPanel />, { connected: true });
 
     await waitFor(
-      () => expect(mode("Stealth").textContent).toContain("Route data unavailable"),
+      () =>
+        expect(mode("Stealth").getAttribute("title")).toBe(
+          "Stealth route data could not be loaded",
+        ),
       WAIT,
     );
     fireEvent.click(mode("Stealth"));
@@ -526,11 +538,11 @@ describe("the guidance slot holds at most one notice", () => {
 describe("standalone privacy UI only when relevant", () => {
   it("gates the private receiving section on a connected wallet", async () => {
     const anonymous = await renderTrade(<Trade look={FULL_LOOK} />);
-    expect(anonymous.container.querySelector('[aria-label="Private receiving"]')).toBeNull();
+    expect(anonymous.container.querySelector('[aria-label="Stealth receiving"]')).toBeNull();
     cleanup();
 
     const connected = await renderTrade(<Trade look={FULL_LOOK} />, { connected: true });
-    expect(connected.container.querySelector('[aria-label="Private receiving"]')).toBeTruthy();
+    expect(connected.container.querySelector('[aria-label="Stealth receiving"]')).toBeTruthy();
   });
 });
 
@@ -539,10 +551,10 @@ describe("education never blocks the form", () => {
     await renderTrade(<SwapPanel />);
     const toggle = screen.getByRole("button", { name: /How it works/ });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByText("Sign an intent")).toBeNull();
+    expect(screen.queryByText("The order skips the public mempool.")).toBeNull();
 
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByText("Sign an intent")).toBeTruthy();
+    expect(screen.getByText("The order skips the public mempool.")).toBeTruthy();
   });
 });
