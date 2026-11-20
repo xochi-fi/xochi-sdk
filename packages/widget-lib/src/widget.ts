@@ -10,6 +10,8 @@
  * consent for each signature and transaction.
  */
 
+import { toRampWidgetEvent } from "./rampEvents.js";
+import type { RampDirection } from "./protocol.js";
 import { asJson, isRecord, normalizeOrigin, truncate } from "./internal.js";
 import { EMBED_THEMES, encodeEmbedParams, type EmbedParams, type EmbedTheme } from "./params.js";
 import {
@@ -157,6 +159,8 @@ function toRpcError(err: unknown): RpcErrorObject {
 /** The frame's event, rebuilt from validated fields only, or null when malformed. */
 function toWidgetEvent(value: unknown): XochiWidgetEvent | null {
   if (!isRecord(value)) return null;
+  if (typeof value.name === "string" && value.name.startsWith("ramp:"))
+    return toRampWidgetEvent(value);
   switch (value.name) {
     case "trade:submitted":
     case "trade:completed":
@@ -439,6 +443,18 @@ export function createXochiWidget(
 
   function emit(event: XochiWidgetEvent): void {
     switch (event.name) {
+      case "ramp:started":
+        listeners["ramp:started"]?.(event);
+        return;
+      case "ramp:status":
+        listeners["ramp:status"]?.(event);
+        return;
+      case "ramp:terminal":
+        listeners["ramp:terminal"]?.(event);
+        return;
+      case "ramp:recovery-required":
+        listeners["ramp:recovery-required"]?.(event);
+        return;
       case "trade:submitted":
         listeners["trade:submitted"]?.(event);
         return;
@@ -599,4 +615,23 @@ export function createXochiWidget(
       iframe.remove();
     },
   };
+}
+
+export interface XochiRampWidgetOptions extends Omit<XochiWidgetOptions, "params" | "listeners"> {
+  readonly direction?: RampDirection;
+  readonly listeners?: XochiWidgetListeners;
+}
+
+/** Open Trade in Buy or Cash out mode. */
+export function createXochiRampWidget(
+  container: HTMLElement,
+  options?: XochiRampWidgetOptions,
+): XochiWidget {
+  const { direction = "onramp", ...rest } = options ?? {};
+  if (direction !== "onramp" && direction !== "offramp")
+    throw new TypeError("unknown ramp direction");
+  return createXochiWidget(container, {
+    ...rest,
+    params: { initialTab: "trade", initialMode: direction },
+  });
 }

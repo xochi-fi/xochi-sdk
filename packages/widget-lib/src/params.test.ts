@@ -330,3 +330,48 @@ describe("helpers", () => {
     }
   });
 });
+
+describe("tab and ramp parameters", () => {
+  it("roundtrips all IA defaults and narrowing, including explicit empty lists", () => {
+    const params: EmbedParams = {
+      initialTab: "send",
+      tabs: ["trade", "send", "activity", "claims"],
+      initialMode: "offramp",
+      modes: ["onramp", "swap", "offramp"],
+      sendDestinations: ["address", "stealth"],
+      fiatCurrency: "USD",
+      rampProviders: ["peer"],
+      amount: "5",
+    };
+    expect(parseEmbedParams(encodeEmbedParams(params))).toEqual(params);
+    for (const field of ["tabs", "modes", "sendDestinations", "rampProviders"]) {
+      expect(parseEmbedParams(encodeEmbedParams({ [field]: [] }))).toEqual({ [field]: [] });
+    }
+  });
+
+  it("drops unknown defaults and entries without widening explicit restrictions", () => {
+    expect(
+      parseEmbedParams(
+        "initialTab=sell&initialMode=sell&fiatCurrency=usd&tabs=send,unknown,send&modes=sell&sendDestinations=payment_app,unknown&rampProviders=unknown",
+      ),
+    ).toEqual({
+      tabs: ["send"],
+      modes: [],
+      sendDestinations: [],
+      rampProviders: [],
+    });
+    expect(parseEmbedParams(`tabs=${Array(34).fill("trade").join(",")}`)).toEqual({ tabs: [] });
+  });
+
+  it.each([
+    { initialMode: "sell" },
+    { initialTab: "sell" },
+    { modes: ["swap", "swap"] },
+    { sendDestinations: ["payment_app", "other"] },
+    { fiatCurrency: "usd" },
+    { fiatCurrency: "USD\n" },
+    { rampProviders: ["unknown"] },
+  ])("refuses malformed host input %j", (params) => {
+    expect(() => encodeEmbedParams(params as EmbedParams)).toThrow(TypeError);
+  });
+});

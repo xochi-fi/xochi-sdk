@@ -126,10 +126,68 @@ export interface RpcErrorObject {
 }
 
 /**
- * A trade lifecycle event the frame reports to the host. `tradeRef` is the
- * frame-minted opaque reference (`TRADE_REF_PATTERN`), never an intent id.
+ * Ramp/1 public vocabulary, kept dependency-free. Mirrors `@xochi/client`'s ramp/1
+ * `RampLegStateSchema` / `RampErrorCodeSchema`; the test comparing them returns
+ * with the client contract (xochi-sdk#228).
  */
+export type RampDirection = "onramp" | "offramp";
+export type RampLegName = "peer" | "xochi";
+export const RAMP_LEG_STATES = [
+  "not_started",
+  "quoted",
+  "approval_required",
+  "action_required",
+  "processing",
+  "completed",
+  "failed",
+  "in_doubt",
+  "refunded",
+  "skipped",
+] as const;
+export type RampLegState = (typeof RAMP_LEG_STATES)[number];
+/** Only normalized ramp/1 errors cross the bridge, never provider text. */
+export const RAMP_RECOVERY_CODES = [
+  "invalid_request",
+  "capabilities_unavailable",
+  "capability_unavailable",
+  "quote_expired",
+  "quote_changed",
+  "approval_rejected",
+  "provider_declined",
+  "provider_timeout",
+  "proof_failed",
+  "peer_in_doubt",
+  "xochi_in_doubt",
+  "route_failed",
+  "session_conflict",
+  "unsupported_version",
+  "internal",
+] as const;
+export const RAMP_REF_PATTERN = /^ramp_[0-9a-f]{32}$(?![\s\S])/;
+export type RampWidgetEvent =
+  | { readonly name: "ramp:started"; readonly rampRef: string; readonly direction: RampDirection }
+  | {
+      readonly name: "ramp:status";
+      readonly rampRef: string;
+      readonly peer: RampLegState;
+      readonly xochi?: RampLegState;
+    }
+  | {
+      readonly name: "ramp:terminal";
+      readonly rampRef: string;
+      readonly peer: RampLegState;
+      readonly xochi?: RampLegState;
+    }
+  | {
+      readonly name: "ramp:recovery-required";
+      readonly rampRef: string;
+      readonly leg: RampLegName;
+      readonly code: string;
+    };
+
+/** Public lifecycle events carried by the existing xochi:event channel. */
 export type XochiWidgetEvent =
+  | RampWidgetEvent
   /** The trade was signed and accepted by the API. */
   | { name: "trade:submitted"; tradeRef: string }
   /** The trade settled. */

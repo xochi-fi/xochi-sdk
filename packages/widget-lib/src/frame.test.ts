@@ -218,6 +218,33 @@ describe("connectToHost", () => {
     expect(connection.walletUi()).toBe("widget");
   });
 
+  it("reports the pinned host's protocol: pending, then legacy or current", () => {
+    const legacy = connect();
+    const seen: string[] = [];
+    legacy.connection.onHostProtocol((p) => seen.push(p));
+    expect(legacy.connection.hostProtocol()).toBe("pending");
+    // Malformed answers pin nothing.
+    legacy.frame.receive({ type: "xochi:provider", protocolVersion: 99, available: true });
+    expect(legacy.connection.hostProtocol()).toBe("pending");
+    attach(legacy.frame);
+    expect(legacy.connection.hostProtocol()).toBe("legacy");
+    expect(seen).toEqual(["legacy"]);
+
+    const current = connect();
+    current.frame.receive({
+      type: "xochi:provider",
+      protocolVersion: 1,
+      handshakeId: 1,
+      available: false,
+      autoConnect: false,
+      walletUi: "widget",
+    });
+    expect(current.connection.hostProtocol()).toBe("current");
+    // A later legacy-shaped message from the pinned host cannot downgrade it.
+    attach(current.frame);
+    expect(current.connection.hostProtocol()).toBe("current");
+  });
+
   it("acknowledges versioned ownership before notifying availability observers", () => {
     const { frame, connection } = connect();
     frame.take();
@@ -698,4 +725,40 @@ describe("onAutoConnect", () => {
     attach(frame, true);
     expect(connects).toBe(0);
   });
+});
+
+it("mints opaque ramp refs and validates and sanitizes queued ramp wire events", async () => {
+  const { mintRampRef, RAMP_REF_PATTERN } = await import("./index.js");
+  const rampRef = mintRampRef();
+  expect(rampRef).toMatch(RAMP_REF_PATTERN);
+  expect(mintRampRef()).not.toBe(rampRef);
+  const { frame, connection } = connect();
+  frame.take();
+  const events: XochiWidgetEvent[] = [
+    { name: "ramp:started", rampRef, direction: "offramp" },
+    { name: "ramp:status", rampRef, peer: "in_doubt", xochi: "not_started" },
+    { name: "ramp:recovery-required", rampRef, leg: "peer", code: "peer_in_doubt" },
+    { name: "ramp:terminal", rampRef, peer: "refunded" },
+  ];
+  for (const event of events)
+    connection.emit({ ...event, extra: "drop" } as unknown as XochiWidgetEvent);
+  expect(frame.take()).toEqual([]);
+  attach(frame);
+  const wireEvents = frame
+    .take()
+    .map((p) => ({ ...p, data: JSON.parse(p.message) }))
+    .filter((p) => p.data.type === "xochi:event");
+  expect(wireEvents.map((p) => p.data.event)).toEqual(events);
+  expect(wireEvents.every((p) => p.targetOrigin === HOST)).toBe(true);
+  for (const event of [
+    { ...events[0], rampRef: "invalid" },
+    { ...events[0], direction: "swap" },
+    { ...events[1], peer: "unknown" },
+    { ...events[1], xochi: "unknown" },
+    { ...events[2], code: "unknown" },
+    { ...events[2], leg: "unknown" },
+    { ...events[0], name: "ramp:unknown" },
+  ])
+    expect(() => connection.emit(event as XochiWidgetEvent)).toThrow(TypeError);
+  connection.destroy();
 });

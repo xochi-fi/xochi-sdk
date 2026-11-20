@@ -18,6 +18,7 @@
  * refused with the code and message the host would answer.
  */
 
+import { toRampWidgetEvent } from "./rampEvents.js";
 import { asJson, isRecord, normalizeOrigin, truncate } from "./internal.js";
 import { EMBED_THEMES, type EmbedTheme } from "./params.js";
 import {
@@ -95,6 +96,16 @@ export interface HostConnection {
   walletUi(): WalletUi;
   /** Called when `walletUi()` changes after a valid provider message. Returns an unsubscribe. */
   onWalletUi(listener: (walletUi: WalletUi) => void): () => void;
+  /**
+   * Which protocol the pinned host speaks: `"pending"` until a well-formed
+   * `xochi:provider` pins it, `"legacy"` for a host that sends no
+   * `protocolVersion` (pre-v1 loaders, which cannot be assumed to ignore
+   * ramp events safely), `"current"` for `WIDGET_PROTOCOL_VERSION`. A frame
+   * gates surfaces that need a current host on this, failing closed.
+   */
+  hostProtocol(): HostProtocol;
+  /** Called when `hostProtocol()` changes. Returns an unsubscribe. */
+  onHostProtocol(listener: (protocol: HostProtocol) => void): () => void;
   /** Runtime theme override, or null until the host sends a valid theme message. */
   theme(): EmbedTheme | null;
   /** Called when the runtime theme changes. Returns an unsubscribe. */
@@ -117,6 +128,8 @@ export interface HostConnection {
   destroy(): void;
 }
 
+export type HostProtocol = "pending" | "legacy" | "current";
+
 /** Events queued before the handshake. Bounded: a host that never answers gets the first few. */
 const MAX_QUEUED_EVENTS = 32;
 
@@ -124,6 +137,11 @@ const MAX_QUEUED_EVENTS = 32;
 export function mintTradeRef(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   return `tr_${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** A non-authorizing reference minted only by the frame; never a provider handle. */
+export function mintRampRef(): string {
+  return mintTradeRef().replace(/^tr_/, "ramp_");
 }
 
 function rpcError(value: unknown): RpcErrorObject {
@@ -143,7 +161,12 @@ function rejected(code: number, message: string): Promise<never> {
 
 /** The event rebuilt from its checked fields, the error cut to the cap. */
 function toWireEvent(event: XochiWidgetEvent): XochiWidgetEvent {
-  const { name, tradeRef } = event;
+  if (event.name.startsWith("ramp:")) {
+    const wire = toRampWidgetEvent(event);
+    if (wire === null) throw new TypeError("invalid ramp event");
+    return wire;
+  }
+  const { name, tradeRef } = event as Exclude<XochiWidgetEvent, { rampRef: string }>;
   if (typeof tradeRef !== "string" || !TRADE_REF_PATTERN.test(tradeRef)) {
     throw new TypeError(`trade event tradeRef must match ${TRADE_REF_PATTERN}: ${tradeRef}`);
   }
@@ -181,6 +204,8 @@ export function connectToHost(options: HostConnectionOptions = {}): HostConnecti
   let hostAutoConnect = false;
   let hostWalletUi: WalletUi = "widget";
   let hostTheme: EmbedTheme | null = null;
+  let protocol: HostProtocol = "pending";
+  const protocolListeners = new Set<(protocol: HostProtocol) => void>();
   let pendingConnectRequest = false;
   let nextId = 1;
   let pendingHeight: number | null = null;
@@ -241,6 +266,8 @@ export function connectToHost(options: HostConnectionOptions = {}): HostConnecti
       if (hostOrigin === undefined ? event.origin === "null" : event.origin !== hostOrigin) return;
       origin = event.origin;
       pinnedNow = true;
+      protocol = versioned ? "current" : "legacy";
+      for (const listener of protocolListeners) listener(protocol);
     } else if (event.origin !== origin) {
       return;
     }
@@ -452,6 +479,13 @@ export function connectToHost(options: HostConnectionOptions = {}): HostConnecti
         walletUiListeners.delete(listener);
       };
     },
+    hostProtocol: () => protocol,
+    onHostProtocol(listener) {
+      protocolListeners.add(listener);
+      return () => {
+        protocolListeners.delete(listener);
+      };
+    },
     theme: () => hostTheme,
     onTheme(listener) {
       themeListeners.add(listener);
@@ -489,6 +523,7 @@ export function connectToHost(options: HostConnectionOptions = {}): HostConnecti
       availability.clear();
       walletUiListeners.clear();
       themeListeners.clear();
+      protocolListeners.clear();
     },
   };
 }
