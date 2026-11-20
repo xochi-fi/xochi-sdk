@@ -127,5 +127,7 @@ describe("a failure read with the flow closed", () => {
 
     expect(retryButtons()).toHaveLength(1);
     expect(inlineError()).not.toMatch(/funds may have moved/i);
+    expect(inlineError()).toContain("No funds moved");
+    expect(screen.getByRole("button", { name: "New quote" })).toBeTruthy();
   });
 });

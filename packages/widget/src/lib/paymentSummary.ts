@@ -32,7 +32,7 @@ export function paymentSummary(
       const gas = paysNoGas(method, approval)
         ? "No gas"
         : approval === "required"
-          ? "Gas for a one-time approval"
+          ? "Gas for an approval"
           : "Gas only if an approval is needed";
       return hasPull ? `${gas}${sep}sign twice` : gas;
     }

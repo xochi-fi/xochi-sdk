@@ -115,7 +115,7 @@ const advance = async (ms: number) => {
 /** Quote and Confirm; the wallet's signature is `wallet()`'s answer. */
 async function confirmWith(
   wallet: (call: ApiCall) => unknown,
-  options: { stepwise?: boolean; withPull?: boolean } = {},
+  options: { stepwise?: boolean; withPull?: boolean; unlimitedApproval?: boolean } = {},
 ) {
   servePull = options.withPull === true;
   const config = createTestWagmiConfig();
@@ -166,6 +166,10 @@ async function confirmWith(
   act(() => result.current.requestQuote(nextAmount()));
   await advance(PAST_DEBOUNCE_MS);
   expect(result.current.status).toBe("quoted");
+  if (options.unlimitedApproval) {
+    act(() => result.current.setUnlimitedApproval(true));
+    expect(result.current.unlimitedApproval).toBe(true);
+  }
   act(() => result.current.sign());
   const executeCalls = () => api.calls.filter((c) => c.url.endsWith("/api/intent/execute"));
   return { result, rerender, api, executeCalls };
@@ -179,6 +183,7 @@ describe("cancelSign", () => {
         new Promise((resolve) => {
           answer = (signature) => resolve({ jsonrpc: "2.0", id: call.body?.id, result: signature });
         }),
+      { unlimitedApproval: true },
     );
     for (let i = 0; i < 10 && !api.calls.some((c) => c.body?.method); i++) await advance(0);
     expect(result.current.status).toBe("signing");
@@ -189,6 +194,7 @@ describe("cancelSign", () => {
     });
     expect(took).toBe(true);
     expect(result.current.status).toBe("quoted");
+    expect(result.current.unlimitedApproval).toBe(false);
 
     answer(SIGNATURE);
     await advance(0);
@@ -313,11 +319,12 @@ describe("cancelSign", () => {
   it("invalidates WalletConnect step two when route authority changes", async () => {
     const { result, rerender, executeCalls } = await confirmWith(
       (call) => ({ jsonrpc: "2.0", id: call.body?.id, result: SIGNATURE }),
-      { stepwise: true, withPull: true },
+      { stepwise: true, withPull: true, unlimitedApproval: true },
     );
     for (let i = 0; i < 10 && !result.current.awaitingPull; i++) await advance(0);
     expect(result.current.status).toBe("signing");
     expect(result.current.awaitingPull).toBe(true);
+    expect(result.current.unlimitedApproval).toBe(true);
     expect(executeCalls()).toHaveLength(0);
 
     rerender({ authorized: false, settlement: "public", paused: false });
@@ -325,6 +332,7 @@ describe("cancelSign", () => {
     expect(result.current.status).toBe("idle");
     expect(result.current.quote).toBeNull();
     expect(result.current.awaitingPull).toBe(false);
+    expect(result.current.unlimitedApproval).toBe(false);
 
     rerender({ authorized: true, settlement: "stealth", paused: false });
     await advance(0);
@@ -334,14 +342,18 @@ describe("cancelSign", () => {
   });
 
   it("is refused once the execute is out", async () => {
-    const { result, executeCalls } = await confirmWith((call) => ({
-      jsonrpc: "2.0",
-      id: call.body?.id,
-      result: SIGNATURE,
-    }));
+    const { result, executeCalls } = await confirmWith(
+      (call) => ({
+        jsonrpc: "2.0",
+        id: call.body?.id,
+        result: SIGNATURE,
+      }),
+      { unlimitedApproval: true },
+    );
     for (let i = 0; i < 10 && executeCalls().length === 0; i++) await advance(0);
     expect(executeCalls()).toHaveLength(1);
     expect(result.current.status).not.toBe("signing");
+    expect(result.current.unlimitedApproval).toBe(false);
 
     let took = true;
     act(() => {

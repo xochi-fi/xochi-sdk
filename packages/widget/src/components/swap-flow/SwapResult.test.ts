@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { init, update, view, type Model } from "@xochi/client";
+import { ErrorDisplay } from "../ErrorDisplay.js";
 import { IntentTimeline } from "../IntentTimeline.js";
 import { SwapResult } from "./SwapResult.js";
 import { buildFailureRef, type SwapFailureRef } from "../../lib/swapFlowPhase.js";
@@ -176,5 +178,108 @@ describe("Send and Swap receipts", () => {
     expect(renderToStaticMarkup(createElement(IntentTimeline, timeline))).toContain(
       mode === "Stealth" ? "one-time stealth address" : "Funds delivered. Finalizing the swap.",
     );
+  });
+});
+
+describe("installed client failure verdict to visible result", () => {
+  const now = 1_795_101_913_859;
+  const reason = "invalid_request: approve Permit2 for this token, then request a new quote";
+  const initial: Model = init(
+    {
+      solverPin: { erc3009Allowlist: [], permit2Allowlist: [], requirePin: true },
+      pullRecipients: undefined,
+      depositAttestationSigner: null,
+    },
+    {
+      fromChainId: 4663,
+      toChainId: 8453,
+      fromToken: "0x1111111111111111111111111111111111111111",
+      toToken: "0x2222222222222222222222222222222222222222",
+      settlementPreference: "public",
+      trustScore: 0,
+      slippageBps: 50,
+      recipientAddress: null,
+      recipientTag: null,
+      refundAddress: null,
+      stealthMetaAddress: null,
+      paused: false,
+      wallet: {
+        address: "0x3333333333333333333333333333333333333333",
+        chainId: 4663,
+        stepwise: false,
+      },
+    },
+  );
+
+  it("renders safe and ambiguous SDK verdicts without inferring safety from prose", () => {
+    for (const substatus of [undefined, "pull_failed", "refund_failed", "not_executed"]) {
+      const [model] = update(initial, {
+        type: "ResumeRequested",
+        intentId: "xi_permit2_refusal",
+        status: "failed",
+        owner: "0x3333333333333333333333333333333333333333",
+        depositDeadline: null,
+        substatus,
+        now,
+        hidden: false,
+      });
+      const receipt = view(model);
+      if (receipt.phase !== "failed" && receipt.phase !== "may-have-moved") {
+        throw new Error(`unexpected failed receipt phase: ${receipt.phase}`);
+      }
+      const notExecuted = model.intent.status === "failed" && receipt.phase === "failed";
+      const modal = renderToStaticMarkup(
+        createElement(SwapResult, {
+          variant: receipt.phase,
+          notExecuted,
+          fromChainId: 4663,
+          toChainId: 8453,
+          isCrossChain: true,
+          txHash: null,
+          toSymbol: "EURC",
+          failureRef: { ...failureRef, reason },
+          onRetry: () => {},
+          onClose: () => {},
+        }),
+      );
+      const inline = renderToStaticMarkup(
+        createElement(ErrorDisplay, {
+          error: reason,
+          mayHaveMoved: receipt.phase === "may-have-moved",
+          notExecuted,
+          onRetry: () => {},
+        }),
+      );
+
+      if (substatus === "not_executed") {
+        for (const html of [modal, inline]) {
+          expect(html).toContain("No funds moved");
+          expect(html).toContain("New quote");
+          expect(html).not.toContain("Funds may have moved");
+        }
+        const [reset] = update(model, { type: "ResetRequested", now, hidden: false });
+        const [queued] = update(reset, {
+          type: "QuoteRequested",
+          amount: "5000000",
+          now,
+          hidden: false,
+        });
+        const [, effects] = update(queued, {
+          type: "TimerFired",
+          timer: "debounce",
+          now: now + 500,
+          hidden: false,
+        });
+        expect(effects.some((effect) => effect.type === "Api" && effect.call.op === "quote")).toBe(
+          true,
+        );
+      } else {
+        for (const html of [modal, inline]) {
+          expect(html).toContain("Funds may have moved");
+          expect(html).not.toContain("No funds moved");
+          expect(html).not.toMatch(/>New quote<|>Retry<|>Try again</);
+        }
+      }
+    }
   });
 });

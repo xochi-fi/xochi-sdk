@@ -1,3 +1,4 @@
+/// <reference lib="esnext.promise" />
 // @vitest-environment jsdom
 
 /**
@@ -34,8 +35,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, cleanup } from "@testing-library/react";
 import { connect } from "wagmi/actions";
 import { base, arbitrum } from "wagmi/chains";
-import { TRON_CHAIN_ID } from "@xochi/client";
-import type { Config } from "wagmi";
+import { useEffect } from "react";
+import { STATUS_POLL_MS, TRON_CHAIN_ID } from "@xochi/client";
+import {
+  assertPullMatchesIntent,
+  computeIntentIdHash,
+  PERMIT2_ADDRESS,
+  PERMIT2_TYPES,
+} from "@xochi/signer";
+import { useAccount, type Config } from "wagmi";
 import { useIntent } from "./useIntent.js";
 import { intentAPI } from "../lib/intentAPI.js";
 import { STORAGE_KEYS } from "../constants.js";
@@ -46,6 +54,7 @@ import {
   testWrapper,
   stubApi,
   quoteWire,
+  statusWire,
   TEST_WALLET,
   USDC_BASE,
   WETH_ARBITRUM,
@@ -207,6 +216,283 @@ describe("wallet-only trader (connected, no passkey)", () => {
     expect(rendered.result.current.status).toBe("quoted");
     expect(rendered.result.current.canSign).toBe(true);
   });
+
+  it("keeps input-driven quoting stable when a quote arrives and consent changes", async () => {
+    const api = stubApi(() => quoteWire({ payment_method: "permit2" }));
+    const amount = nextAmount();
+    let inputQuoteRequests = 0;
+    const { result, rerender } = renderHook(
+      () => {
+        const { address } = useAccount();
+        const intent = useIntent({
+          fromChainId: base.id,
+          toChainId: arbitrum.id,
+          fromToken: USDC_BASE,
+          toToken: WETH_ARBITRUM,
+          settlementPreference: "public",
+          settlementAuthorized: true,
+        });
+        // The panel's amount effect depends on requestQuote. An arriving quote
+        // must not change that action and masquerade as a new amount edit.
+        useEffect(() => {
+          if (!address) return;
+          inputQuoteRequests += 1;
+          intent.requestQuote(amount);
+        }, [address, intent.requestQuote]);
+        return intent;
+      },
+      { wrapper: testWrapper(config) },
+    );
+    await connectWallet();
+    const requestQuote = result.current.requestQuote;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PAST_DEBOUNCE_MS);
+    });
+    expect(result.current.status).toBe("quoted");
+    expect(result.current.requestQuote).toBe(requestQuote);
+    expect(inputQuoteRequests).toBe(1);
+    expect(api.quotes).toHaveLength(1);
+
+    act(() => result.current.setUnlimitedApproval(true));
+    rerender();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PAST_DEBOUNCE_MS);
+    });
+    expect(result.current.unlimitedApproval).toBe(true);
+    expect(result.current.requestQuote).toBe(requestQuote);
+    expect(inputQuoteRequests).toBe(1);
+    expect(api.quotes).toHaveLength(1);
+  });
+
+  it.each(["requestQuote", "refreshQuote", "reset", "sign"] as const)(
+    "clears unused consent on %s without changing the quoting action",
+    async (action) => {
+      const api = stubApi(() => quoteWire({ payment_method: "permit2" }));
+      const rendered = renderIntent(api);
+      await connectWallet();
+      await quote(rendered);
+      const requestQuote = rendered.result.current.requestQuote;
+      act(() => rendered.result.current.setUnlimitedApproval(true));
+      expect(rendered.result.current.unlimitedApproval).toBe(true);
+
+      act(() => {
+        if (action === "requestQuote") rendered.result.current.requestQuote(nextAmount());
+        else rendered.result.current[action]();
+      });
+
+      expect(rendered.result.current.unlimitedApproval).toBe(false);
+      expect(rendered.result.current.requestQuote).toBe(requestQuote);
+    },
+  );
+
+  it("clears consent when a fresh quote arrives even with the same quote ID", async () => {
+    const { promise: freshQuote, resolve: releaseQuote } = Promise.withResolvers<unknown>();
+    let quotes = 0;
+    const amount = nextAmount();
+    const intentId = "11111111-1111-1111-1111-111111111111";
+    const spender = "0x3333333333333333333333333333333333333333";
+    const executableQuote = () => {
+      const deadline = Math.floor(Date.now() / 1_000) + 300;
+      const wire = quoteWire({
+        payment_method: "permit2",
+        eip712: {
+          domain: { name: "Xochi", version: "3", chainId: base.id },
+          types: { XochiIntent: [{ name: "toAmount", type: "uint256" }] },
+          primaryType: "XochiIntent",
+          message: {
+            wallet: TEST_WALLET,
+            fromChainId: base.id,
+            toChainId: arbitrum.id,
+            fromToken: USDC_BASE,
+            toToken: WETH_ARBITRUM,
+            fromAmount: amount,
+            toAmount: "500000000000000",
+            recipient: TEST_WALLET,
+            settlementPreference: "public",
+            deadline,
+          },
+        },
+        pull_authorization: {
+          domain: { name: "Permit2", chainId: base.id, verifyingContract: PERMIT2_ADDRESS },
+          types: PERMIT2_TYPES,
+          primaryType: "PermitWitnessTransferFrom",
+          message: {
+            permitted: { token: USDC_BASE, amount },
+            spender,
+            nonce: String(quotes),
+            deadline,
+            witness: { orderId: computeIntentIdHash(intentId) },
+          },
+        },
+      });
+      assertPullMatchesIntent(wire, {
+        expectedPullRecipients: { [base.id]: { permit2: spender } },
+      });
+      return wire;
+    };
+    const api = stubApi(() => {
+      quotes += 1;
+      return quotes === 1 ? executableQuote() : freshQuote;
+    });
+    const rendered = renderIntent(api);
+    await connectWallet();
+    await quote(rendered, amount);
+    expect(rendered.result.current.quote?.pullAuthorization).toBeTruthy();
+    const previousQuote = rendered.result.current.quote;
+    const previousQuoteId = rendered.result.current.quoteId;
+    act(() => rendered.result.current.refreshQuote());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PAST_DEBOUNCE_MS);
+    });
+    expect(api.quotes).toHaveLength(2);
+    act(() => rendered.result.current.setUnlimitedApproval(true));
+    expect(rendered.result.current.unlimitedApproval).toBe(true);
+
+    await act(async () => {
+      releaseQuote(executableQuote());
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(rendered.result.current.status).toBe("quoted");
+    expect(rendered.result.current.quoteId).toBe(previousQuoteId);
+    expect(rendered.result.current.quote).not.toBe(previousQuote);
+    expect(rendered.result.current.unlimitedApproval).toBe(false);
+  });
+
+  it.each(["not_executed", undefined, "pull_failed", "refund_failed"])(
+    "uses the SDK's resumed-order poll verdict for substatus=%s, not a later quote refusal",
+    async (substatus) => {
+      const intentId = "11111111-1111-1111-1111-111111111111";
+      const api = stubApi((call) =>
+        call.url.endsWith("/status")
+          ? statusWire({
+              intent_id: intentId,
+              status: "failed",
+              terminal: true,
+              error: "fill failed",
+              substatus,
+            })
+          : quoteWire({
+              can_solve: false,
+              error: "pair_unsupported",
+              error_category: "pair_unsupported",
+              settlement_options: [],
+            }),
+      );
+      const rendered = renderIntent(api);
+      await connectWallet();
+      act(() => rendered.result.current.resume(intentId, "executing", TEST_WALLET));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(api.statusPolls).toHaveLength(1);
+      expect(rendered.result.current.status).toBe("failed");
+      expect(rendered.result.current.substatus).toBe(substatus ?? null);
+      expect(rendered.result.current.notExecuted).toBe(substatus === "not_executed");
+      if (substatus !== "not_executed") {
+        expect(rendered.result.current.receipt.phase).toBe("may-have-moved");
+        return;
+      }
+
+      await quote(rendered);
+      expect(api.quotes).toHaveLength(1);
+      expect(rendered.result.current.status).toBe("failed");
+      expect(rendered.result.current.receipt.phase).toBe("failed");
+      expect(rendered.result.current.notExecuted).toBe(false);
+      expect(rendered.result.current.substatus).toBeNull();
+    },
+  );
+
+  it("does not expose a foreign order's failed poll metadata", async () => {
+    const intentId = "11111111-1111-1111-1111-111111111111";
+    let polls = 0;
+    const api = stubApi((call) => {
+      if (!call.url.endsWith("/status")) throw new Error(`unexpected request ${call.url}`);
+      polls += 1;
+      return statusWire({
+        intent_id: polls === 1 ? "99999999-9999-9999-9999-999999999999" : intentId,
+        status: "failed",
+        terminal: true,
+        error: "fill failed",
+        substatus: polls === 1 ? "not_executed" : "pull_failed",
+      });
+    });
+    const rendered = renderIntent(api);
+    await connectWallet();
+    act(() => rendered.result.current.resume(intentId, "executing", TEST_WALLET));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(api.statusPolls).toHaveLength(1);
+    expect(rendered.result.current.status).toBe("executing");
+    expect(rendered.result.current.substatus).toBeNull();
+    expect(rendered.result.current.notExecuted).toBe(false);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(STATUS_POLL_MS);
+    });
+    expect(rendered.result.current.status).toBe("failed");
+    expect(rendered.result.current.substatus).toBe("pull_failed");
+    expect(rendered.result.current.receipt.phase).toBe("may-have-moved");
+    expect(rendered.result.current.notExecuted).toBe(false);
+  });
+
+  it.each([
+    ["not_executed", "pull_failed"],
+    ["pull_failed", "not_executed"],
+  ])(
+    "keeps accepted terminal metadata %s when an older %s poll replies late",
+    async (accepted, stale) => {
+      const intentId = "11111111-1111-1111-1111-111111111111";
+      const { promise: olderPoll, resolve: releaseOlderPoll } = Promise.withResolvers<unknown>();
+      let polls = 0;
+      const api = stubApi((call) => {
+        if (!call.url.endsWith("/status")) throw new Error(`unexpected request ${call.url}`);
+        polls += 1;
+        return polls === 1
+          ? olderPoll
+          : statusWire({
+              intent_id: intentId,
+              status: "failed",
+              terminal: true,
+              error: "fill failed",
+              substatus: accepted,
+            });
+      });
+      const rendered = renderIntent(api);
+      await connectWallet();
+      act(() => rendered.result.current.resume(intentId, "executing", TEST_WALLET));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(api.statusPolls).toHaveLength(1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(STATUS_POLL_MS);
+      });
+      expect(api.statusPolls).toHaveLength(2);
+      expect(rendered.result.current.status).toBe("failed");
+      expect(rendered.result.current.substatus).toBe(accepted);
+      expect(rendered.result.current.notExecuted).toBe(accepted === "not_executed");
+
+      await act(async () => {
+        releaseOlderPoll(
+          statusWire({
+            intent_id: intentId,
+            status: "failed",
+            terminal: true,
+            error: "older fill failure",
+            substatus: stale,
+          }),
+        );
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(rendered.result.current.substatus).toBe(accepted);
+      expect(rendered.result.current.notExecuted).toBe(accepted === "not_executed");
+      expect(rendered.result.current.receipt.phase).toBe(
+        accepted === "not_executed" ? "failed" : "may-have-moved",
+      );
+    },
+  );
 
   it("attaches wallet auth only when explicitly allocating a Tron route", async () => {
     vi.setSystemTime(new Date((DEPOSIT_VECTOR.quote.deposit_deadline - 900) * 1_000));

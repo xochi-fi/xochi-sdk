@@ -158,6 +158,8 @@ export interface UseIntentReturn {
 
   /** What the user is told about this trade: `view(model)`. */
   receipt: Receipt;
+  /** Safe execution failure, never an ordinary quote refusal. */
+  notExecuted: boolean;
 
   // Derived state
   isLoading: boolean;
@@ -170,7 +172,10 @@ export interface UseIntentReturn {
   permitType: PermitType;
   /** Whether the pull needs an approval transaction first, from the on-chain allowance. */
   approval: OriginApproval;
+  approvalMayNeedReset: boolean;
   isApproving: boolean;
+  unlimitedApproval: boolean;
+  setUnlimitedApproval: (enabled: boolean) => void;
 
   // Actions
   requestQuote: (amount: string) => void;
@@ -262,6 +267,10 @@ interface Runtime {
   model: Model;
   /** False once unmounted: nothing is performed or applied after teardown. */
   live: boolean;
+  /** A dispatched, polled or adopted order, never merely a quote request. */
+  executionIntentId: string | null;
+  /** The SDK keeps a failed poll's safety verdict, but drops its raw substatus. */
+  failureSubstatus: { intentId: string; substatus: string | null } | null;
   bindings: Bindings | null;
   dispatch: (body: MsgBody) => void;
   /** A promise for one explicit allocation, settled when the machine reports it. */
@@ -318,6 +327,48 @@ function createRuntime(initial: Model): Runtime {
     }
     const [after, fx] = update(model, { ...body, ...stamp });
     effects.push(...fx);
+    const adoptedOrder =
+      body.type === "ResumeRequested" &&
+      after.intent !== model.intent &&
+      after.intent.intentId === body.intentId;
+    if (
+      adoptedOrder ||
+      body.type === "ResetRequested" ||
+      after.intent.intentId !== rt.model.intent.intentId ||
+      after.intent.quotedAddress !== rt.model.intent.quotedAddress ||
+      effects.some((effect) => effect.type === "Api" && effect.call.op === "quote")
+    ) {
+      rt.executionIntentId = null;
+      rt.failureSubstatus = null;
+    }
+    if (
+      effects.some(
+        (effect) =>
+          effect.type === "Api" && (effect.call.op === "execute" || effect.call.op === "status"),
+      ) ||
+      adoptedOrder
+    ) {
+      rt.executionIntentId = after.intent.intentId;
+    }
+    if (
+      body.type === "StatusReplied" &&
+      body.result.ok &&
+      body.result.status &&
+      !("notFound" in body.result.status) &&
+      body.result.status.status === "failed" &&
+      model.intent.status !== "failed" &&
+      after.intent.status === "failed" &&
+      after.intent.intentId !== null &&
+      after.intent.intentId === model.intent.intentId &&
+      rt.executionIntentId === after.intent.intentId
+    ) {
+      // Preserve metadata only after the SDK accepts the terminal transition:
+      // ignored stale/foreign replies cannot change it or the SDK safety verdict.
+      rt.failureSubstatus = {
+        intentId: after.intent.intentId,
+        substatus: body.result.status.substatus ?? null,
+      };
+    }
     if (hostBridge) {
       // Reporting to the host is a side channel: widget-lib's `emit` throws on an
       // event the host would drop, and that must not abort the step that moves
@@ -474,6 +525,8 @@ function createRuntime(initial: Model): Runtime {
   const rt: Runtime = {
     model: initial,
     live: true,
+    executionIntentId: null,
+    failureSubstatus: null,
     bindings: null,
     dispatch,
     allocate: () =>
@@ -543,6 +596,9 @@ export function useIntent(params: UseIntentParams): UseIntentReturn {
     paused: params.paused ?? false,
     wallet: { address: address ?? null, chainId: chainId ?? null, stepwise },
   };
+  // Share the exact trade identity between input-driven quoting and consent.
+  const { paused: _paused, wallet: _wallet, ...trade } = ctx;
+  const quoteKey = JSON.stringify([trade, address, chainId]);
   const ctxKey = JSON.stringify(ctx);
 
   const [rt] = useState(() =>
@@ -561,6 +617,13 @@ export function useIntent(params: UseIntentParams): UseIntentReturn {
     ),
   );
   const [model, setModel] = useState<Model>(rt.model);
+  const approvalQuote = useRef({ quote: model.intent.quote, revision: 0 });
+  if (approvalQuote.current.quote !== model.intent.quote) {
+    approvalQuote.current = {
+      quote: model.intent.quote,
+      revision: approvalQuote.current.revision + 1,
+    };
+  }
   const dispatch = rt.dispatch;
 
   // Permit handling. Inert on a deposit-route origin. The served
@@ -579,7 +642,27 @@ export function useIntent(params: UseIntentParams): UseIntentReturn {
       (model.intent.quote?.eip712Data?.message?.fromAmount as string | undefined) ||
       null,
     enabled: !isDepositOrigin,
+    approvalContext: JSON.stringify([
+      approvalQuote.current.revision,
+      model.intent.quoteId,
+      model.amount,
+      quoteKey,
+    ]),
   });
+
+  // Keep consent across the intentional gap between two wallet signatures,
+  // but never across a refused, cancelled, timed-out or completed ceremony.
+  const previousCeremony = useRef({ sign: model.sign, status: model.intent.status });
+  useEffect(() => {
+    const previous = previousCeremony.current;
+    if (
+      (previous.status === "signing" && model.intent.status !== "signing") ||
+      (previous.sign && !model.sign && (!model.awaitingPull || previous.sign.origin === "pull"))
+    ) {
+      permit.setUnlimitedApproval(false);
+    }
+    previousCeremony.current = { sign: model.sign, status: model.intent.status };
+  }, [model.sign, model.awaitingPull, model.intent.status, permit.setUnlimitedApproval]);
 
   // Rebound every render, like a ref: effects run with the latest wallet and
   // permit functions, and every message is judged against the latest context.
@@ -651,14 +734,13 @@ export function useIntent(params: UseIntentParams): UseIntentReturn {
   // recipient, settlement mode or arriving stealth keys get a fresh quote.
   // Authorization is a separate live-route verdict: changing it re-runs the
   // caller's quote effect, but it is never serialized into a solver request.
-  const { paused: _paused, wallet: _wallet, ...trade } = ctx;
-  const quoteKey = JSON.stringify([trade, address, chainId]);
   const previousQuoteKey = useRef(quoteKey);
   const requestQuote = useCallback(
     (amount: string): void => {
       if (settlementAuthorized) dispatch({ type: "QuoteRequested", amount });
+      permit.setUnlimitedApproval(false);
     },
-    [dispatch, quoteKey, ensureSession, settlementAuthorized],
+    [dispatch, quoteKey, ensureSession, settlementAuthorized, permit.setUnlimitedApproval],
   );
 
   const allocateDepositRoute = useCallback(
@@ -668,21 +750,27 @@ export function useIntent(params: UseIntentParams): UseIntentReturn {
 
   const sign = useCallback((): void => {
     if (settlementAuthorized) dispatch({ type: "SignRequested" });
-  }, [dispatch, settlementAuthorized]);
+    if (rt.model.intent.status !== "signing") permit.setUnlimitedApproval(false);
+  }, [dispatch, settlementAuthorized, rt, permit.setUnlimitedApproval]);
   const cancelSign = useCallback((): boolean => {
     if (rt.model.intent.status !== "signing") return false;
+    permit.setUnlimitedApproval(false);
     dispatch({ type: "CancelSignRequested" });
     return rt.model.intent.status !== "signing";
-  }, [rt, dispatch]);
+  }, [rt, dispatch, permit.setUnlimitedApproval]);
   const signPull = useCallback((): void => {
     if (settlementAuthorized) dispatch({ type: "PullSignRequested" });
   }, [dispatch, settlementAuthorized]);
-  const reset = useCallback(() => dispatch({ type: "ResetRequested" }), [dispatch]);
+  const reset = useCallback(() => {
+    permit.setUnlimitedApproval(false);
+    dispatch({ type: "ResetRequested" });
+  }, [dispatch, permit.setUnlimitedApproval]);
   const refreshQuote = useCallback(
     (forceRefresh = false): void => {
+      permit.setUnlimitedApproval(false);
       if (settlementAuthorized) dispatch({ type: "RefreshRequested", forceRefresh });
     },
-    [dispatch, settlementAuthorized],
+    [dispatch, settlementAuthorized, permit.setUnlimitedApproval],
   );
 
   useEffect(() => {
@@ -739,7 +827,10 @@ export function useIntent(params: UseIntentParams): UseIntentReturn {
     receivingTxHash: state.receivingTxHash,
     settlementTxHash: state.settlementTxHash,
     settlementChainId: state.settlementChainId,
-    substatus: state.substatus,
+    substatus:
+      state.status === "failed" && rt.failureSubstatus?.intentId === state.intentId
+        ? rt.failureSubstatus.substatus
+        : state.substatus,
     reconciling: state.reconciling,
     intentId: state.intentId,
     quoteId: state.quoteId,
@@ -750,6 +841,11 @@ export function useIntent(params: UseIntentParams): UseIntentReturn {
     legsWithheld: state.legsWithheld,
     escrow: state.escrow,
     receipt,
+    notExecuted:
+      state.status === "failed" &&
+      receipt.phase === "failed" &&
+      state.intentId !== null &&
+      rt.executionIntentId === state.intentId,
 
     // Derived state
     isLoading: LOADING_STATES.includes(state.status),
@@ -766,7 +862,10 @@ export function useIntent(params: UseIntentParams): UseIntentReturn {
     // Approval state (origin pull, from usePermit)
     permitType: permit.permitType,
     approval: permit.approval,
+    approvalMayNeedReset: permit.approvalMayNeedReset,
     isApproving: permit.isApproving,
+    unlimitedApproval: permit.unlimitedApproval,
+    setUnlimitedApproval: permit.setUnlimitedApproval,
 
     // Actions
     requestQuote,

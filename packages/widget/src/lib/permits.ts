@@ -12,7 +12,7 @@ import type { PermitType, Eip712TypedData } from "../types/intent.js";
  * Primary EIP-712 types the solver uses for each origin-pull method. ERC-3009
  * (ReceiveWithAuthorization / TransferWithAuthorization) pulls via a signed
  * authorization and needs no ERC-20 approval at all. Permit2
- * (PermitWitnessTransferFrom) requires a one-time allowance to the canonical
+ * (PermitWitnessTransferFrom) requires sufficient allowance to the canonical
  * Permit2 contract -- never to the solver's collection address.
  */
 const ERC3009_PULL_TYPES: ReadonlySet<string> = new Set([

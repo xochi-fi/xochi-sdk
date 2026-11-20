@@ -11,7 +11,7 @@
  * (it would drop the WebSocket subscription); reset only on a terminal phase.
  */
 
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import type {
   IntentStatus,
@@ -126,6 +126,9 @@ export interface IntentView {
   permitType: PermitType;
   /** Whether the pull needs an approval transaction first; the confirm copy states it. */
   approval: OriginApproval;
+  approvalMayNeedReset: boolean;
+  unlimitedApproval: boolean;
+  setUnlimitedApproval: (enabled: boolean) => void;
   /** Two-step signing (deep-link wallets): awaiting the user's tap for signature 2. */
   awaitingPull: boolean;
   /** The pull signature prompt (step 2) is in flight. */
@@ -156,6 +159,7 @@ export interface IntentView {
    * never off raw state.
    */
   receipt: Pick<Receipt, "phase" | "signing">;
+  notExecuted: boolean;
 }
 
 interface SwapFlowModalProps {
@@ -209,7 +213,7 @@ interface SwapFlowModalProps {
 }
 
 export function SwapFlowModal(props: SwapFlowModalProps) {
-  const { open, intent, onClose } = props;
+  const { open, intent, onClose: closeFlow } = props;
   const tabsShown = useWidgetTabsShown();
   const {
     status,
@@ -225,6 +229,8 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
     refundReason,
     permitType,
     approval,
+    unlimitedApproval,
+    setUnlimitedApproval,
     awaitingPull,
     isSigningPull,
     quoteExpiresIn,
@@ -236,6 +242,10 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
   } = intent;
   const trapRef = useFocusTrap<HTMLDivElement>();
   const { originTokens } = useCapabilities();
+  const onClose = useCallback((): void => {
+    setUnlimitedApproval(false);
+    closeFlow();
+  }, [setUnlimitedApproval, closeFlow]);
 
   // Both derived from the intent rather than passed in beside it. They were
   // `isSigning={intent.status === "signing"}` and
@@ -521,6 +531,9 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
               isLoading={isSigning}
               permitType={permitType}
               approval={approval}
+              approvalMayNeedReset={intent.approvalMayNeedReset}
+              unlimitedApproval={unlimitedApproval}
+              setUnlimitedApproval={setUnlimitedApproval}
               quoteExpiresIn={quoteExpiresIn}
             />
           </>
@@ -763,6 +776,7 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
             <div className="swap-flow-body">
               <SwapResult
                 variant={phase}
+                notExecuted={intent.notExecuted}
                 isStealth={props.destination.type === "stealth"}
                 stealthPayee={props.stealthPayee}
                 sendRecipientDisplay={sendRecipientDisplay}

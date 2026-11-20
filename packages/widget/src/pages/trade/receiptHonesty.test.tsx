@@ -651,7 +651,7 @@ describe("the payment row follows the wallet's real Permit2 allowance", () => {
       text: paymentSummary("permit2", hasPull, "required"),
       gasless: false,
     });
-    expect(payment("required").text).toMatch(/^Gas for a one-time approval/);
+    expect(payment("required").text).toMatch(/^Gas for an approval/);
     cleanup();
     expect(payment("unknown")).toEqual({
       text: paymentSummary("permit2", hasPull, "unknown"),

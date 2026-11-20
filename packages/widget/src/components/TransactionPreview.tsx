@@ -6,6 +6,7 @@
  * shell (SwapFlowModal) owns the overlay, header, focus trap, and aria-live.
  */
 
+import { useId } from "react";
 import type {
   QuoteResponse,
   IntentDestination,
@@ -55,6 +56,9 @@ interface TransactionPreviewProps {
   permitType?: PermitType;
   /** Whether the pull needs an approval transaction first (usePermit, on-chain allowance). */
   approval: OriginApproval;
+  approvalMayNeedReset: boolean;
+  unlimitedApproval: boolean;
+  setUnlimitedApproval: (enabled: boolean) => void;
   /**
    * Seconds until the quote hard-expires. The modal pauses auto-refresh, so
    * this counts down to expiry; at 0 the modal's expired notice takes over.
@@ -85,8 +89,13 @@ export function TransactionPreview({
   isLoading,
   permitType,
   approval,
+  approvalMayNeedReset,
+  unlimitedApproval,
+  setUnlimitedApproval,
   quoteExpiresIn,
 }: TransactionPreviewProps) {
+  const approvalNoteId = useId();
+  const action = sendRecipientDisplay ? "send" : "swap";
   const tabsShown = useWidgetTabsShown();
   const claimInXochiApp = useClaimInXochiApp();
   const { estimateUsd, prices } = usePrices();
@@ -314,6 +323,36 @@ export function TransactionPreview({
               {paymentSummary(paymentMethod, false, approval)}
             </span>
           </div>
+          {permitType === "permit2" && !isDepositRoute && (
+            <div className="tx-preview-approval">
+              {approval !== "covered" && (
+                <label className="tx-preview-approval-choice">
+                  <input
+                    type="checkbox"
+                    checked={unlimitedApproval}
+                    onChange={(event) => setUnlimitedApproval(event.currentTarget.checked)}
+                    disabled={isLoading}
+                    aria-describedby={approvalNoteId}
+                  />
+                  Unlimited approval
+                </label>
+              )}
+              <p id={approvalNoteId} className="tx-preview-approval-note">
+                {approval === "covered"
+                  ? `Existing allowance covers this ${action}. Any existing unlimited approval stays active.`
+                  : unlimitedApproval
+                    ? `Allow Permit2 to spend an unlimited amount of ${fromSymbol}. This permission remains after this ${action}.`
+                    : `Approve this ${action}’s exact amount. Later transactions may need approval gas again.`}
+              </p>
+              {approval !== "covered" && (
+                <p className="tx-preview-approval-note">
+                  {approvalMayNeedReset
+                    ? "An existing non-zero allowance must be reset first, requiring another approval and gas."
+                    : "A sufficient existing allowance stays active."}
+                </p>
+              )}
+            </div>
+          )}
         </div>
         {/* /tx-preview-summary */}
       </div>
@@ -343,9 +382,9 @@ export function TransactionPreview({
           ? `Next: an address to send the ${fromSymbol} to. Nothing to sign.`
           : `Paid as quoted, or a full refund. ${
               approvalFirst === "required"
-                ? `Next: approve ${fromSymbol} once (gas), then sign ${signCount} in the wallet.`
+                ? `Next: approve ${fromSymbol} (gas), then sign ${signCount} in the wallet.`
                 : approvalFirst === "unknown"
-                  ? `Next: sign ${signCount} in the wallet, after a one-time approval if one is needed.`
+                  ? `Next: sign ${signCount} in the wallet, after an approval (gas) if needed.`
                   : `Next: sign ${signCount} in the wallet.`
             }`}
       </p>

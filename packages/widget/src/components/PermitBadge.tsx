@@ -42,7 +42,7 @@ const PERMIT_INFO: Record<PermitType, PermitInfo> = {
   permit2: {
     label: "Permit2",
     shortDesc: "Universal permit",
-    benefit: "One approval unlocks all Permit2 apps. Widely supported.",
+    benefit: "Exact approval by default; later swaps may need approval gas again.",
     gasless: true,
   },
   eip2612: {

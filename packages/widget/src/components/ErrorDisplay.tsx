@@ -11,7 +11,11 @@
 
 import { useMemo, useState, useEffect } from "react";
 import type { StructuredError } from "@xochi/client";
-import { getErrorInfo, MAY_HAVE_MOVED_NOTICE } from "../lib/errorCategory.js";
+import {
+  getErrorInfo,
+  MAY_HAVE_MOVED_NOTICE,
+  NO_FUNDS_MOVED_NOTICE,
+} from "../lib/errorCategory.js";
 
 // ============================================================
 // Types
@@ -35,6 +39,8 @@ interface ErrorDisplayProps {
    * categorized copy, and never a Retry beside it.
    */
   mayHaveMoved?: boolean;
+  /** SDK safe failure verdict; after submission only the worker marker permits it. */
+  notExecuted?: boolean;
 }
 
 // ============================================================
@@ -83,6 +89,7 @@ export function ErrorDisplay({
   originTokens,
   errorCategory,
   mayHaveMoved = false,
+  notExecuted = false,
 }: ErrorDisplayProps) {
   const errorInfo = useMemo(() => {
     if (!error) return null;
@@ -114,12 +121,13 @@ export function ErrorDisplay({
               {errorInfo.suggestion && (
                 <span className="error-suggestion">{errorInfo.suggestion}</span>
               )}
+              {notExecuted && <span className="error-suggestion">{NO_FUNDS_MOVED_NOTICE}</span>}
               {isWaitingForRetry && <span className="error-countdown">Retry in {countdown}s</span>}
             </>
           )}
         </div>
       </div>
-      {onRetry && errorInfo.canRetry && !mayHaveMoved && (
+      {onRetry && (notExecuted || errorInfo.canRetry) && !mayHaveMoved && (
         <button
           className="btn btn--ghost btn--sm error-retry-btn"
           onClick={onRetry}
@@ -129,7 +137,9 @@ export function ErrorDisplay({
             ? "..."
             : isWaitingForRetry
               ? `${countdown}s`
-              : (errorInfo.retryLabel ?? "Retry")}
+              : notExecuted
+                ? "New quote"
+                : (errorInfo.retryLabel ?? "Retry")}
         </button>
       )}
     </div>
