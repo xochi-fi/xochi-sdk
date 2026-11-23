@@ -125,8 +125,11 @@ configureWidget({
     requirePin: true,
   },
   depositAttestationSigner: "",
-  // Optional: the reviewed RiddlerEscrow per origin chain, used only for Canton
-  // escrow quotes while CANTON_DESTINATION_LIVE is on.
+  // Optional, off unless exactly true: offer Canton as a destination. Turn it on
+  // per deploy (staging), never from capabilities.
+  // cantonLive: true,
+  // Optional: the reviewed RiddlerEscrow per origin chain, passed to the trade
+  // machine only while cantonLive is on; absent, every escrow quote is refused.
   // escrows: { 8453: "0x4438a8b3EE5AAf58343B18629040a4BCB8b0feCb" },
 });
 applyInitialWidgetTheme(window.location.search);

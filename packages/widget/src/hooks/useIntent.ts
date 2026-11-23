@@ -42,8 +42,12 @@ import { reportError } from "../lib/errorReport.js";
 import { prepareTypedDataForSigning } from "../lib/eip712.js";
 import { hostBridge } from "../lib/hostBridge.js";
 import { tradeEvents } from "../lib/tradeLifecycle.js";
-import { SOLVER_PIN, PULL_RECIPIENTS, DEPOSIT_ATTESTATION_PIN, ESCROW_PINS } from "../config.js";
-import { CANTON_DESTINATION_LIVE } from "../pages/trade/config.js";
+import {
+  SOLVER_PIN,
+  PULL_RECIPIENTS,
+  DEPOSIT_ATTESTATION_PIN,
+  machineEscrowPins,
+} from "../config.js";
 import { usePermit } from "./usePermit.js";
 import { useTierInfo } from "./useTierInfo.js";
 import { useWalletSession } from "./useWalletSession.js";
@@ -601,21 +605,22 @@ export function useIntent(params: UseIntentParams): UseIntentReturn {
   const quoteKey = JSON.stringify([trade, address, chainId]);
   const ctxKey = JSON.stringify(ctx);
 
-  const [rt] = useState(() =>
-    createRuntime(
+  const [rt] = useState(() => {
+    const escrows = machineEscrowPins();
+    return createRuntime(
       init(
         {
           solverPin: SOLVER_PIN,
           pullRecipients: PULL_RECIPIENTS,
           depositAttestationSigner: DEPOSIT_ATTESTATION_PIN.signer || null,
-          // Off, no escrow quote can bind: every one is refused at ingest.
-          ...(CANTON_DESTINATION_LIVE && ESCROW_PINS ? { escrows: ESCROW_PINS } : {}),
+          // Canton off: no escrow pin, so every escrow quote is refused at ingest.
+          ...(escrows ? { escrows } : {}),
         },
         ctx,
         document.hidden,
       ),
-    ),
-  );
+    );
+  });
   const [model, setModel] = useState<Model>(rt.model);
   const approvalQuote = useRef({ quote: model.intent.quote, revision: 0 });
   if (approvalQuote.current.quote !== model.intent.quote) {

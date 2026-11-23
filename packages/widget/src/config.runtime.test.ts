@@ -1,5 +1,6 @@
-import { expect, it, vi } from "vitest";
-import { parseCapabilities, TOKENS } from "@xochi/client";
+import { describe, expect, it, vi } from "vitest";
+import { CANTON_COIN_MAINNET, parseCapabilities, TOKENS } from "@xochi/client";
+import type { WidgetSettings } from "./config.js";
 
 it.each([
   { name: "missing browser transport", arcRpcUrl: undefined, offered: false },
@@ -100,4 +101,130 @@ it("keeps the Peer referral code and both canary caps unset unless configured", 
     const fresh = await import("./config.js");
     expect(() => fresh.configureWidget({ ...base, ...bad })).toThrow();
   }
+});
+
+describe("Canton destination is a per-deploy setting", () => {
+  const CANTON = 253340876;
+  const ESCROW = "0x4438a8b3EE5AAf58343B18629040a4BCB8b0feCb";
+  const base = {
+    apiUrl: "https://api.example.test",
+    solverPin: { erc3009Allowlist: [], permit2Allowlist: [], requirePin: true },
+    depositAttestationSigner: "",
+    escrows: { 8453: ESCROW },
+  };
+  // Riddler's shape: Canton Coin destination-only, no pull method.
+  const caps = (withCanton: boolean) => {
+    const usdc = TOKENS[8453].find((token) => token.symbol === "USDC");
+    if (!usdc) throw new Error("USDC fixture is missing");
+    const parsed = parseCapabilities({
+      chains: [
+        { chain_id: 8453, chain_name: "Base", vm_type: "evm" },
+        ...(withCanton
+          ? [{ chain_id: CANTON, chain_name: "Canton", vm_type: "cvm", roles: ["destination"] }]
+          : []),
+      ],
+      tokens: [
+        {
+          symbol: "USDC",
+          decimals: 6,
+          pull_method: "erc3009",
+          gasless_origin: true,
+          roles: ["origin"],
+          addresses: { 8453: usdc.address },
+        },
+        ...(withCanton
+          ? [
+              {
+                symbol: "CC",
+                decimals: 10,
+                pull_method: null,
+                pull_methods: [],
+                gasless_origin: false,
+                roles: ["destination"],
+                addresses: { [CANTON]: CANTON_COIN_MAINNET },
+              },
+            ]
+          : []),
+      ],
+      routes: withCanton
+        ? [
+            {
+              origin: { chain_id: 8453, token: "USDC" },
+              destination: { kind: "chain", chain_id: CANTON, token: "CC" },
+              privacy_modes: ["public"],
+            },
+          ]
+        : [],
+    });
+    if (!parsed) throw new Error("Capability fixture is invalid");
+    return parsed;
+  };
+
+  const configure = async (settings: Partial<WidgetSettings>) => {
+    vi.resetModules();
+    const model = await import("./configurator-model.js");
+    const config = await import("./config.js");
+    config.configureWidget({ ...base, ...settings });
+    return { model, config };
+  };
+
+  it.each([
+    { name: "unset", cantonLive: undefined },
+    { name: "false", cantonLive: false },
+  ])("hides Canton and withholds the escrow pins when $name", async ({ cantonLive }) => {
+    const { model, config } = await configure({ cantonLive });
+    const offer = model.embedOffer(caps(true), "live");
+    expect(offer.destinationChainIds).not.toContain(CANTON);
+    expect(config.machineEscrowPins()).toBeUndefined();
+    const { isOfferedChainId } = await import("./pages/trade/canton.js");
+    expect(isOfferedChainId(CANTON)).toBe(false);
+  });
+
+  it("refuses a non-boolean truthy value", async () => {
+    const { model, config } = await configure({ cantonLive: "true" as unknown as boolean });
+    expect(model.embedOffer(caps(true), "live").destinationChainIds).not.toContain(CANTON);
+    expect(config.machineEscrowPins()).toBeUndefined();
+  });
+
+  it("offers Canton when on, only once a route and token exist", async () => {
+    const { model, config } = await configure({ cantonLive: true });
+    const offer = model.embedOffer(caps(true), "live");
+    expect(offer.destinationChainIds).toContain(CANTON);
+    expect(offer.sourceChainIds).not.toContain(CANTON);
+    // The origin token keeps its pull method beside a null-pull destination token.
+    expect(offer.sourceChainIds).toContain(8453);
+    expect(model.embedOffer(caps(false), "live").destinationChainIds).not.toContain(CANTON);
+    expect(config.machineEscrowPins()).toEqual({ 8453: ESCROW });
+  });
+
+  it("accepts an all-lowercase pin", async () => {
+    const { config } = await configure({
+      cantonLive: true,
+      escrows: { 8453: ESCROW.toLowerCase() },
+    });
+    expect(config.machineEscrowPins()).toEqual({ 8453: ESCROW.toLowerCase() });
+  });
+
+  it("on without an escrows pin, passes no escrow pin", async () => {
+    const { config } = await configure({ cantonLive: true, escrows: undefined });
+    expect(config.machineEscrowPins()).toBeUndefined();
+  });
+
+  it.each([
+    { 8453: "" },
+    { 8453: "0x4438" },
+    { 8453: `0x${"0".repeat(40)}` },
+    { base: ESCROW },
+    { 8453: 42 },
+    { 8453: "0x4438A8b3EE5AAf58343B18629040a4BCB8b0feCb" },
+  ] as unknown as NonNullable<WidgetSettings["escrows"]>[])(
+    "rejects a malformed escrow pin: %o",
+    async (escrows) => {
+      vi.resetModules();
+      const config = await import("./config.js");
+      expect(() => config.configureWidget({ ...base, cantonLive: true, escrows })).toThrow(
+        "Invalid escrow pin",
+      );
+    },
+  );
 });

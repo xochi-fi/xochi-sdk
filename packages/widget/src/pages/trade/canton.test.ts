@@ -2,9 +2,9 @@
  * The Canton Coin destination (xochi-sdk#116): the launch gate, the party
  * recipient sent byte for byte, public only, the refused-quote copy, the
  * escrow status mapping (a gateway completion is never a delivery), the refund
- * gate and the explorer links. Flag-dependent checks assert the relationship
- * to `CANTON_DESTINATION_LIVE` and exercise both values through the gate's
- * parameter, never the flag's current value.
+ * gate and the explorer links. Nothing here configures the widget, so
+ * `CANTON_DESTINATION_LIVE` holds its default (off); both values are exercised
+ * through the gate's parameter. `config.runtime.test.ts` covers `cantonLive`.
  */
 
 import { describe, expect, it } from "vitest";

@@ -4,7 +4,8 @@
  * The Base `RiddlerEscrow` side of a Canton order: reads the lock for the
  * order from the deploy's PINNED escrow (`ESCROW_PINS`, never the status
  * poll's `escrow.address`), and sends the permissionless refund from the
- * connected wallet once it opens.
+ * connected wallet once it opens. It reads `ESCROW_PINS` ungated (not
+ * `machineEscrowPins`) so a refund never depends on the launch flag.
  *
  * The lock is the authority on `refundableAt` and on claimed / refunded; the
  * status poll's escrow fields carry Riddler's attestation (`cantonUpdateId`).

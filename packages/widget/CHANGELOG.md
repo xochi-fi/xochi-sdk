@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+## [0.1.2] - 2026-11-23
+
+### Added
+
+- Deployment setting `cantonLive` (off unless exactly `true`) replaces the compile-time `CANTON_DESTINATION_LIVE = false`, so a deploy turns the Canton destination on per build (staging) and production stays off. Even on, Canton is offered only while the live matrix advertises it with an exact route; the `escrows` pins reach the trade machine only while it is on (`machineEscrowPins`).
+
+### Changed
+
+- `configureWidget` rejects a malformed `escrows` pin (non-numeric chain id, a zero or non-address value, or a mixed-case address with a bad EIP-55 checksum) instead of passing it to the machine. The refund panel still reads the pins ungated.
+
 ## [0.1.1] - 2026-11-20
 
 ### Fixed
