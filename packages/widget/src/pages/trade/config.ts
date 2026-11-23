@@ -17,7 +17,10 @@ import {
   type SelectableChainId,
   type TokenInfo,
 } from "@xochi/client";
-import { ARC_BROWSER_ENABLED as ARC_LIVE } from "../../config.js";
+import {
+  ARC_BROWSER_ENABLED as ARC_LIVE,
+  CANTON_DESTINATION_ENABLED as CANTON_DESTINATION_LIVE,
+} from "../../config.js";
 
 // The configurator preview imports it from here.
 export { DEFAULT_SLIPPAGE_BPS };
@@ -149,14 +152,15 @@ export const GNOSIS_LIVE: boolean = true;
  * `configureWidget`): the solver delivers, Riddler attests, the solver claims,
  * or the taker refunds from `refundableAt` on.
  *
- * Off until the Worker forwards escrow quotes and status (`escrow`,
- * `cantonUpdateId`), Riddler serves the corridor (axol-io/riddler#1469), and a
- * staging run has reached a terminal status. Even on, Canton is offered only
- * while the live capability matrix advertises it (`cvm`) with an exact route.
- * Off, Canton is selectable nowhere: selectors, embed parameters, resume and
- * local activity all refuse it, and no escrow pin reaches the machine.
+ * The deploy's `cantonLive` setting (`configureWidget`), off by default: a
+ * staging build turns it on, production stays off until a staging run has
+ * reached a terminal status. Even on, Canton is offered only while the live
+ * capability matrix advertises it (`cvm`) with an exact route. Off, Canton is
+ * selectable nowhere: selectors, embed parameters, resume and local activity
+ * all refuse it, and no escrow pin reaches the machine (`machineEscrowPins`).
+ * A live binding: read it at call time, never cache it at module load.
  */
-export const CANTON_DESTINATION_LIVE: boolean = false;
+export { CANTON_DESTINATION_LIVE };
 
 /**
  * Client launch gates remain necessary after a solver advertises a chain.
