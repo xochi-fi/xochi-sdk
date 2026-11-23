@@ -197,6 +197,14 @@ describe("Canton destination is a per-deploy setting", () => {
     expect(config.machineEscrowPins()).toEqual({ 8453: ESCROW });
   });
 
+  it("accepts an all-lowercase pin", async () => {
+    const { config } = await configure({
+      cantonLive: true,
+      escrows: { 8453: ESCROW.toLowerCase() },
+    });
+    expect(config.machineEscrowPins()).toEqual({ 8453: ESCROW.toLowerCase() });
+  });
+
   it("on without an escrows pin, passes no escrow pin", async () => {
     const { config } = await configure({ cantonLive: true, escrows: undefined });
     expect(config.machineEscrowPins()).toBeUndefined();
@@ -208,6 +216,7 @@ describe("Canton destination is a per-deploy setting", () => {
     { 8453: `0x${"0".repeat(40)}` },
     { base: ESCROW },
     { 8453: 42 },
+    { 8453: "0x4438A8b3EE5AAf58343B18629040a4BCB8b0feCb" },
   ] as unknown as NonNullable<WidgetSettings["escrows"]>[])(
     "rejects a malformed escrow pin: %o",
     async (escrows) => {

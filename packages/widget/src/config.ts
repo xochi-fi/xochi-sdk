@@ -1,5 +1,6 @@
 import { firstPartyOrigins } from "./lib/hostOrigin.js";
 import { parseEmbedParams, type EmbedParams } from "@xochi/widget-lib";
+import { isAddress, zeroAddress } from "viem";
 import { SUPPORTED_CHAIN_IDS, type PinnedEscrows, type PinnedPullRecipients } from "@xochi/client";
 
 /** Deployment settings only. Trading policy and security checks remain in the public packages. */
@@ -64,7 +65,7 @@ export interface WidgetSettings {
    * the operator reviewed (Base MainNet: `{ 8453: "0x4438...feCb" }`), never
    * from API capabilities or a quote. Only escrow quotes bind to it, and only
    * while `cantonLive` is on; absent, every escrow quote is refused. Each entry
-   * must be a nonzero 0x-prefixed 20-byte address.
+   * must be a nonzero address, EIP-55 checksummed when mixed-case.
    */
   escrows?: PinnedEscrows;
 }
@@ -86,8 +87,8 @@ export let ARC_BROWSER_RPC_URL: string | undefined;
 export let ARC_BROWSER_ENABLED = false;
 export let GNOSIS_ENABLED = false;
 export let RECIPIENT_RECEIPTS_LIVE = false;
-/** `WidgetSettings.cantonLive`; read through `CANTON_DESTINATION_LIVE` (pages/trade/config). */
-export let CANTON_DESTINATION_ENABLED = false;
+/** `WidgetSettings.cantonLive`. Reassigned by `configureWidget`: read it at call time, never at module load. */
+export let CANTON_DESTINATION_LIVE = false;
 export let SOLVER_PIN: {
   erc3009Allowlist: readonly string[];
   permit2Allowlist: readonly string[];
@@ -128,9 +129,13 @@ export function configureWidget(settings: WidgetSettings): void {
       ? undefined
       : Object.entries(settings.escrows).map(([chainId, escrow]) => {
           const address = typeof escrow === "string" ? escrow.trim() : "";
-          if (!/^[1-9][0-9]*$/.test(chainId) || !/^0x[0-9a-fA-F]{40}$/.test(address))
+          // strict: a mixed-case pin must carry a valid EIP-55 checksum.
+          if (
+            !/^[1-9][0-9]*$/.test(chainId) ||
+            !isAddress(address, { strict: true }) ||
+            address.toLowerCase() === zeroAddress
+          )
             throw new Error("Invalid escrow pin");
-          if (/^0x0{40}$/.test(address)) throw new Error("Invalid escrow pin");
           return [chainId, address] as const;
         });
   PEER_ENVIRONMENT = settings.peerEnvironment ?? "production";
@@ -150,7 +155,7 @@ export function configureWidget(settings: WidgetSettings): void {
   ARC_BROWSER_ENABLED = settings.arcLive === true && ARC_BROWSER_RPC_URL !== undefined;
   GNOSIS_ENABLED = settings.gnosisLive === true;
   RECIPIENT_RECEIPTS_LIVE = settings.recipientReceiptsLive ?? false;
-  CANTON_DESTINATION_ENABLED = settings.cantonLive === true;
+  CANTON_DESTINATION_LIVE = settings.cantonLive === true;
   const normalize = (addresses: readonly string[]): readonly string[] =>
     Object.freeze(addresses.map((address) => address.trim().toLowerCase()).filter(Boolean));
   SOLVER_PIN = Object.freeze({
@@ -182,9 +187,11 @@ export function configureWidget(settings: WidgetSettings): void {
 /**
  * The escrow pins the trade machine receives: the deploy's `escrows` while
  * Canton is on, otherwise none, so every escrow quote is refused at ingest.
+ * Only `useCantonEscrow` reads `ESCROW_PINS` ungated: it reads a lock and sends
+ * the taker's refund, which binds nothing new.
  */
 export function machineEscrowPins(): PinnedEscrows | undefined {
-  return CANTON_DESTINATION_ENABLED ? ESCROW_PINS : undefined;
+  return CANTON_DESTINATION_LIVE ? ESCROW_PINS : undefined;
 }
 
 export function requireWidgetConfiguration(): void {

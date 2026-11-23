@@ -10,7 +10,7 @@
 
 ### Changed
 
-- `configureWidget` rejects a malformed `escrows` pin (non-numeric chain id, or not a nonzero 0x-prefixed 20-byte address) instead of passing it to the machine.
+- `configureWidget` rejects a malformed `escrows` pin (non-numeric chain id, a zero or non-address value, or a mixed-case address with a bad EIP-55 checksum) instead of passing it to the machine. The refund panel still reads the pins ungated.
 
 ## [0.1.1] - 2026-11-20
 
