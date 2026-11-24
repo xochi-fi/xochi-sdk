@@ -48,7 +48,7 @@ export class MemoryExtension implements PeerExtensionSdk {
     for (const callback of this.callbacks) callback(message);
   }
 }
-export async function buyerHarness(now = NOW) {
+export async function buyerHarness(now = NOW, account: string = ACCOUNT) {
   const clock = { now };
   const extension = new MemoryExtension();
   const config = peerConfiguration();
@@ -56,13 +56,13 @@ export async function buyerHarness(now = NOW) {
     direction: "onramp",
     amount: "25000000",
     currency: "USD",
-    recipient: ACCOUNT,
+    recipient: account,
     settlement: config.settlement,
   });
   const raw = structuredClone(recorded);
   raw.responseObject.quoteExpiresAt = new Date(now + 20_000).toISOString();
   for (const row of raw.responseObject.platformQuotes)
-    if (row.bestQuote) row.bestQuote.intent.toAddress = ACCOUNT;
+    if (row.bestQuote) row.bestQuote.intent.toAddress = account;
   const reads = { bestByPlatform: async () => raw, quote: async () => raw };
   const result = await fetchPeerCapabilities(intent, { reads, now: () => clock.now });
   const offer = result.offers.find((row) => row.rail.id === "wise")!;

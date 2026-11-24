@@ -10,6 +10,7 @@ import { useState } from "react";
 import { Chevron } from "./Chevron.js";
 import { PROVIDERS, CATEGORIES } from "../lib/providers.js";
 import { getFeeRate, getTierName } from "@xochi/client";
+import type { StealthKeyStatus } from "../hooks/useStealth.js";
 import "../styles/privacy-panel.css";
 
 interface PrivacyPanelProps {
@@ -30,15 +31,18 @@ interface PrivacyPanelProps {
   connectedProviders: string[];
   isConnected: boolean;
   // Stealth
-  /** none: never set up here; locked: set up, keys not in memory; unlocked: keys in memory. */
-  stealthKeys: "none" | "locked" | "unlocked";
+  stealthKeys: StealthKeyStatus;
+  /** A meta-address for this chain is known, so it can be registered. */
+  stealthRegistrable: boolean;
   stealthRegistered: boolean;
   /** First setup: derive the keys from a wallet signature. */
   onInitializeStealth: () => void;
   /** Locked keys: the Claims action (sign in if needed, unlock, scan). */
   onUnlockStealth: () => void;
   onRegisterStealth: () => void;
-  stealthLoading: boolean;
+  /** A sign-in, key derivation or scan is in flight. */
+  stealthKeysBusy: boolean;
+  stealthRegistering: boolean;
 }
 
 export function PrivacyPanel({
@@ -48,11 +52,13 @@ export function PrivacyPanel({
   connectedProviders,
   isConnected,
   stealthKeys,
+  stealthRegistrable,
   stealthRegistered,
   onInitializeStealth,
   onUnlockStealth,
   onRegisterStealth,
-  stealthLoading,
+  stealthKeysBusy,
+  stealthRegistering,
 }: PrivacyPanelProps) {
   const [showDisclosures, setShowDisclosures] = useState(false);
 
@@ -142,15 +148,15 @@ export function PrivacyPanel({
               <button
                 className="pp-status-action"
                 onClick={stealthKeys === "locked" ? onUnlockStealth : onInitializeStealth}
-                disabled={!isConnected || stealthLoading}
+                disabled={!isConnected || stealthKeysBusy}
               >
-                {stealthLoading ? "..." : stealthKeys === "locked" ? "Sign to unlock" : "Setup"}
+                {stealthKeysBusy ? "..." : stealthKeys === "locked" ? "Sign to unlock" : "Setup"}
               </button>
             </span>
           )}
         </div>
 
-        {stealthKeys !== "none" && (
+        {stealthRegistrable && (
           <>
             <div className="pp-status-row">
               <span className="pp-status-label">Registry</span>
@@ -160,9 +166,9 @@ export function PrivacyPanel({
                 <button
                   className="pp-status-action"
                   onClick={onRegisterStealth}
-                  disabled={!isConnected || stealthLoading}
+                  disabled={!isConnected || stealthRegistering}
                 >
-                  {stealthLoading ? "..." : "Register"}
+                  {stealthRegistering ? "..." : "Register"}
                 </button>
               )}
             </div>

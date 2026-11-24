@@ -22,6 +22,7 @@ import {
   computeUserOpHash,
   deriveStealthKeys,
   deriveStealthOwner,
+  STEALTH_DERIVE_MESSAGE,
   ENTRYPOINT_V08_ADDRESS,
   type StealthAnnouncement,
   type UserOperationV08,
@@ -29,33 +30,50 @@ import {
 import { SIMPLE_ACCOUNT_FACTORY } from "@xochi/client";
 import { STORAGE_KEYS } from "../constants.js";
 import { clearWalletSession } from "../lib/walletSession.js";
-import { apiStub, makeTestConfig, TEST_ACCOUNT, type FetchStub } from "../pages/trade/harness.js";
+import {
+  apiStub,
+  makeTestConfig,
+  signAsTestAccount,
+  TEST_ACCOUNT,
+  TEST_ACCOUNT_B as WALLET_B,
+  type FetchStub,
+} from "../pages/trade/harness.js";
 import { StealthProvider, useStealth } from "./useStealth.js";
 import { useStealthClaim, type ClaimResult } from "./useStealthClaim.js";
 
-const WALLET_B = "0x2222222222222222222222222222222222222222" as const;
 const TOKEN = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48" as const;
-const keys = deriveStealthKeys(`0x${"ab".repeat(64)}1b`);
-const settlement = computeStealthAddress(
-  computeMetaAddressFromKeys(keys, 1),
-  `0x${"01".repeat(32)}`,
-);
 // The existing harness's factory eth_call returns the zero address, and its
 // token balance is configurable. Only that existing RPC boundary is simulated;
 // discovery, owner derivation, verification, hashing and signing remain real.
-const announcement: StealthAnnouncement = {
-  schemeId: 1,
-  stealthAddress: zeroAddress,
-  caller: TEST_ACCOUNT,
-  ephemeralPubKey: settlement.ephemeralPubKey,
-  metadata: `0x${settlement.viewTag.toString(16).padStart(2, "0")}${TOKEN.slice(2)}a9059cbb${"1".padStart(64, "0")}${SIMPLE_ACCOUNT_FACTORY.slice(2)}${"0".repeat(64)}`,
-  blockNumber: 10,
-  txHash: `0x${"12".repeat(32)}`,
-  logIndex: 0,
-};
-const owner = privateKeyToAddress(
-  bytesToHex(deriveStealthOwner(announcement, keys.spendingKey, keys.viewingKey).stealthPrivKey),
+function payoutFor(account: string, ephemeralSeed: Hex, txHash: Hex) {
+  const accountKeys = deriveStealthKeys(signAsTestAccount(STEALTH_DERIVE_MESSAGE, { account }));
+  const settlement = computeStealthAddress(
+    computeMetaAddressFromKeys(accountKeys, 1),
+    ephemeralSeed,
+  );
+  const announcement: StealthAnnouncement = {
+    schemeId: 1,
+    stealthAddress: zeroAddress,
+    caller: TEST_ACCOUNT,
+    ephemeralPubKey: settlement.ephemeralPubKey,
+    metadata: `0x${settlement.viewTag.toString(16).padStart(2, "0")}${TOKEN.slice(2)}a9059cbb${"1".padStart(64, "0")}${SIMPLE_ACCOUNT_FACTORY.slice(2)}${"0".repeat(64)}`,
+    blockNumber: 10,
+    txHash,
+    logIndex: 0,
+  };
+  const { stealthPrivKey } = deriveStealthOwner(
+    announcement,
+    accountKeys.spendingKey,
+    accountKeys.viewingKey,
+  );
+  return { announcement, owner: privateKeyToAddress(bytesToHex(stealthPrivKey)) };
+}
+const { announcement, owner } = payoutFor(
+  TEST_ACCOUNT,
+  `0x${"01".repeat(32)}`,
+  `0x${"12".repeat(32)}`,
 );
+const payoutB = payoutFor(WALLET_B, `0x${"02".repeat(32)}`, `0x${"13".repeat(32)}`);
 const abi = parseAbi([
   "function execute(address dest, uint256 value, bytes func)",
   "function transfer(address to, uint256 amount)",
@@ -63,11 +81,16 @@ const abi = parseAbi([
 ]);
 
 function preparedClaim(recipient: Hex) {
+  const payoutOwner = recipient.toLowerCase() === WALLET_B.toLowerCase() ? payoutB.owner : owner;
   const userOperation: UserOperationV08 = {
     sender: zeroAddress,
     nonce: "0x0",
     factory: SIMPLE_ACCOUNT_FACTORY,
-    factoryData: encodeFunctionData({ abi, functionName: "createAccount", args: [owner, 0n] }),
+    factoryData: encodeFunctionData({
+      abi,
+      functionName: "createAccount",
+      args: [payoutOwner, 0n],
+    }),
     callData: encodeFunctionData({
       abi,
       functionName: "execute",
@@ -93,7 +116,7 @@ function preparedClaim(recipient: Hex) {
     userOpHash: computeUserOpHash(userOperation, ENTRYPOINT_V08_ADDRESS, 1),
     entryPoint: ENTRYPOINT_V08_ADDRESS,
     chainId: 1,
-    stealthAddress: owner,
+    stealthAddress: payoutOwner,
     counterfactualAddress: zeroAddress,
   };
 }
@@ -154,7 +177,11 @@ async function renderClaims(fetch: FetchStub, { unlock = true }: { unlock?: bool
 function claimRoutes(submitted: unknown[] = [], prepared: unknown[] = []) {
   return apiStub({
     "/api/stealth/announcements": {
-      body: { success: true, announcements: [announcement], count: 1 },
+      body: {
+        success: true,
+        announcements: [announcement, payoutB.announcement],
+        count: 2,
+      },
     },
     "/api/stealth/claim/prepare": {
       answer: (request) => {

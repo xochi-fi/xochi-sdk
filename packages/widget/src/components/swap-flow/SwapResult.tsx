@@ -113,6 +113,12 @@ interface SwapResultProps {
   onClose: () => void;
   /** Stealth completion handoff to the claims surface (pass-1 4.6). */
   onGoToClaims?: () => void;
+  /**
+   * The order's payout in destination-token base units (the quote's
+   * `toAmount`). Binds the receipt's in-place claim to this swap's own payment;
+   * without it the receipt only hands off to Claims.
+   */
+  payoutAmount?: string;
 }
 
 function TxLink({
@@ -166,19 +172,25 @@ export function SwapResult({
   onRetry,
   onClose,
   onGoToClaims,
+  payoutAmount,
 }: SwapResultProps) {
   const tabsShown = useWidgetTabsShown();
   const claimInXochiApp = useClaimInXochiApp();
   const [copied, setCopied] = useState(false);
 
   // The connected wallet's own stealth payout, with the keys still unlocked:
-  // claim it here rather than sending the user to look for it.
+  // claim it here rather than sending the user to look for it. Only the payment
+  // that is exactly this order's payout qualifies; any other waits in Claims.
   const completion = useStealthCompletion();
   const ownStealthLanded = variant === "success" && isStealth === true && stealthPayee !== "other";
-  const claimable =
-    completion && ownStealthLanded && toSymbol
-      ? completion.payments.filter((payment) => paysOut(payment, toChainId, toSymbol))
-      : [];
+  const payout =
+    ownStealthLanded && toSymbol && payoutAmount && /^\d+$/.test(payoutAmount)
+      ? { chainId: toChainId, symbol: toSymbol, amount: BigInt(payoutAmount) }
+      : null;
+  const thisPayment =
+    completion && payout
+      ? (completion.payments.find((payment) => paysOut(payment, payout)) ?? null)
+      : null;
   const lookedForPayment = useRef(false);
   useEffect(() => {
     if (!completion || !ownStealthLanded || lookedForPayment.current) return;
@@ -187,29 +199,24 @@ export function SwapResult({
   }, [completion, ownStealthLanded]);
   const [receiptClaim, setReceiptClaim] = useState<ReceiptClaim>({ kind: "idle" });
   const claimHere = async (): Promise<void> => {
-    if (!completion || claimable.length === 0) return;
+    if (!completion || !thisPayment) return;
     setReceiptClaim({ kind: "claiming" });
-    let pending = false;
-    let amountDiffers = false;
-    for (const payment of claimable) {
-      const result = await completion.claim(payment);
-      amountDiffers ||= !!result.payout && result.payout.amount !== result.payout.announcedAmount;
-      if (result.pending) {
-        pending = true;
-      } else if (!result.success) {
-        setReceiptClaim({ kind: "failed", error: result.error ?? "Claim failed" });
-        return;
-      }
-    }
-    setReceiptClaim({ kind: "done", pending, amountDiffers });
+    const result = await completion.claim(thisPayment);
+    setReceiptClaim(
+      result.success || result.pending
+        ? {
+            kind: "done",
+            pending: result.pending === true,
+            amountDiffers:
+              !!result.payout && result.payout.amount !== result.payout.announcedAmount,
+          }
+        : { kind: "failed", error: result.error ?? "Claim failed" },
+    );
   };
-  const claimHereLabel =
-    claimable.length === 1
-      ? `Claim ${formatPaymentAmount(claimable[0]) ?? "to wallet"}`
-      : `Claim ${claimable.length} payments`;
-  // Once started, the claim keeps its button even as claimed payments leave the list.
-  const claimingHere =
-    receiptClaim.kind === "claiming" || (receiptClaim.kind === "idle" && claimable.length > 0);
+  // Once started, the claim keeps its button even after the payment leaves the list.
+  const offerClaimHere =
+    receiptClaim.kind === "claiming" || (receiptClaim.kind === "idle" && thisPayment !== null);
+  const claimHereLabel = `Claim ${(thisPayment && formatPaymentAmount(thisPayment)) ?? "to wallet"}`;
 
   // Primary receipt CTA. Riddler #632 gives the public fill receipt on an explicit
   // chain (`settlementTxHash`/`settlementChainId`), so prefer those and skip the
@@ -352,7 +359,7 @@ export function SwapResult({
               claim is ready.
               {claimInXochiApp && ` ${CLAIM_IN_XOCHI_APP}`}
             </p>
-            {completion && !claimingHere && receiptClaim.kind === "idle" && (
+            {completion && payout && !offerClaimHere && receiptClaim.kind === "idle" && (
               <button
                 type="button"
                 className="modal-btn modal-btn--cancel"
@@ -407,7 +414,7 @@ export function SwapResult({
                 : `${receiptClaim.pending ? "Claim sent. It can take a minute to confirm." : "Claimed to your wallet."}${receiptClaim.amountDiffers ? " The transfer moved a different amount than announced; check the transaction." : ""}`}
           </p>
         )}
-        {ownStealthLanded && receiptClaim.kind !== "done" && (claimingHere || onGoToClaims) ? (
+        {ownStealthLanded && receiptClaim.kind !== "done" && (offerClaimHere || onGoToClaims) ? (
           <div className="swap-result__actions">
             <button
               className="modal-btn modal-btn--cancel"
@@ -416,7 +423,7 @@ export function SwapResult({
             >
               Done
             </button>
-            {claimingHere ? (
+            {offerClaimHere ? (
               <button
                 className="modal-btn modal-btn--confirm swap-result__primary"
                 onClick={() => void claimHere()}

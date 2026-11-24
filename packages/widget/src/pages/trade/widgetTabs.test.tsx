@@ -29,6 +29,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, cleanup, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import type { Config } from "wagmi";
 import { QuoteResponseSchema } from "@xochi/client";
+import {
+  STEALTH_DERIVE_MESSAGE,
+  computeMetaAddressFromKeys,
+  deriveStealthKeys,
+} from "@xochi/signer";
 import { quoteWire, statusWire } from "../../test/intentHarness.js";
 import { intentAPI } from "../../lib/intentAPI.js";
 import { RampDiscoveryContext } from "../../ramp/availability/useRampDiscovery.js";
@@ -37,6 +42,7 @@ import {
   renderTrade,
   makeTestConfig,
   apiStub,
+  signAsTestAccount,
   TEST_ACCOUNT,
   type ApiStubOptions,
   type StubbedRoute,
@@ -707,6 +713,13 @@ describe("Claims with locked keys", () => {
       STORAGE_KEYS.walletSession,
       JSON.stringify({ token: "harness-wallet-session", wallet: TEST_ACCOUNT.toLowerCase() }),
     );
+    // Set up on this device in an earlier session: only the public meta-address remains.
+    window.localStorage.setItem(
+      `${STORAGE_KEYS.stealthPrefix}${TEST_ACCOUNT.toLowerCase()}:1`,
+      JSON.stringify(
+        computeMetaAddressFromKeys(deriveStealthKeys(signAsTestAccount(STEALTH_DERIVE_MESSAGE)), 1),
+      ),
+    );
     stubClaims();
     seedActivity(stealthSwap);
     await renderTrade(<Trade look={FULL_LOOK} />, { connected: true });
@@ -717,6 +730,7 @@ describe("Claims with locked keys", () => {
       within(visiblePanel()).getByText("4.98 DAI waiting on Base. Sign to unlock and claim."),
     ).toBeTruthy();
     expect(signatures).toEqual([]);
+    expect(within(visiblePanel()).getByText(/Keys locked\./)).toBeTruthy();
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Unlock and scan" }));
@@ -727,13 +741,14 @@ describe("Claims with locked keys", () => {
     expect(scans).toBeGreaterThan(0);
   });
 
-  it("signs in, unlocks and scans from one click", async () => {
+  it("tells a never-set-up wallet to set up, then signs in, sets up and scans in one click", async () => {
     stubClaims();
     await renderTrade(<Trade look={FULL_LOOK} />, { connected: true });
     fireEvent.click(tab("Claims"));
+    expect(within(visiblePanel()).queryByText(/Keys locked/)).toBeNull();
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Sign in and unlock" }));
+      fireEvent.click(screen.getByRole("button", { name: "Sign in and set up" }));
     });
 
     await screen.findByText("No stealth payments found", {}, WAIT);

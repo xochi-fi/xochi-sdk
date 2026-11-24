@@ -30,7 +30,19 @@ export function formatPaymentAmount(payment: ChainStealthPayment): string | null
     : null;
 }
 
-/** Whether `payment` pays out `symbol` on `chainId`. */
-export function paysOut(payment: ChainStealthPayment, chainId: number, symbol: string): boolean {
-  return payment.chainId === chainId && paymentToken(payment)?.symbol === symbol;
+/** One order's stealth payout: its chain, registry token symbol and exact base-unit amount. */
+export interface StealthPayout {
+  chainId: number;
+  symbol: string;
+  amount: bigint;
+}
+
+/** Whether `payment` is exactly `payout`: same chain, token and amount to the base unit. */
+export function paysOut(payment: ChainStealthPayment, payout: StealthPayout): boolean {
+  const token = paymentToken(payment);
+  return (
+    payment.chainId === payout.chainId &&
+    token?.symbol === payout.symbol &&
+    token.amount === payout.amount
+  );
 }

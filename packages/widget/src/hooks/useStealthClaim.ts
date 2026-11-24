@@ -24,7 +24,7 @@ import {
 } from "@xochi/signer";
 import { bytesToHex, type Hex } from "viem";
 import { privateKeyToAddress } from "viem/accounts";
-import { useStealth } from "./useStealth.js";
+import { useStealth, type StealthKeyStatus } from "./useStealth.js";
 import { useStealthScanner, type ChainStealthPayment } from "./useStealthScanner.js";
 import { apiPost } from "../lib/api.js";
 import { CLAIM_PREPARE_WINDOW_MS, submitClaimUntilSettled } from "../lib/claimSubmitPoll.js";
@@ -88,10 +88,14 @@ export interface UseStealthClaimReturn {
   isInitialized: boolean;
   /** Whether secret keys are in memory (scan-ready); false after a reload */
   keysReady: boolean;
+  /** Never set up on this device, set up but locked, or unlocked (see useStealth). */
+  keyStatus: StealthKeyStatus;
   /** Whether the meta-address is registered on-chain */
   isRegistered: boolean;
-  /** Whether a key derivation or registration is in progress */
+  /** Whether a key derivation is in progress */
   isLoading: boolean;
+  /** Whether an on-chain registration is in progress */
+  isRegistering: boolean;
   /** Derive stealth keys from a wallet signature (Setup or re-sign) */
   initializeKeys: () => Promise<boolean>;
   /** Register the meta-address on ERC-6538 */
@@ -115,6 +119,15 @@ export interface UseStealthClaimReturn {
 
 const NO_PAYMENTS: ReadonlySet<ChainStealthPayment> = new Set();
 
+interface ClaimState {
+  /** The scanner authority this state belongs to. */
+  authority: object;
+  isClaiming: boolean;
+  isConfirming: boolean;
+  error: string | null;
+  settled: ReadonlySet<ChainStealthPayment>;
+}
+
 export function useStealthClaim(): UseStealthClaimReturn {
   const stealth = useStealth();
   const keys = stealth.getKeys();
@@ -128,12 +141,12 @@ export function useStealthClaim(): UseStealthClaimReturn {
   const currentAuthorityRef = useRef(authority);
   currentAuthorityRef.current = authority;
   const activeClaimRef = useRef<object | null>(null);
-  const [claimState, setClaimState] = useState({
+  const [claimState, setClaimState] = useState<ClaimState>({
     authority,
     isClaiming: false,
     isConfirming: false,
-    error: null as string | null,
-    settled: new Set<ChainStealthPayment>() as ReadonlySet<ChainStealthPayment>,
+    error: null,
+    settled: new Set(),
   });
   if (claimState.authority !== authority) {
     activeClaimRef.current = null;
@@ -392,8 +405,10 @@ export function useStealthClaim(): UseStealthClaimReturn {
     hasScanned: scanner.hasScanned,
     isInitialized: stealth.isInitialized,
     keysReady: stealth.keysReady,
+    keyStatus: stealth.keyStatus,
     isRegistered: stealth.isRegistered,
     isLoading: stealth.isLoading,
+    isRegistering: stealth.isRegistering,
     initializeKeys: stealth.initializeKeys,
     registerMetaAddress: stealth.registerMetaAddress,
     scan,

@@ -469,7 +469,7 @@ describe("interruptions keep one lifecycle and leak nothing", () => {
   it("resumes an in-doubt purchase after a reload under the same reference", async () => {
     channels.frame = frameWidget();
     channels.frame.pinCurrent();
-    const h = await buyerHarness(Date.now());
+    const h = await buyerHarness(Date.now(), TEST_ACCOUNT);
     const store = browserStore();
     h.setSignalError(new Error("receipt_unknown"));
     h.chain.findable = false;

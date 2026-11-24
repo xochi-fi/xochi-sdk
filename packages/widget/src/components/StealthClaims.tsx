@@ -12,21 +12,24 @@ import { formatPaymentAmount } from "../lib/stealthPaymentAmount.js";
 import { describeWaiting, type WaitingPayout } from "../lib/waitingPayouts.js";
 
 /**
- * What stands between the user and a scan. Every kind is one click: signing in
- * (the announcements index is session-gated) and unlocking (the keys live only
- * in memory) both run before the scan they lead to.
+ * What stands between the user and a scan. Every action is one click: signing
+ * in (the announcements index is session-gated) and deriving the keys (first
+ * setup on this device, or unlocking keys that live only in memory) both run
+ * before the scan they lead to.
  */
 export type ClaimsAction =
-  | { kind: "scan" }
-  | { kind: "unlock" }
-  | { kind: "sign-in" }
-  | { kind: "sign-in-and-unlock" };
+  | "scan"
+  | "set-up"
+  | "unlock"
+  | "sign-in"
+  | "sign-in-and-set-up"
+  | "sign-in-and-unlock";
 
-/** The step of the action in flight, if any. */
-export type ClaimsBusy = "signing-in" | "unlocking" | "scanning" | null;
+/** What the action is waiting on, if anything. */
+export type ClaimsBusy = "signing" | "scanning" | null;
 
 const ACTION_COPY: Record<
-  ClaimsAction["kind"],
+  ClaimsAction,
   { label: string; title: string; toClaim: string; idle: string | null }
 > = {
   scan: {
@@ -34,6 +37,12 @@ const ACTION_COPY: Record<
     title: "Scan for incoming payments",
     toClaim: "Scan to claim.",
     idle: null,
+  },
+  "set-up": {
+    label: "Set up and scan",
+    title: "Sign with the wallet to set up the stealth keys, then scan",
+    toClaim: "Sign to set up Stealth and claim.",
+    idle: "Sign once to set up Stealth and look for payments sent to you.",
   },
   unlock: {
     label: "Unlock and scan",
@@ -47,11 +56,17 @@ const ACTION_COPY: Record<
     toClaim: "Sign in to claim.",
     idle: null,
   },
+  "sign-in-and-set-up": {
+    label: "Sign in and set up",
+    title: "Sign in, then sign to set up the stealth keys, then scan",
+    toClaim: "Sign in and set up Stealth to claim.",
+    idle: "Sign in and set up Stealth to look for payments sent to you.",
+  },
   "sign-in-and-unlock": {
     label: "Sign in and unlock",
     title: "Sign in, then sign to unlock the stealth keys, then scan",
     toClaim: "Sign in and unlock to claim.",
-    idle: "Sign in and unlock the stealth keys to look for payments sent to you.",
+    idle: "Keys locked. Sign in and unlock them to look for payments sent to you.",
   },
 };
 
@@ -95,7 +110,7 @@ export function StealthClaims({
   onClaim,
   onClaimAll,
 }: StealthClaimsProps) {
-  const scope = `${walletAddress?.toLowerCase() ?? ""}:${action.kind}`;
+  const scope = `${walletAddress?.toLowerCase() ?? ""}:${action}`;
   const scopeRef = useRef({ scope });
   const paymentsRef = useRef(payments);
   paymentsRef.current = payments;
@@ -140,7 +155,7 @@ export function StealthClaims({
   // returning user with locked keys sees before signing anything.
   const waitingCount = payments.length > 0 ? payments.length : waiting.length;
   const hasWaiting = waitingCount > 0;
-  const copy = ACTION_COPY[action.kind];
+  const copy = ACTION_COPY[action];
   const waitingLine = payments.length === 0 && !hasScanned ? describeWaiting(waiting) : null;
   const isScanning = busy === "scanning";
 

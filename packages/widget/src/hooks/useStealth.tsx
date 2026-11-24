@@ -28,7 +28,7 @@
  * names a chain, is cached to localStorage per `address:chainId`.
  */
 
-import { HOST_WALLET_ID, refusesStealth } from "../wagmi.js";
+import { refusesStealth } from "../wagmi.js";
 import {
   useState,
   useCallback,
@@ -39,15 +39,9 @@ import {
   useContext,
 } from "react";
 import type { ReactNode } from "react";
-import {
-  useAccount,
-  useConfig,
-  useSignMessage,
-  useChainId,
-  usePublicClient,
-  useWalletClient,
-} from "wagmi";
-import { getAccount, watchAccount } from "wagmi/actions";
+import { useAccount, useConfig, useChainId, usePublicClient, useWalletClient } from "wagmi";
+import { getAccount, signMessage, watchAccount } from "wagmi/actions";
+import { recoverMessageAddress } from "viem";
 import {
   deriveStealthKeys,
   computeMetaAddressFromKeys,
@@ -82,6 +76,9 @@ const STORAGE_KEY_PREFIX = STORAGE_KEYS.stealthPrefix;
 // Types
 // ============================================================
 
+/** Never set up on this device, set up but locked (not in memory), or unlocked. */
+export type StealthKeyStatus = "none" | "locked" | "unlocked";
+
 export interface UseStealthReturn {
   /** Stealth meta-address (public keys for receiving) */
   metaAddress: StealthMetaAddress | null;
@@ -96,13 +93,24 @@ export interface UseStealthReturn {
    * disconnect locks them until the user signs again.
    */
   keysReady: boolean;
+  /**
+   * Where this wallet's keys stand: never set up on this device, set up but
+   * locked (not in memory), or unlocked. "Set up" is any chain's cached
+   * meta-address, so a network switch does not turn locked keys into "none".
+   */
+  keyStatus: StealthKeyStatus;
   /** Whether meta-address is registered on-chain */
   isRegistered: boolean;
-  /** Loading state */
+  /** A key derivation (wallet signature) is in progress. */
   isLoading: boolean;
+  /** An on-chain meta-address registration is in progress. */
+  isRegistering: boolean;
   /** Error message if any */
   error: string | null;
-  /** Initialize stealth keys from wallet signature */
+  /**
+   * Derive the keys from a wallet signature. Single-flight: a call while one is
+   * pending for the same wallet joins it instead of prompting again.
+   */
   initializeKeys: () => Promise<boolean>;
   /** Register meta-address on ERC-6538 */
   registerMetaAddress: () => Promise<string | null>;
@@ -160,6 +168,20 @@ function clearCachedMetaAddress(address: string, chainId: number): void {
   }
 }
 
+/** Whether this device holds a usable meta-address for `address` on any chain. */
+function hasCachedMetaAddress(address: string): boolean {
+  try {
+    const prefix = `${STORAGE_KEY_PREFIX}${address.toLowerCase()}:`;
+    return Object.keys(localStorage).some((key) => {
+      if (!key.startsWith(prefix)) return false;
+      const cached = loadCachedMetaAddress(address, Number(key.slice(prefix.length)));
+      return cached !== null && !isCompromisedStealthSpendingPubKey(cached.spendingPubKey);
+    });
+  } catch {
+    return false;
+  }
+}
+
 // ============================================================
 // Hook Implementation
 // ============================================================
@@ -171,13 +193,15 @@ function useStealthState(): UseStealthReturn {
   const chainId = useChainId() as ChainId;
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
-  const { signMessageAsync } = useSignMessage();
+  const [setUpOnDevice, setSetUpOnDevice] = useState(false);
 
   // State
   const [keys, setKeys] = useState<StealthKeys | null>(null);
   const [metaAddress, setMetaAddress] = useState<StealthMetaAddress | null>(null);
   const [isRegistered, setIsRegistered] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
+  const pendingSetupRef = useRef<{ authority: object; attempt: Promise<boolean> } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const walletScope = walletScopeOf({ address, connector });
   const [keyScope, setKeyScope] = useState<string | null>(null);
@@ -251,6 +275,8 @@ function useStealthState(): UseStealthReturn {
     revokeKeys();
     setError(null);
     setIsLoading(false);
+    setIsRegistering(false);
+    setSetUpOnDevice(false);
   }, [walletScope, stealthRefused, revokeKeys]);
 
   // The meta-address for the current chain: computed from the keys while they
@@ -263,6 +289,7 @@ function useStealthState(): UseStealthReturn {
       const meta = computeMetaAddressFromKeys(unlocked, chainId);
       setMetaAddress(meta);
       saveCachedMetaAddress(address, chainId, meta);
+      setSetUpOnDevice(true);
       return;
     }
     const cached = loadCachedMetaAddress(address, chainId);
@@ -273,6 +300,7 @@ function useStealthState(): UseStealthReturn {
     } else if (cached) {
       setMetaAddress(cached);
     }
+    setSetUpOnDevice(hasCachedMetaAddress(address));
   }, [address, chainId, walletScope, stealthRefused, keys, getKeys]);
 
   // Check registration status when meta-address changes
@@ -328,8 +356,7 @@ function useStealthState(): UseStealthReturn {
     [currentMetaAddress],
   );
 
-  // Initialize keys from wallet signature
-  const initializeKeys = useCallback(async (): Promise<boolean> => {
+  const deriveKeys = useCallback(async (): Promise<boolean> => {
     if (authorityRef.current !== authority || !authority.active) return false;
     const account = getAccount(config);
     if (!address || account.status !== "connected" || walletScopeOf(account) !== walletScope) {
@@ -347,11 +374,12 @@ function useStealthState(): UseStealthReturn {
 
     let promptTimer: ReturnType<typeof setTimeout> | undefined;
     try {
-      // Sign message to derive keys. Bound the prompt: a mobile deep-link that
-      // never returns the request would otherwise hang this forever (the toggle /
-      // Setup button would spin with no feedback).
+      // Bound the prompt: a mobile deep-link that never returns the request
+      // would otherwise leave the action spinning with no feedback. The
+      // config-level action keeps the signature (the key seed) out of any
+      // hook or query state.
       const signature = await Promise.race([
-        signMessageAsync({ message: STEALTH_SIGN_MESSAGE }),
+        signMessage(config, { message: STEALTH_SIGN_MESSAGE }),
         new Promise<never>((_, reject) => {
           promptTimer = setTimeout(
             () => reject(new Error("wallet_prompt_timeout")),
@@ -365,25 +393,26 @@ function useStealthState(): UseStealthReturn {
         return false;
       }
 
-      if (currentAccount.connector?.id === HOST_WALLET_ID) {
-        const validSignature =
-          !refusesStealth(currentAccount.connector) &&
-          publicClient !== undefined &&
-          (await publicClient.verifyMessage({
-            address,
-            message: STEALTH_SIGN_MESSAGE,
-            signature,
-            mode: "eoa",
-          }));
+      const derivedKeys = deriveStealthKeys(signature);
+      // The keys must come from the wallet's own key: a contract wallet's
+      // signature can be chain-bound (different keys per chain) or published.
+      const signer = await recoverMessageAddress({ message: STEALTH_SIGN_MESSAGE, signature });
+      if (
+        authorityRef.current !== authority ||
+        !authority.active ||
+        signer.toLowerCase() !== address.toLowerCase() ||
+        refusesStealth(currentAccount.connector)
+      ) {
+        derivedKeys.spendingKey.fill(0);
+        derivedKeys.viewingKey.fill(0);
         if (authorityRef.current !== authority || !authority.active) return false;
-        if (!validSignature || refusesStealth(currentAccount.connector)) {
-          throw new Error("The signature is not from an approved wallet connection.");
-        }
+        throw new Error(
+          "Stealth needs a wallet that signs with its own key; this wallet's signature does not match its address.",
+        );
       }
 
-      // Derive keys from signature; the meta-address effect publishes and caches
-      // the public half for the current chain.
-      const derivedKeys = deriveStealthKeys(signature);
+      // The meta-address effect publishes and caches the public half for the
+      // current chain.
       revokeKeys();
       keysRef.current = derivedKeys;
       setKeys(derivedKeys);
@@ -406,10 +435,20 @@ function useStealthState(): UseStealthReturn {
       console.error("[useStealth] Initialize error:", err);
       return false;
     } finally {
-      if (promptTimer) clearTimeout(promptTimer);
+      clearTimeout(promptTimer);
       if (authorityRef.current === authority && authority.active) setIsLoading(false);
     }
-  }, [address, authority, config, walletScope, publicClient, signMessageAsync, revokeKeys]);
+  }, [address, authority, config, walletScope, revokeKeys]);
+
+  const initializeKeys = useCallback((): Promise<boolean> => {
+    const pending = pendingSetupRef.current;
+    if (pending && pending.authority === authority) return pending.attempt;
+    const attempt = deriveKeys().finally(() => {
+      if (pendingSetupRef.current?.attempt === attempt) pendingSetupRef.current = null;
+    });
+    pendingSetupRef.current = { authority, attempt };
+    return attempt;
+  }, [authority, deriveKeys]);
 
   // Register meta-address on-chain
   const registerMetaAddress = useCallback(async (): Promise<string | null> => {
@@ -418,7 +457,7 @@ function useStealthState(): UseStealthReturn {
       return null;
     }
 
-    setIsLoading(true);
+    setIsRegistering(true);
     setError(null);
 
     try {
@@ -467,7 +506,7 @@ function useStealthState(): UseStealthReturn {
       console.error("[useStealth] Register error:", err);
       return null;
     } finally {
-      setIsLoading(false);
+      setIsRegistering(false);
     }
   }, [address, walletClient, currentMetaAddress, publicClient]);
 
@@ -480,6 +519,7 @@ function useStealthState(): UseStealthReturn {
     if (address) {
       clearCachedMetaAddress(address, chainId);
     }
+    setSetUpOnDevice(address ? hasCachedMetaAddress(address) : false);
     setKeys(null);
     setMetaAddress(null);
     setIsRegistered(false);
@@ -492,8 +532,10 @@ function useStealthState(): UseStealthReturn {
     encodedMetaAddress,
     isInitialized,
     keysReady,
+    keyStatus: keysReady ? "unlocked" : isInitialized || setUpOnDevice ? "locked" : "none",
     isRegistered,
     isLoading: keyScope === walletScope && isLoading,
+    isRegistering: keyScope === walletScope && isRegistering,
     error,
     initializeKeys,
     registerMetaAddress,

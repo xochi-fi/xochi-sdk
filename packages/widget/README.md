@@ -180,13 +180,18 @@ Browser RPC URLs and WalletConnect identifiers are public bundle settings, not a
 Stealth secret keys live only in memory and are scoped to the wallet: one
 address on one connector. They survive a network switch; an address change,
 connector change, reconnect, disconnect or reload locks them and zeroes their
-bytes. The Claims tab has one action that signs in (if needed), then unlocks
-the keys with a wallet signature (if locked), then scans, so a scan never runs
-keyless. Before any signature it shows what the wallet's claimable settlements
-hold ("4.98 DAI waiting on Base"), from data the client already receives.
-Registering the meta-address on-chain is only for receiving from others; claiming
-does not need it. After a stealth swap settles with the keys unlocked, the receipt
-claims the payout to the connected wallet in place.
+bytes. They derive from one signature, taken through wagmi's config-level
+`signMessage` so no hook or query state keeps it, and only if it recovers to the
+connected address (contract-wallet signatures are refused on every connector).
+The Claims tab has one single-flight action that signs in (if needed), then sets
+up or unlocks the keys with a wallet signature (if needed), then scans, so a scan
+never runs keyless. With a wallet session it shows what the wallet's claimable
+settlements hold ("4.98 DAI waiting on Base") before any key signature, from data
+the client already receives; without one, it offers the sign-in. Registering the
+meta-address on-chain is only for receiving from others; claiming does not need
+it. After a stealth swap settles with the keys unlocked, the receipt claims in
+place only the payment that is exactly that swap's payout (chain, token and
+amount); anything else is claimed from the Claims tab.
 
 A sign-in requested from Claims scans only after explicit authentication has
 produced the current scanner authority. Wallet, chain, connector or session

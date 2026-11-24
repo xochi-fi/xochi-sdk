@@ -493,48 +493,63 @@ export function Trade({
   const handleStealthSignIn = useCallback((): void => {
     const request = {};
     stealthSignInRequest.current = request;
+    const release = (): void => {
+      if (stealthSignInRequest.current === request) stealthSignInRequest.current = null;
+    };
     void ensureSession().then((token) => {
-      if (token && stealthSignInRequest.current === request) {
+      if (stealthSignInRequest.current !== request) return;
+      if (token) {
         setPendingStealthScan({ request, token, generation: getWalletSessionGeneration() });
+      } else {
+        release();
       }
-    });
+    }, release);
   }, [ensureSession]);
   // Signing in revokes the pre-auth scanner. Consume the explicit request only
   // after rendering its replacement, never through the callback that signed in.
   useEffect(() => {
     if (!pendingStealthScan) return;
     setPendingStealthScan(null);
+    if (stealthSignInRequest.current !== pendingStealthScan.request) return;
+    stealthSignInRequest.current = null;
     if (
-      stealthSignInRequest.current !== pendingStealthScan.request ||
       sessionState !== "active" ||
       getWalletToken() !== pendingStealthScan.token ||
       getWalletSessionGeneration() !== pendingStealthScan.generation
     ) {
       return;
     }
-    stealthSignInRequest.current = null;
-    // Unlocks the keys first when they are locked: the scan never runs keyless.
+    // Derives the keys first when they are locked: the scan never runs keyless.
     void stealthClaim.scan();
     refreshSettlements();
   }, [pendingStealthScan, sessionState, stealthClaim.scan, refreshSettlements]);
 
-  // The Claims tab's one action: sign in, then unlock, then scan, skipping
-  // whichever step is already done.
+  const claimsBusy: ClaimsBusy =
+    sessionState === "signing" || stealthClaim.isLoading
+      ? "signing"
+      : stealthClaim.isScanning
+        ? "scanning"
+        : null;
+  // The Claims tab's one action: sign in, then set up or unlock the keys, then
+  // scan, skipping whichever step is already done. Single-flight: a sign-in in
+  // flight blocks another, and key derivation and scanning join their pending run.
   const handleClaimsAction = (): void => {
+    if (claimsBusy !== null || stealthSignInRequest.current !== null) return;
     if (stealthNeedsSignIn) handleStealthSignIn();
     else void stealthClaim.scan();
   };
-  const claimsAction: ClaimsAction = stealthNeedsSignIn
-    ? { kind: stealthClaim.keysReady ? "sign-in" : "sign-in-and-unlock" }
-    : { kind: stealthClaim.keysReady ? "scan" : "unlock" };
-  const claimsBusy: ClaimsBusy =
-    sessionState === "signing"
-      ? "signing-in"
-      : stealthClaim.isLoading
-        ? "unlocking"
-        : stealthClaim.isScanning
-          ? "scanning"
-          : null;
+  const firstSetup = stealthClaim.keyStatus === "none";
+  const claimsAction: ClaimsAction = stealthClaim.keysReady
+    ? stealthNeedsSignIn
+      ? "sign-in"
+      : "scan"
+    : stealthNeedsSignIn
+      ? firstSetup
+        ? "sign-in-and-set-up"
+        : "sign-in-and-unlock"
+      : firstSetup
+        ? "set-up"
+        : "unlock";
   const stealthCompletion: StealthCompletion | null =
     STEALTH_CLAIM_LIVE &&
     !claimInXochiApp &&
@@ -926,18 +941,14 @@ export function Trade({
                     shieldedAccountsLive={SHIELDED_ACCOUNTS_LIVE}
                     connectedProviders={verifyState?.connectedProviders ?? []}
                     isConnected={isConnected}
-                    stealthKeys={
-                      stealthClaim.keysReady
-                        ? "unlocked"
-                        : stealthClaim.isInitialized
-                          ? "locked"
-                          : "none"
-                    }
+                    stealthKeys={stealthClaim.keyStatus}
+                    stealthRegistrable={stealthClaim.isInitialized}
                     stealthRegistered={stealthClaim.isRegistered}
                     onInitializeStealth={stealthClaim.initializeKeys}
                     onUnlockStealth={handleClaimsAction}
                     onRegisterStealth={stealthClaim.registerMetaAddress}
-                    stealthLoading={stealthClaim.isLoading}
+                    stealthKeysBusy={claimsBusy !== null}
+                    stealthRegistering={stealthClaim.isRegistering}
                   />
 
                   <StealthClaims
