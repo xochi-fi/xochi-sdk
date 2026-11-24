@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-11-24
+
 ### Added
 
 - A stealth swap's receipt offers Claim in place while the keys are unlocked and the wallet is signed in. It claims only the payment that is exactly this swap's payout (chain, token and amount); otherwise, or for a resumed swap, it hands off to Claims.
