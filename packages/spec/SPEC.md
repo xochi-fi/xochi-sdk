@@ -284,11 +284,17 @@ advertised `max_slippage_bps`. For escrow, the client independently checks the
 committed opening using the signed quote amount and its own request tolerance
 as specified in [ESCROW-RFC §7](ESCROW-RFC.md#7-activation-semantics-implemented-client-guard).
 
-On quote-through corridors, the response's `min_to_amount` is the announced
-`minOutput`, which is the auction's public reserve under
+For a firm exact-input quote-through quote, the response's `min_to_amount`
+and the escrow opening's `toAmount` both carry the announced `minOutput`,
+which is the auction's public reserve. The signed intent carries the settled
+output. The escrow guard refuses before signing if the committed reserve
+falls below the client minimum described in
+[ESCROW-RFC §7](ESCROW-RFC.md#7-activation-semantics-implemented-client-guard).
+Indicative previews on these corridors skip the auction and carry no firm
+solver commitment. The firm auction is specified in
 [SOLVER-RFC §2.5](SOLVER-RFC.md#25-quote-through-corridors--implemented-venue-behind-config).
-A limit order's `min_to_amount` is the order's own floor derived from its
-limit price.
+
+A limit order's `min_to_amount` is the floor derived from its limit price.
 
 The response MAY carry `input_amount_usd`: the gross origin notional in USD at
 the token valuation conversion pricing accepted, a decimal string (absent on

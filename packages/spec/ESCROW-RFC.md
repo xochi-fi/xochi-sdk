@@ -1288,9 +1288,8 @@ Escrow ships **behind the escrow capability** (`SPEC.md` §6:
      witness `orderId` (`witnessOrderId`, required: a binding without it
      refuses) equals `orderId`.
 
-   Any failure means the venue could redirect principal or the destination; the
-   client MUST abort before signing. The client keeps the opening: it is its
-   dispute and recovery evidence.
+   On any failure, the client MUST abort before signing. The client keeps the
+   opening as dispute and recovery evidence.
 
    The client MUST derive `minOut` from `quotedToAmount` (the signed
    `XochiIntent.toAmount` in destination base units) and `slippageBps` (the
@@ -1322,11 +1321,25 @@ Escrow ships **behind the escrow capability** (`SPEC.md` §6:
    | 340282366920938463463374607431768211457 | 50 | 338580955086333771146057734394609370400 |
 
    The RFQ's `minOutput` is a bid admission floor. At execute time it is the
-   signed `XochiIntent.toAmount`. At quote time it is derived using the fixed
-   venue announce margin `SOLVER_ANNOUNCE_FLOOR_BPS` (default 50, valid
-   `1..500`, capped at the pair's advertised `max_slippage_bps` on cross-token
-   routes), independently of the caller's slippage.
-   [SOLVER-RFC §4.2](SOLVER-RFC.md#42-intentannouncement) defines both cases.
+   signed `XochiIntent.toAmount`. At quote time the venue derives it from
+   the output before any promo discount, using the fixed venue announce
+   margin `SOLVER_ANNOUNCE_FLOOR_BPS` (default 50, valid `1..500`, capped at
+   the pair's advertised `max_slippage_bps` on cross-token routes),
+   independently of the caller's slippage. In the ordinary sealed RFQ, the
+   reserve is private and the announcement carries only the admission floor.
+   [SOLVER-RFC §4.2](SOLVER-RFC.md#42-intentannouncement) describes the
+   announcement fields.
+
+   For firm exact-input quote-through, `minOutput` itself is the public
+   reserve. The venue commits that amount in the opening before bidding,
+   since bids bind the resulting `orderId`. The signed intent's `toAmount`
+   and FillAuth amount carry the auction's settled output. For example, with
+   a reserve of `9950`, a settled output of `10100` and a caller tolerance
+   of `50` bps, the guard requires `10100 - floor(10100 * 50 / 10000) = 10050`.
+   The opening commits `9950`, so the client refuses before signing even
+   though the FillAuth authorizes `10100`. This is a limitation of current
+   firm quote-through. Indicative previews run no auction. See
+   [SOLVER-RFC §2.5](SOLVER-RFC.md#25-quote-through-corridors--implemented-venue-behind-config).
 
 A quote without the envelope is a direct-pull quote: a client MUST NOT call the
 guard on it and MUST NOT expect any envelope field (`SPEC.md` §5.2). The guard

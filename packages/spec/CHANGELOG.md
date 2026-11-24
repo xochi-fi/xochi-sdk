@@ -10,11 +10,12 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
   [ESCROW-RFC §7](ESCROW-RFC.md#7-activation-semantics-implemented-client-guard).
   [SPEC §3.3](SPEC.md#33-quote-request-fields) documents quote slippage
   admission and the sources of `min_to_amount`. Signed wire data, conformance
-  vectors and the client's `escrowMinOut` behavior remain unchanged. Riddler
-  rounded the retained cross-token output down, which could leave a Canton
-  direct-award opening one base unit below the client guard's minimum.
-  [Riddler PR #1501](https://github.com/axol-io/Riddler/pull/1501) addresses
-  that discrepancy.
+  vectors and the client's `escrowMinOut` behavior remain unchanged. Firm
+  quote-through can fail the guard when the committed public reserve is below
+  the minimum derived from the settled output. A separate rounding discrepancy
+  could leave a Canton direct-award opening one base unit below the client
+  guard's minimum. The proposed Canton fix is in
+  [Riddler PR #1501](https://github.com/axol-io/Riddler/pull/1501).
 
 ## [0.14.0] - 2026-11-13
 
