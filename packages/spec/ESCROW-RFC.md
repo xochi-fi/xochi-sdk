@@ -1266,7 +1266,7 @@ Escrow ships **behind the escrow capability** (`SPEC.md` §6:
    - recompute every key, `destCommitment` and `orderId` itself, never trusting
      a quoted commitment;
    - assert the opening's recipient and toToken keys equal the keys of the
-     user's own values, and `toAmount >= minOut`;
+     user's own values, and the committed opening has `toAmount >= minOut`;
    - assert `terms.toChainId` equals the intent's `toChainId` (absent refuses):
      the destination chain is outside `destCommitment`;
    - refuse any uint field that is not a non-negative safe integer or plain
@@ -1291,6 +1291,42 @@ Escrow ships **behind the escrow capability** (`SPEC.md` §6:
    Any failure means the venue could redirect principal or the destination; the
    client MUST abort before signing. The client keeps the opening: it is its
    dispute and recovery evidence.
+
+   The client MUST derive `minOut` from `quotedToAmount` (the signed
+   `XochiIntent.toAmount` in destination base units) and `slippageBps` (the
+   caller's effective request value after defaulting `slippage_bps`). The
+   client MUST use those inputs independently of the venue's `min_to_amount`.
+
+   ```text
+   minOut = quotedToAmount - floor(quotedToAmount * slippageBps / 10000)
+          = ceil(quotedToAmount * (10000 - slippageBps) / 10000)
+   ```
+
+   Implementations MUST use exact integer arithmetic on uint256 inputs
+   without intermediate truncation or wraparound, applying only the specified
+   floor or ceiling. The arithmetic accepts `slippageBps` in `0..10000`
+   inclusive. [SPEC §3.3](SPEC.md#33-quote-request-fields) defines the narrower
+   range for quote request admission. The venue MUST commit at least
+   `minOut`. Rounding the retained amount down can put the opening one base
+   unit below this threshold and cause the guard to refuse it.
+
+   | `quotedToAmount` | `slippageBps` | `minOut` |
+   | ---: | ---: | ---: |
+   | 1254008996259 | 50 | 1247738951278 |
+   | 201 | 50 | 200 |
+   | 1999 | 50 | 1990 |
+   | 10000 | 50 | 9950 |
+   | 12345 | 0 | 12345 |
+   | 12345 | 10000 | 0 |
+   | 1 | 9999 | 1 |
+   | 340282366920938463463374607431768211457 | 50 | 338580955086333771146057734394609370400 |
+
+   The RFQ's `minOutput` is a bid admission floor. At execute time it is the
+   signed `XochiIntent.toAmount`. At quote time it is derived using the fixed
+   venue announce margin `SOLVER_ANNOUNCE_FLOOR_BPS` (default 50, valid
+   `1..500`, capped at the pair's advertised `max_slippage_bps` on cross-token
+   routes), independently of the caller's slippage.
+   [SOLVER-RFC §4.2](SOLVER-RFC.md#42-intentannouncement) defines both cases.
 
 A quote without the envelope is a direct-pull quote: a client MUST NOT call the
 guard on it and MUST NOT expect any envelope field (`SPEC.md` §5.2). The guard
