@@ -19,8 +19,9 @@
 
 import { useContext, useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import { useAccount, useConfig } from "wagmi";
+import { skipToken, useQuery } from "@tanstack/react-query";
 import { formatTokenAmount } from "../../utils/format.js";
-import { usePublicBalances } from "../../hooks/usePublicBalances.js";
+import { TIMEOUTS } from "../../config.js";
 import { RampDisclosure, RampFacts } from "../availability/RampDisclosure.js";
 import {
   RailChoice,
@@ -221,8 +222,19 @@ function EditStep({
   const [source, setSource] = useState<"base_usdc" | "other">(() =>
     account && inspectOfframpPrerequisite(account) ? "other" : "base_usdc",
   );
-  const { readBalanceOf } = usePublicBalances();
-  const balance = settlement ? readBalanceOf(BASE_CHAIN_ID, settlement.asset_id) : null;
+  const spendable = port.spendable;
+  const balanceEnabled =
+    active && source === "base_usdc" && !!account && !!settlement && !!spendable;
+  const balanceRead = useQuery({
+    queryKey: ["cash-out-balance", settlement?.asset_id, account],
+    queryFn: account && spendable ? () => spendable(account) : skipToken,
+    enabled: balanceEnabled,
+    staleTime: TIMEOUTS.balanceRefresh,
+    refetchInterval: TIMEOUTS.balanceRefresh / 2,
+    retry: false,
+  });
+  const balance =
+    balanceEnabled && balanceRead.isSuccess && !balanceRead.isStale ? balanceRead.data : null;
   const cap = port.canaryCap();
   const max =
     balance !== null && cap !== undefined && balance > BigInt(cap) ? BigInt(cap) : balance;
@@ -237,25 +249,31 @@ function EditStep({
   const amountInvalid = amountText.trim() !== "" && amount === undefined;
   // Enforced before any rail read or review: an over-cap amount is never estimated.
   const overCap = canaryCapError(amount, port.canaryCap());
+  const balanceNote =
+    amount !== undefined && balance !== null && BigInt(amount) > balance
+      ? balance === 0n
+        ? "Your wallet has 0 USDC on Base. Receive USDC on Base to cash out."
+        : `Your wallet has ${formatUsdc(balance.toString())} on Base. You entered ${formatUsdc(amount)}. Try a smaller amount, or receive more USDC on Base.`
+      : undefined;
+  const canCheck = !overCap && !balanceNote;
   const { state, now, refresh } = useOfframpRails({
     port,
     runtime: flow.runtime,
     settlement,
     account,
-    amount: overCap ? undefined : amount,
+    amount: canCheck ? amount : undefined,
     currency,
     enabled: active && source === "base_usdc",
   });
 
-  const cards: { card: RailCard; offer: RampOffer }[] =
+  const checked =
     state.status === "done" &&
-    settlement &&
-    account &&
-    amount !== undefined &&
-    !overCap &&
+    canCheck &&
     state.intent.exact.money.atomic === amount &&
     state.intent.fiat.currency === currency &&
-    state.intent.recipient === account
+    state.intent.recipient === account;
+  const cards: { card: RailCard; offer: RampOffer }[] =
+    checked && settlement
       ? state.offers.map((offer) => ({
           offer,
           card: railCard(offer, state.intent, settlement, now),
@@ -264,7 +282,7 @@ function EditStep({
   const selectable = cards.filter((c) => c.card.selectable);
   const blocked = cards.filter((c) => !c.card.selectable);
   const chosen = selectable.find((c) => c.card.id === selected);
-  const lost = selected !== undefined && chosen === undefined && state.status === "done";
+  const lost = selected !== undefined && chosen === undefined && checked;
   const currencies = [...new Set([fiatCurrency, "USD"])];
   const estimateFor = (offer: RampOffer) =>
     state.status === "done" ? state.estimates.find((e) => e.offerId === offer.offer_id) : undefined;
@@ -276,12 +294,13 @@ function EditStep({
       : "Connect a wallet and enter an amount to check availability.";
   else if (!settlement)
     status = "Peer’s Base USDC configuration is unavailable. Check again later.";
+  else if (overCap) status = overCap;
+  else if (balanceNote) status = balanceNote;
   else if (lost) status = "That app is unavailable. Choose again.";
   else if (flow.runtimeFailed)
     status = "Cash out is unavailable for this wallet. Reconnect your wallet and check again.";
   else if (account && amount === undefined && !amountInvalid)
     status = "Enter an amount to check payment apps.";
-  else if (overCap) status = overCap;
   else if (state.status === "loading") status = "Checking payment apps…";
 
   const sourcePicker = (
@@ -324,8 +343,14 @@ function EditStep({
                 autoComplete="off"
                 placeholder="0.00"
                 value={amountText}
-                aria-invalid={amountInvalid}
-                aria-describedby={amountInvalid ? `${id}-amount-error` : undefined}
+                aria-invalid={amountInvalid || (!!balanceNote && !overCap)}
+                aria-describedby={
+                  amountInvalid
+                    ? `${id}-amount-error`
+                    : balanceNote && !overCap
+                      ? `${id}-cash-out-status`
+                      : undefined
+                }
                 onChange={(e) => {
                   setAmountText(e.target.value);
                   setSelected(undefined);
@@ -375,16 +400,16 @@ function EditStep({
           <RampDisclosure direction="offramp" />
 
           {status && (
-            <p className="send-note" role="status">
+            <p className="send-note" id={`${id}-cash-out-status`} role="status">
               {status}
             </p>
           )}
 
-          {state.status === "done" && cards.length === 0 && (
+          {checked && cards.length === 0 && (
             <OverallCard {...overallCard(state.availability, "offramp")} />
           )}
 
-          <RailTiles title="Your account" guest={!account} untested={state.status !== "done"}>
+          <RailTiles title="Your account" guest={!account} untested={!checked}>
             {selectable.map(({ card, offer }) => {
               const est = estimateFor(offer);
               return (
@@ -435,7 +460,7 @@ function EditStep({
               .map(({ card }) => card)}
           />
 
-          {state.status === "done" && (
+          {checked && (
             <button type="button" className="send-secondary" onClick={refresh}>
               Check again
             </button>

@@ -154,7 +154,9 @@ function reasonFor(
   switch (availability.state) {
     case "temporarily_unavailable":
       return code === "capabilities_unavailable"
-        ? "Peer could not be reached, so this rail cannot be used right now."
+        ? direction === "onramp"
+          ? "The Peer offer lookup failed."
+          : "Peer could not be reached, so this rail cannot be used right now."
         : "Peer reports no usable liquidity on this rail for this amount right now.";
     case "not_supported":
       return "Peer does not support this rail for this currency and amount.";
@@ -256,6 +258,32 @@ export function overallCard(
   availability: RampAvailability,
   direction: RampDirection,
 ): Omit<RailCard, "id" | "name" | "needs"> {
+  if (
+    direction === "onramp" &&
+    availability.state === "temporarily_unavailable" &&
+    availability.reason_code === "capability_unavailable" &&
+    !availability.retry_after
+  )
+    return {
+      state: availability.state,
+      selectable: false,
+      status: "No offer",
+      reason: "Peer has no offers for this amount right now.",
+      next: "Try a different amount.",
+    };
+  if (
+    direction === "onramp" &&
+    availability.state === "temporarily_unavailable" &&
+    availability.reason_code === "capabilities_unavailable" &&
+    !availability.retry_after
+  )
+    return {
+      state: availability.state,
+      selectable: false,
+      status: "Lookup failed",
+      reason: "Could not check Peer offers.",
+      next: "Check again.",
+    };
   if (availability.state === "available")
     return {
       state: "availability_unknown",

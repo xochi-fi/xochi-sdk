@@ -67,6 +67,7 @@ export function RampRails({
   const [currency, setCurrency] = useState(fiatCurrency);
   const [selected, setSelected] = useState<string | undefined>();
   const mobile = direction === "onramp" && isPeerMobileWeb();
+  const unsupportedCurrency = direction === "onramp" && currency !== "USD";
   const amount = parseRampAmount(amountText);
   const amountInvalid = amountText.trim() !== "" && amount === undefined;
   const { state, now, settlement, refresh, cap } = useRampDiscovery({
@@ -74,24 +75,42 @@ export function RampRails({
     amount,
     currency,
     account,
-    enabled: active && !mobile,
+    enabled: active && !mobile && !unsupportedCurrency,
   });
 
-  const cards: RailCard[] =
+  const checked =
     state.status === "done" &&
-    settlement &&
-    account &&
-    amount !== undefined &&
     !mobile &&
+    !unsupportedCurrency &&
     state.intent.exact.money.atomic === amount &&
     state.intent.fiat.currency === currency &&
-    state.intent.recipient === account
+    state.intent.recipient === account;
+  const cards: RailCard[] =
+    checked && settlement
       ? state.result.offers.map((offer) => railCard(offer, state.intent, settlement, now))
       : [];
   const selectable = cards.filter((c) => c.selectable);
-  const blocked = cards.filter((c) => !c.selectable);
+  const blocked = cards
+    .filter((c) => !c.selectable)
+    .map((card) => {
+      if (direction !== "onramp") return card;
+      const anotherApp = selectable.length ? "Choose an available payment app." : undefined;
+      if (card.state === "not_supported")
+        return {
+          ...card,
+          reason: `Peer does not support this app for ${currency} at this amount.`,
+          next: anotherApp ?? "Try a different amount.",
+        };
+      if (card.state === "temporarily_unavailable" && !card.retryAfter)
+        return {
+          ...card,
+          reason: "Peer has no offer for this amount on this app right now.",
+          next: anotherApp ?? "Try a different amount.",
+        };
+      return card;
+    });
   const chosen = selectable.find((c) => c.id === selected);
-  const lost = selected !== undefined && chosen === undefined && state.status === "done";
+  const lost = selected !== undefined && chosen === undefined && checked;
   const currencies = [...new Set([fiatCurrency, "USD"])];
 
   let status: string | undefined;
@@ -101,7 +120,11 @@ export function RampRails({
       : "Connect a wallet and enter an amount to check availability.";
   else if (!settlement)
     status = "Peer’s Base USDC configuration is unavailable. Check again later.";
-  else if (lost) status = "That app is unavailable. Choose again.";
+  else if (unsupportedCurrency) status = `Peer Buy does not support ${currency}. Select USD.`;
+  else if (lost)
+    status = selectable.length
+      ? "That app is unavailable. Choose an available payment app."
+      : "That app is unavailable. Check again for a fresh offer.";
   else if (account && amount === undefined && !amountInvalid)
     status = "Enter an amount to check payment apps.";
   else if (cap !== undefined) status = `Purchase limit: ${formatUsdc(cap)}.`;
@@ -145,6 +168,7 @@ export function RampRails({
                 className="send-field__control"
                 value={currency}
                 disabled={locked !== undefined}
+                aria-describedby={unsupportedCurrency && account ? `${id}-buy-status` : undefined}
                 onChange={(e) => {
                   setCurrency(e.target.value);
                   setSelected(undefined);
@@ -163,16 +187,18 @@ export function RampRails({
       <RampDisclosure direction={direction} />
 
       {!mobile && status && (
-        <p className="send-note" role="status">
+        <p className="send-note" id={`${id}-buy-status`} role="status">
           {status}
         </p>
       )}
 
-      {state.status === "done" && cards.length === 0 && (
-        <OverallCard {...overallCard(state.result.availability, direction)} />
-      )}
+      <div aria-live="polite">
+        {checked && cards.length === 0 && (
+          <OverallCard {...overallCard(state.result.availability, direction)} />
+        )}
+      </div>
 
-      <RailTiles title="Payment apps" guest={!account} untested={mobile || state.status !== "done"}>
+      <RailTiles title="Payment apps" guest={!account} untested={!checked}>
         {selectable.map((card) => (
           <RailChoice
             key={card.id}
@@ -196,7 +222,7 @@ export function RampRails({
         </button>
       )}
 
-      {state.status === "done" && (
+      {checked && (
         <button
           type="button"
           className="send-secondary"

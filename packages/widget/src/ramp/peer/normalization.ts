@@ -86,6 +86,25 @@ function currency(value: string, config: PeerConfiguration, intent: RampIntent):
     value === intent.fiat.currency || value.toLowerCase() === config.currencyHash.toLowerCase()
   );
 }
+/** An empty result proves absence only when the provider envelope matches the request. */
+export function isEmptyBuyResult(
+  raw: unknown,
+  intent: RampIntent,
+  config: PeerConfiguration,
+  now: number,
+): boolean {
+  const parsed = envelope.safeParse(raw);
+  if (!parsed.success) return false;
+  const body = parsed.data.responseObject;
+  return (
+    body.platformQuotes?.length === 0 &&
+    body.token.token.toLowerCase() === config.settlement.asset_id.toLowerCase() &&
+    currency(body.fiat.currencyCode, config, intent) &&
+    body.orchestratorAddress.toLowerCase() === config.orchestrator.toLowerCase() &&
+    Date.parse(body.quoteExpiresAt) > now &&
+    intent.region === undefined
+  );
+}
 export function makeOffer(
   intent: RampIntent,
   config: PeerConfiguration,

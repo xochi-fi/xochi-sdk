@@ -116,6 +116,48 @@ afterEach(() => {
 });
 
 describe("estimate and review", () => {
+  it("explains verified zero Base USDC at 5 and 55", async () => {
+    const port = memoryOfframpPort({ account: TEST_ACCOUNT, makerRails: ["wise"] });
+    port.spendable = async () => 0n;
+    await mount(port);
+    const amount = screen.getByLabelText("USDC to cash out");
+    fireEvent.change(amount, { target: { value: "5" } });
+    const zero = await screen.findByText(/Your wallet has 0 USDC on Base/);
+    expect(zero.textContent).toMatch(/Receive USDC on Base/);
+    expect(zero.textContent).not.toMatch(/smaller/);
+    expect(amount.getAttribute("aria-describedby")).toBe(zero.id);
+    expect(screen.queryByRole("radio")).toBeNull();
+    fireEvent.change(amount, { target: { value: "55" } });
+    expect(screen.getByText(/Your wallet has 0 USDC on Base/)).toBe(zero);
+
+    fireEvent.change(screen.getByLabelText("Cash out from"), { target: { value: "other" } });
+    expect(screen.queryByText(/Your wallet has 0 USDC on Base/)).toBeNull();
+  });
+
+  it("shows available and requested USDC when reducing the amount could help", async () => {
+    const port = memoryOfframpPort({ account: TEST_ACCOUNT, makerRails: ["wise"] });
+    port.spendable = async () => 10_000_000n;
+    await mount(port);
+    const amount = screen.getByLabelText("USDC to cash out");
+    fireEvent.change(amount, { target: { value: "55" } });
+    const insufficient = await screen.findByText(/Your wallet has 10 USDC on Base/);
+    expect(insufficient.textContent).toMatch(/You entered 55 USDC.*Try a smaller amount/);
+    expect(screen.queryByRole("radio")).toBeNull();
+    fireEvent.change(amount, { target: { value: "5" } });
+    await screen.findByRole("radio", { name: /Wise/ }, WAIT);
+    expect(screen.queryByText(/You entered 55 USDC/)).toBeNull();
+  });
+
+  it("preserves unverified maker states when the balance lookup fails", async () => {
+    const port = memoryOfframpPort({ account: TEST_ACCOUNT, makerRails: [] });
+    port.spendable = vi.fn().mockRejectedValue(new Error("RPC unavailable"));
+    await mount(port);
+    fireEvent.change(screen.getByLabelText("USDC to cash out"), { target: { value: "55" } });
+    await screen.findByText(/^Unconfirmed:/, {}, WAIT);
+    expect(port.spendable).toHaveBeenCalledWith(TEST_ACCOUNT);
+    expect(screen.queryByText(/Your wallet has/)).toBeNull();
+  });
+
   it("offers only live-proven rails and explains a non-Base-USDC source", async () => {
     const port = memoryOfframpPort({ account: TEST_ACCOUNT, makerRails: ["wise"] });
     await mount(port);

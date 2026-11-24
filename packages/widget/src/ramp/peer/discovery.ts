@@ -4,6 +4,7 @@ import { PEER_ENVIRONMENT } from "../../config.js";
 import { isPeerMobileWeb } from "./environment.js";
 import { formatUnits } from "viem";
 import {
+  isEmptyBuyResult,
   livePeerRails,
   normalizePeerQuotes,
   unavailable,
@@ -26,6 +27,16 @@ const URLS = {
 };
 const TIMEOUT_MS = 10_000;
 class ReadTimeout extends Error {}
+class NoPeerOffer extends Error {}
+function buyLookupUnavailable(noOffer: boolean): PeerDiscoveryResult {
+  const code = noOffer ? "capability_unavailable" : "capabilities_unavailable";
+  return {
+    offers: [],
+    estimates: [],
+    availability: { state: "temporarily_unavailable", reason_code: code },
+    code,
+  };
+}
 /** Fixed public cancellation error; never forwards AbortSignal.reason or provider errors. */
 export class PeerReadAborted extends Error {
   constructor() {
@@ -124,7 +135,19 @@ export function peerReads(options: PeerDiscoveryOptions): PeerDiscoveryReads {
         [exactFiat ? "exactFiatAmount" : "exactTokenAmount"]: String(amount),
       }),
     });
-    if (!response.ok) throw new Error("capabilities_unavailable");
+    if (!response.ok) {
+      if (response.status === 404) {
+        const failure: unknown = await response.json().catch(() => undefined);
+        if (
+          typeof failure === "object" &&
+          failure !== null &&
+          "errorCode" in failure &&
+          failure.errorCode === "no_quotes_found"
+        )
+          throw new NoPeerOffer();
+      }
+      throw new Error("capabilities_unavailable");
+    }
     return response.json();
   };
   return (
@@ -214,6 +237,8 @@ export async function readPeerQuotes(
     let quotes: NormalizedPeerQuote[];
     if (intent.direction === "onramp") {
       quotes = normalizePeerQuotes(raw, intent, config, now, rail);
+      if (!quotes.length && rail === undefined)
+        return { quotes, result: buyLookupUnavailable(isEmptyBuyResult(raw, intent, config, now)) };
     } else {
       // Buyer rates/availability never authorize a maker deposit. Live platform names are
       // candidates only; S5's read port must establish bounds, net rate and seller status.
@@ -285,6 +310,11 @@ export async function readPeerQuotes(
   } catch (error) {
     checkPeerAbort(options.signal);
     if (error instanceof PeerReadAborted) throw error;
+    if (error instanceof NoPeerOffer && rail === undefined) {
+      const parsed = parseRamp(input);
+      if (parsed.ok && parsed.value.kind === "intent" && parsed.value.direction === "onramp")
+        return { quotes: [], result: buyLookupUnavailable(true) };
+    }
     return {
       quotes: [],
       result: {
