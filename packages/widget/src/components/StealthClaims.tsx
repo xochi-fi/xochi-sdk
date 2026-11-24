@@ -6,94 +6,111 @@
  */
 
 import { useRef, useState } from "react";
-import { decodeAnnouncementMetadata } from "@xochi/signer";
-import { getTokenInfoForChain } from "@xochi/client";
-import { formatTokenAmount } from "../utils/format.js";
 import type { ClaimResult } from "../hooks/useStealthClaim.js";
 import type { ChainStealthPayment } from "../hooks/useStealthScanner.js";
-
-/** Render `amount` in `token`, or null when it cannot be shown honestly. */
-function formatAmount(chainId: number, token: string, amount: bigint): string | null {
-  const info = getTokenInfoForChain(token, chainId);
-  if (!info) return null;
-  return `${formatTokenAmount(amount, info.decimals, info.decimals)} ${info.symbol}`;
-}
+import { formatPaymentAmount } from "../lib/stealthPaymentAmount.js";
+import { describeWaiting, type WaitingPayout } from "../lib/waitingPayouts.js";
 
 /**
- * Render the payout this announcement describes.
- *
- * Reads the ERC-5564 metadata rather than `payment.amount`/`payment.tokenAddress`,
- * which are optional on StealthPayment and which nothing populates: the scanner
- * sets neither, so this rendered nothing for every payment it was written for.
- * The announcement carries both on chain, which is also the figure the claim's
- * verification checks the operation against.
+ * What stands between the user and a scan. Every action is one click: signing
+ * in (the announcements index is session-gated) and deriving the keys (first
+ * setup on this device, or unlocking keys that live only in memory) both run
+ * before the scan they lead to.
  */
-function formatPaymentAmount(payment: ChainStealthPayment): string | null {
-  const announced = decodeAnnouncementMetadata(payment.announcement.metadata);
-  if (announced) return formatAmount(payment.chainId, announced.token, announced.amount);
-  if (!payment.amount || !payment.tokenAddress) return null;
-  return formatAmount(payment.chainId, payment.tokenAddress, BigInt(payment.amount));
-}
+export type ClaimsAction =
+  | "scan"
+  | "set-up"
+  | "unlock"
+  | "sign-in"
+  | "sign-in-and-set-up"
+  | "sign-in-and-unlock";
+
+/** What the action is waiting on, if anything. */
+export type ClaimsBusy = "signing" | "scanning" | null;
+
+const ACTION_COPY: Record<
+  ClaimsAction,
+  { label: string; title: string; toClaim: string; idle: string | null }
+> = {
+  scan: {
+    label: "Scan",
+    title: "Scan for incoming payments",
+    toClaim: "Scan to claim.",
+    idle: null,
+  },
+  "set-up": {
+    label: "Set up and scan",
+    title: "Sign with the wallet to set up the stealth keys, then scan",
+    toClaim: "Sign to set up Stealth and claim.",
+    idle: "Sign once to set up Stealth and look for payments sent to you.",
+  },
+  unlock: {
+    label: "Unlock and scan",
+    title: "Sign with the wallet to unlock the stealth keys, then scan",
+    toClaim: "Sign to unlock and claim.",
+    idle: "Keys locked. Sign to unlock and look for payments sent to you.",
+  },
+  "sign-in": {
+    label: "Sign in to scan",
+    title: "Sign in with the wallet to look for incoming payments",
+    toClaim: "Sign in to claim.",
+    idle: null,
+  },
+  "sign-in-and-set-up": {
+    label: "Sign in and set up",
+    title: "Sign in, then sign to set up the stealth keys, then scan",
+    toClaim: "Sign in and set up Stealth to claim.",
+    idle: "Sign in and set up Stealth to look for payments sent to you.",
+  },
+  "sign-in-and-unlock": {
+    label: "Sign in and unlock",
+    title: "Sign in, then sign to unlock the stealth keys, then scan",
+    toClaim: "Sign in and unlock to claim.",
+    idle: "Keys locked. Sign in and unlock them to look for payments sent to you.",
+  },
+};
 
 interface StealthClaimsProps {
   payments: ChainStealthPayment[];
-  isScanning: boolean;
   isClaiming: boolean;
   /**
    * The in-progress claim was sent and is waiting to be mined; it is being
    * checked on, not failed. Shown as a pending state, never as an error.
    */
   isConfirming?: boolean;
-  /** True only when secret keys are in memory (keysReady), not merely cached */
-  isStealthReady: boolean;
-  /** Re-derive keys from a wallet signature (used post-reload before scanning) */
-  onResign: () => void;
-  /** Whether a re-sign (key derivation) is in progress */
-  isResigning: boolean;
+  action: ClaimsAction;
+  busy: ClaimsBusy;
+  onAction: () => void;
   walletAddress: string | undefined;
   error: string | null;
   lastScannedBlock: bigint | null;
   /** A scan has completed this session (drives the honest empty state) */
   hasScanned: boolean;
   /**
-   * The announcements index is wallet-session gated, so scanning is impossible
-   * without signing in. True when that is the only thing in the way.
+   * Payouts the server already holds as claimable for this wallet, shown
+   * before any key is unlocked or any scan has run.
    */
-  needsSignIn: boolean;
-  isSigningIn: boolean;
-  onSignIn: () => void;
-  /**
-   * Settlements the server already holds as claimable for this wallet. Lets the
-   * panel say "you have something waiting" BEFORE a scan has run -- the scan
-   * needs keys in memory, which a returning user does not have.
-   */
-  claimableCount?: number;
-  onScan: () => Promise<void>;
+  waiting: readonly WaitingPayout[];
   onClaim: (payment: ChainStealthPayment, recipient: string) => Promise<ClaimResult>;
   onClaimAll: (recipient: string) => Promise<{ claimed: number; failed: number; pending: number }>;
 }
 
 export function StealthClaims({
   payments,
-  isScanning,
   isClaiming,
   isConfirming = false,
-  isStealthReady,
-  onResign,
-  isResigning,
+  action,
+  busy,
+  onAction,
   walletAddress,
   error,
   lastScannedBlock,
   hasScanned,
-  needsSignIn,
-  isSigningIn,
-  onSignIn,
-  claimableCount = 0,
-  onScan,
+  waiting,
   onClaim,
   onClaimAll,
 }: StealthClaimsProps) {
-  const scope = `${walletAddress?.toLowerCase() ?? ""}:${isStealthReady}:${needsSignIn}`;
+  const scope = `${walletAddress?.toLowerCase() ?? ""}:${action}`;
   const scopeRef = useRef({ scope });
   const paymentsRef = useRef(payments);
   paymentsRef.current = payments;
@@ -134,11 +151,13 @@ export function StealthClaims({
   const truncate = (s: string) => s.slice(0, 8) + "..." + s.slice(-6);
 
   // Something is known to be waiting: either this session's scan found it, or
-  // the server already holds a claimable settlement for this wallet. The second
-  // half matters most for a returning user, whose keys are locked so no scan has
-  // run and `payments` is empty even though money is sitting there (#352).
-  const waitingCount = payments.length > 0 ? payments.length : claimableCount;
+  // the server already holds a claimable settlement for this wallet, which a
+  // returning user with locked keys sees before signing anything.
+  const waitingCount = payments.length > 0 ? payments.length : waiting.length;
   const hasWaiting = waitingCount > 0;
+  const copy = ACTION_COPY[action];
+  const waitingLine = payments.length === 0 && !hasScanned ? describeWaiting(waiting) : null;
+  const isScanning = busy === "scanning";
 
   return (
     <div className={`stealth-claims${hasWaiting ? " stealth-claims--waiting" : ""}`}>
@@ -150,35 +169,28 @@ export function StealthClaims({
             </span>
           )}
         </div>
-        {needsSignIn ? (
-          <button
-            className="btn btn--secondary btn--sm"
-            onClick={onSignIn}
-            disabled={isSigningIn}
-            title="Sign in with the wallet to look for incoming payments"
-          >
-            {isSigningIn ? "..." : "Sign in to scan"}
-          </button>
-        ) : isStealthReady ? (
-          <button
-            className="btn btn--secondary btn--sm"
-            onClick={onScan}
-            disabled={isScanning}
-            title="Scan for incoming payments"
-          >
-            {isScanning ? "Scanning..." : "Scan"}
-          </button>
-        ) : (
-          <button
-            className="btn btn--secondary btn--sm"
-            onClick={onResign}
-            disabled={isResigning}
-            title="Re-sign to unlock the keys, then scan"
-          >
-            {isResigning ? "..." : "Re-sign to scan"}
-          </button>
-        )}
+        <button
+          className="btn btn--secondary btn--sm"
+          onClick={onAction}
+          disabled={busy !== null}
+          title={copy.title}
+        >
+          {isScanning ? "Scanning..." : busy !== null ? "..." : copy.label}
+        </button>
       </div>
+
+      {waitingLine !== null ? (
+        <p className="stealth-claims-waiting" role="status">
+          {waitingLine}. {copy.toClaim}
+        </p>
+      ) : (
+        copy.idle !== null &&
+        !hasScanned && (
+          <p className="stealth-claims-waiting" role="status">
+            {copy.idle}
+          </p>
+        )
+      )}
 
       {error && <div className="stealth-claims-error">{error}</div>}
 

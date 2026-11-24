@@ -14,16 +14,17 @@
  *    re-prepared or re-signed. See claimSubmitPoll.
  */
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   decodeAnnouncementMetadata,
   signUserOpHash,
   verifyClaimUserOp,
+  type StealthKeys,
   type UserOperationV08,
 } from "@xochi/signer";
 import { bytesToHex, type Hex } from "viem";
 import { privateKeyToAddress } from "viem/accounts";
-import { useStealth } from "./useStealth.js";
+import { useStealth, type StealthKeyStatus } from "./useStealth.js";
 import { useStealthScanner, type ChainStealthPayment } from "./useStealthScanner.js";
 import { apiPost } from "../lib/api.js";
 import { CLAIM_PREPARE_WINDOW_MS, submitClaimUntilSettled } from "../lib/claimSubmitPoll.js";
@@ -87,18 +88,27 @@ export interface UseStealthClaimReturn {
   isInitialized: boolean;
   /** Whether secret keys are in memory (scan-ready); false after a reload */
   keysReady: boolean;
+  /** Never set up on this device, set up but locked, or unlocked (see useStealth). */
+  keyStatus: StealthKeyStatus;
   /** Whether the meta-address is registered on-chain */
   isRegistered: boolean;
-  /** Whether a key derivation or registration is in progress */
+  /** Whether a key derivation is in progress */
   isLoading: boolean;
+  /** Whether an on-chain registration is in progress */
+  isRegistering: boolean;
   /** Derive stealth keys from a wallet signature (Setup or re-sign) */
   initializeKeys: () => Promise<boolean>;
   /** Register the meta-address on ERC-6538 */
   registerMetaAddress: () => Promise<string | null>;
-  /** Scan for incoming stealth payments */
+  /**
+   * Scan for incoming stealth payments. Locked keys are unlocked first (one
+   * wallet signature), then the scan runs under the unlocked authority.
+   */
   scan: () => Promise<void>;
   /** Claim a specific stealth payment on the chain it settled on */
   claim: (payment: ChainStealthPayment, recipientAddress: string) => Promise<ClaimResult>;
+  /** Payments this session already claimed or sent (still confirming): not claimable again. */
+  settledPayments: ReadonlySet<ChainStealthPayment>;
   /** Claim all matched payments */
   claimAll: (
     recipientAddress: string,
@@ -107,10 +117,22 @@ export interface UseStealthClaimReturn {
   clearPayments: () => void;
 }
 
+const NO_PAYMENTS: ReadonlySet<ChainStealthPayment> = new Set();
+
+interface ClaimState {
+  /** The scanner authority this state belongs to. */
+  authority: object;
+  isClaiming: boolean;
+  isConfirming: boolean;
+  error: string | null;
+  settled: ReadonlySet<ChainStealthPayment>;
+}
+
 export function useStealthClaim(): UseStealthClaimReturn {
   const stealth = useStealth();
+  const keys = stealth.getKeys();
   const scanner = useStealthScanner({
-    keys: stealth.getKeys(),
+    keys,
     getKeys: stealth.getKeys,
     autoScan: false,
   });
@@ -119,24 +141,44 @@ export function useStealthClaim(): UseStealthClaimReturn {
   const currentAuthorityRef = useRef(authority);
   currentAuthorityRef.current = authority;
   const activeClaimRef = useRef<object | null>(null);
-  const [claimState, setClaimState] = useState({
+  const [claimState, setClaimState] = useState<ClaimState>({
     authority,
     isClaiming: false,
     isConfirming: false,
-    error: null as string | null,
+    error: null,
+    settled: new Set(),
   });
   if (claimState.authority !== authority) {
     activeClaimRef.current = null;
-    setClaimState({ authority, isClaiming: false, isConfirming: false, error: null });
+    setClaimState({
+      authority,
+      isClaiming: false,
+      isConfirming: false,
+      error: null,
+      settled: new Set(),
+    });
   }
 
+  // Keys unlocked by `scan`, held until the render whose scanner owns them.
+  const [unlockedForScan, setUnlockedForScan] = useState<StealthKeys | null>(null);
+  const scanUnlocked = scanner.scan;
+  useEffect(() => {
+    if (!unlockedForScan) return;
+    setUnlockedForScan(null);
+    if (unlockedForScan === keys) void scanUnlocked();
+  }, [unlockedForScan, keys, scanUnlocked]);
+
+  const { getKeys, initializeKeys } = stealth;
   const scan = useCallback(async () => {
     if (currentAuthorityRef.current !== authority) return;
     setClaimState((prev) => ({ ...prev, error: null }));
-    // The scanner surfaces a visible reason when keys are missing (prompting a
-    // re-sign) instead of silently no-opping.
-    await scanner.scan();
-  }, [authority, scanner]);
+    if (getKeys()) {
+      await scanner.scan();
+      return;
+    }
+    if (!(await initializeKeys())) return;
+    setUnlockedForScan(getKeys());
+  }, [authority, scanner, getKeys, initializeKeys]);
 
   const claim = useCallback(
     async (payment: ChainStealthPayment, recipientAddress: string): Promise<ClaimResult> => {
@@ -158,7 +200,13 @@ export function useStealthClaim(): UseStealthClaimReturn {
       const setClaimError = (error: string) => {
         if (canUpdateUI()) setClaimState((prev) => ({ ...prev, error }));
       };
-      setClaimState({ authority, isClaiming: true, isConfirming: false, error: null });
+      setClaimState((prev) => ({
+        authority,
+        isClaiming: true,
+        isConfirming: false,
+        error: null,
+        settled: prev.authority === authority ? prev.settled : new Set(),
+      }));
 
       // Taken before prepare, so the poll deadline below falls inside the
       // server's window (which starts when it serves the prepare) rather than
@@ -253,6 +301,13 @@ export function useStealthClaim(): UseStealthClaimReturn {
           },
         );
 
+        if (outcome.kind === "submitted" || outcome.kind === "unconfirmed") {
+          setClaimState((prev) =>
+            prev.authority === authority
+              ? { ...prev, settled: new Set(prev.settled).add(payment) }
+              : prev,
+          );
+        }
         if (outcome.kind === "submitted") {
           return {
             success: true,
@@ -338,6 +393,7 @@ export function useStealthClaim(): UseStealthClaimReturn {
 
   return {
     payments: scanner.payments,
+    settledPayments: claimState.authority === authority ? claimState.settled : NO_PAYMENTS,
     isScanning: scanner.isScanning,
     isClaiming: claimState.authority === authority && claimState.isClaiming,
     isConfirming: claimState.authority === authority && claimState.isConfirming,
@@ -349,8 +405,10 @@ export function useStealthClaim(): UseStealthClaimReturn {
     hasScanned: scanner.hasScanned,
     isInitialized: stealth.isInitialized,
     keysReady: stealth.keysReady,
+    keyStatus: stealth.keyStatus,
     isRegistered: stealth.isRegistered,
     isLoading: stealth.isLoading,
+    isRegistering: stealth.isRegistering,
     initializeKeys: stealth.initializeKeys,
     registerMetaAddress: stealth.registerMetaAddress,
     scan,

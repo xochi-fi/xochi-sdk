@@ -267,6 +267,13 @@
   padding: 0.5rem;
 }
 
+.stealth-claims-waiting {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
 .stealth-claims-list {
   display: flex;
   flex-direction: column;

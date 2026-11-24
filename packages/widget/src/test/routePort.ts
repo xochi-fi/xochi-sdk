@@ -11,7 +11,8 @@ import {
   type XochiRampDriver,
   type XochiRampPreview,
 } from "@xochi/client";
-export const ROUTE_WALLET = "0x1111111111111111111111111111111111111111";
+import { TEST_ACCOUNT } from "../pages/trade/harness.js";
+export const ROUTE_WALLET = TEST_ACCOUNT;
 export const ROUTE_RECEIVED: RampMoney = {
   asset: {
     kind: "crypto",

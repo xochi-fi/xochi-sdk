@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Added
+
+- A stealth swap's receipt offers Claim in place while the keys are unlocked and the wallet is signed in. It claims only the payment that is exactly this swap's payout (chain, token and amount); otherwise, or for a resumed swap, it hands off to Claims.
+
+### Changed
+
+- Stealth setup requires a signature that recovers to the connected address, on every connector. A contract wallet's signature (chain-bound or published) is refused instead of seeding keys.
+
+### Fixed
+
+- Claims no longer dead-ends on locked Stealth keys. One action signs in (if needed), sets up or unlocks the keys with a wallet signature (if needed), then scans; the post-sign-in scan never runs keyless. The action is single-flight: repeated clicks join the pending sign-in or signature instead of prompting again.
+- Stealth secret keys are scoped to the wallet (address and connector), not the network: switching networks keeps them unlocked and keeps scanned payments claimable. Address change, connector change, reconnect, disconnect and reload still lock them and zero their bytes. Keys are never persisted, and the signature they derive from is no longer kept in wagmi's mutation state.
+- With a wallet session, Claims shows what is waiting before any key signature ("4.98 DAI waiting on Base. Sign to unlock and claim."), from the wallet's claimable settlements and its own activity; the Swap and Activity notices name the amounts and point to Claims.
+- A wallet never set up on this device is offered "Set up"; keys set up on any chain read "Keys locked. Sign to unlock". The Register hint says it is only for receiving payments from others and is not needed to claim. Registering no longer disables Scan.
+
 ## [0.1.2] - 2026-11-23
 
 ### Added

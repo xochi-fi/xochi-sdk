@@ -84,7 +84,6 @@ interface ChainScanResult {
 
 interface ScanAuthority {
   address: string | undefined;
-  chainId: number | undefined;
   connectorUid: string | undefined;
   keys: StealthKeys | null;
   token: string | null;
@@ -105,7 +104,7 @@ export function useStealthScanner({
   autoScan = false,
   limit = DEFAULT_SCAN_LIMIT,
 }: UseStealthScannerParams): UseStealthScannerReturn {
-  const { address, chainId, connector } = useAccount();
+  const { address, connector } = useAccount();
   const config = useConfig();
   const { capabilities } = useCapabilities();
   const token = address && hasWalletSession(address) ? getWalletToken() : null;
@@ -127,7 +126,6 @@ export function useStealthScanner({
     !authorityRef.current ||
     authorityRef.current.revoked ||
     authorityRef.current.address !== address?.toLowerCase() ||
-    authorityRef.current.chainId !== chainId ||
     authorityRef.current.connectorUid !== connector?.uid ||
     authorityRef.current.keys !== keys ||
     authorityRef.current.token !== token ||
@@ -136,7 +134,6 @@ export function useStealthScanner({
     if (authorityRef.current) revokeAuthority(authorityRef.current);
     authorityRef.current = {
       address: address?.toLowerCase(),
-      chainId,
       connectorUid: connector?.uid,
       keys,
       token,
@@ -174,7 +171,6 @@ export function useStealthScanner({
       !!authority.address &&
       account.status === "connected" &&
       account.address?.toLowerCase() === authority.address &&
-      account.chainId === authority.chainId &&
       account.connector?.uid === authority.connectorUid &&
       (hasWalletSession(authority.address) ? getWalletToken() : null) === authority.token &&
       getWalletSessionGeneration() === authority.sessionGeneration &&
@@ -192,7 +188,6 @@ export function useStealthScanner({
             active &&
             (account.status !== "connected" ||
               account.address?.toLowerCase() !== active.address ||
-              account.chainId !== active.chainId ||
               account.connector?.uid !== active.connectorUid)
           )
             revokeAuthority(active);
@@ -217,11 +212,12 @@ export function useStealthScanner({
     async (fromBlock?: bigint) => {
       // Old callbacks cannot start a scan for a newly connected wallet.
       if (authorityRef.current !== authority || authority.revoked) return;
+      // Locked keys are unlocked by the caller (useStealthClaim) before it scans.
       if (!isCurrentAuthority()) {
-        const error = !keys
-          ? "Re-sign to derive the stealth keys before scanning."
-          : "Sign in with the wallet to scan for stealth payments.";
-        setState((prev) => (prev.authority === authority ? { ...prev, error } : prev));
+        if (authority.keys && !authority.token) {
+          const error = "Sign in with the wallet to scan for stealth payments.";
+          setState((prev) => (prev.authority === authority ? { ...prev, error } : prev));
+        }
         return;
       }
       if (!keys || SCAN_CHAIN_IDS.length === 0) {

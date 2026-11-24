@@ -36,10 +36,17 @@ import {
   decodeFunctionData,
   defineChain,
   encodeFunctionResult,
+  hashMessage,
+  hexToBytes,
+  isHex,
   multicall3Abi,
   numberToHex,
+  serializeSignature,
   toHex,
+  type Hex,
 } from "viem";
+import { privateKeyToAddress } from "viem/accounts";
+import { secp256k1 } from "@noble/curves/secp256k1";
 import type { Chain, EIP1193Provider } from "viem";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RainbowKitProvider } from "@rainbow-me/rainbowkit";
@@ -50,17 +57,51 @@ import { HOST_WALLET_ID } from "../../wagmi.js";
 import { FALLBACK_CAPABILITIES } from "../../lib/capabilities.js";
 import { findTokenBySymbol } from "./config.js";
 
+/** The mock wallet's keys. Test keys: they hold nothing on any chain. */
+const TEST_PRIVATE_KEY: Hex = `0x${"0123456789abcdef".repeat(4)}`;
+const TEST_PRIVATE_KEY_B: Hex = `0x${"fedcba9876543210".repeat(4)}`;
+
 /** The account every connected test runs as. */
-export const TEST_ACCOUNT = "0x1111111111111111111111111111111111111111" as const;
+export const TEST_ACCOUNT = privateKeyToAddress(TEST_PRIVATE_KEY);
+/** A second account the mock wallet can switch to. */
+export const TEST_ACCOUNT_B = privateKeyToAddress(TEST_PRIVATE_KEY_B);
+
+const TEST_KEYS = new Map([
+  [TEST_ACCOUNT.toLowerCase(), TEST_PRIVATE_KEY],
+  [TEST_ACCOUNT_B.toLowerCase(), TEST_PRIVATE_KEY_B],
+]);
 
 /**
- * Fixed 65-byte signature for the stealth key ceremony.
- *
- * `deriveStealthKeys` hashes any 65-byte signature into a valid, deterministic
- * keypair and refuses every other shape. The explicit Stealth setup action
- * derives real keys from it; a failed setup retains the selected mode.
+ * EIP-191 personal signature by a test account. Deterministic (RFC 6979)
+ * unless `extraEntropy` is given, which yields another valid signature over
+ * the same message. The stealth key ceremony requires a signature that
+ * recovers to the connected address, like a real EOA wallet's.
  */
-const TEST_SIGNATURE = `0x${"ab".repeat(64)}1b` as const;
+export function signAsTestAccount(
+  message: string | { raw: Hex },
+  { account = TEST_ACCOUNT, extraEntropy }: { account?: string; extraEntropy?: Uint8Array } = {},
+): Hex {
+  const key = TEST_KEYS.get(account.toLowerCase());
+  if (!key) throw new Error(`harness: no key for ${account}`);
+  const signature = secp256k1.sign(hexToBytes(hashMessage(message)), hexToBytes(key), {
+    extraEntropy,
+  });
+  return serializeSignature({
+    r: numberToHex(signature.r, { size: 32 }),
+    s: numberToHex(signature.s, { size: 32 }),
+    yParity: signature.recovery,
+  });
+}
+
+/** Answer `personal_sign` ([data, address]) or `eth_sign` ([address, data]) as that account. */
+function walletSignature(method: string, params: unknown): Hex {
+  const list: readonly unknown[] = Array.isArray(params) ? params : [];
+  const [account, data] = method === "eth_sign" ? [list[0], list[1]] : [list[1], list[0]];
+  if (typeof account !== "string" || !isHex(data)) {
+    throw new Error(`harness: ${method} without an account and hex data`);
+  }
+  return signAsTestAccount({ raw: data }, { account });
+}
 
 /**
  * Where the mock wallet's unhandled RPC calls go.
@@ -167,7 +208,8 @@ const receiptFor = (chain: Chain, params: unknown) => {
 const testTransport = (chain: Chain, tokenBalance: bigint) =>
   custom({
     request: async ({ method, params }: { method: string; params?: unknown }) => {
-      if (method === "personal_sign" || method === "eth_sign") return TEST_SIGNATURE;
+      if (method === "personal_sign" || method === "eth_sign")
+        return walletSignature(method, params);
       if (method === "eth_getTransactionReceipt") return receiptFor(chain, params);
       if (method === "eth_chainId") return numberToHex(chain.id);
       if (method === "eth_call") {
@@ -563,7 +605,10 @@ function walletRpc(
     method in walletResults
       ? walletResults[method]
       : method === "eth_sign" || method === "personal_sign"
-        ? TEST_SIGNATURE
+        ? walletSignature(
+            method,
+            body && typeof body === "object" && "params" in body ? body.params : undefined,
+          )
         : method === "eth_accounts" || method === "eth_requestAccounts"
           ? [TEST_ACCOUNT]
           : method === "eth_chainId"

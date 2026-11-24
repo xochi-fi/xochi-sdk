@@ -803,6 +803,7 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
                 onRetry={props.onRetry}
                 onClose={onClose}
                 onGoToClaims={props.onGoToClaims}
+                payoutAmount={quote?.toAmount}
               />
             </div>
           )}

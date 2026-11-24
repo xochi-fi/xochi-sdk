@@ -13,17 +13,24 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiProvider } from "wagmi";
-import { connect, getAccount, switchAccount } from "wagmi/actions";
-import { mainnet } from "wagmi/chains";
+import { connect, getAccount, switchAccount, switchChain } from "wagmi/actions";
+import { base, mainnet } from "wagmi/chains";
 import { mock } from "wagmi/connectors";
 import {
   COMPROMISED_STEALTH_SPENDING_PUB_KEYS,
+  STEALTH_DERIVE_MESSAGE,
   STEALTH_SIGNER_UNSUPPORTED,
   computeMetaAddressFromKeys,
   deriveStealthKeys,
 } from "@xochi/signer";
 import { STORAGE_KEYS } from "../constants.js";
-import { apiStub, makeTestConfig, TEST_ACCOUNT, type FetchStub } from "../pages/trade/harness.js";
+import {
+  apiStub,
+  makeTestConfig,
+  signAsTestAccount,
+  TEST_ACCOUNT,
+  type FetchStub,
+} from "../pages/trade/harness.js";
 import { StealthProvider, useStealth } from "./useStealth.js";
 
 const CACHE_KEY = `${STORAGE_KEYS.stealthPrefix}${TEST_ACCOUNT.toLowerCase()}:${mainnet.id}`;
@@ -63,7 +70,7 @@ async function renderStealth() {
   );
   const hook = renderHook(() => useStealth(), { wrapper });
   await waitFor(() => expect(config.state.status).toBe("connected"));
-  return { ...hook, config };
+  return { ...hook, config, queryClient };
 }
 
 afterEach(() => {
@@ -185,7 +192,11 @@ describe("stealth setup lifetime", () => {
 
     reply.resolve(
       new Response(
-        JSON.stringify({ id: requestId, jsonrpc: "2.0", result: `0x${"ab".repeat(64)}1b` }),
+        JSON.stringify({
+          id: requestId,
+          jsonrpc: "2.0",
+          result: signAsTestAccount(STEALTH_DERIVE_MESSAGE),
+        }),
         {
           status: 200,
           headers: { "content-type": "application/json" },
@@ -195,6 +206,167 @@ describe("stealth setup lifetime", () => {
     expect(await pending).toBe(false);
     expect(getKeys()).toBeNull();
     expect(localStorage.getItem(CACHE_KEY)).toBeNull();
+  });
+});
+
+describe("unlocked key scope", () => {
+  it("keeps the keys unlocked across a network switch on the same wallet", async () => {
+    const walletRequests: string[] = [];
+    vi.stubGlobal("fetch", apiStub({}, { onWalletRpc: (method) => walletRequests.push(method) }));
+    const { result, config } = await renderStealth();
+    await act(async () => {
+      expect(await result.current.initializeKeys()).toBe(true);
+    });
+    const unlocked = result.current.getKeys()!;
+
+    await act(() => switchChain(config, { chainId: base.id }));
+
+    expect(getAccount(config).chainId).toBe(base.id);
+    expect(result.current.keysReady).toBe(true);
+    expect(result.current.getKeys()).toBe(unlocked);
+    expect(unlocked.spendingKey.some((byte) => byte !== 0)).toBe(true);
+    expect(result.current.metaAddress).toEqual(computeMetaAddressFromKeys(unlocked, base.id));
+    expect(walletRequests.filter((method) => method === "eth_sign")).toHaveLength(1);
+  });
+
+  it.each(["address", "connector"] as const)(
+    "locks and zeroes the keys on a %s change",
+    async (change) => {
+      vi.stubGlobal("fetch", apiStub({}));
+      const { result, config } = await renderStealth();
+      await act(async () => {
+        expect(await result.current.initializeKeys()).toBe(true);
+      });
+      const unlocked = result.current.getKeys()!;
+
+      await act(async () => {
+        if (change === "address") {
+          config.setState((state) => {
+            const connection = state.current && state.connections.get(state.current);
+            if (!connection || !state.current) throw new Error("Harness wallet is not connected");
+            return {
+              ...state,
+              connections: new Map(state.connections).set(state.current, {
+                ...connection,
+                accounts: ["0x2222222222222222222222222222222222222222"],
+              }),
+            };
+          });
+        } else {
+          await connect(config, {
+            connector: mock({ accounts: [TEST_ACCOUNT], features: { reconnect: true } }),
+          });
+        }
+      });
+
+      expect(result.current.getKeys()).toBeNull();
+      expect(result.current.keysReady).toBe(false);
+      expect(unlocked.spendingKey.every((byte) => byte === 0)).toBe(true);
+      expect(unlocked.viewingKey.every((byte) => byte === 0)).toBe(true);
+    },
+  );
+});
+
+describe("stealth key signature", () => {
+  /** The harness wallet, except that `eth_sign` is answered by `answer`. */
+  const signingFetch = (
+    answer: (id: unknown) => Promise<Response>,
+    signRequests: unknown[] = [],
+  ): FetchStub => {
+    const rest = apiStub({});
+    return (input, init) => {
+      const body: unknown = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+      if (body && typeof body === "object" && "method" in body && body.method === "eth_sign") {
+        const id = "id" in body ? body.id : 0;
+        signRequests.push(id);
+        return answer(id);
+      }
+      return rest(input, init);
+    };
+  };
+  const rpcResult = (id: unknown, result: string): Response =>
+    new Response(JSON.stringify({ id, jsonrpc: "2.0", result }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+
+  it("refuses a 65-byte signature that is not the connected address's", async () => {
+    vi.stubGlobal(
+      "fetch",
+      signingFetch((id) => Promise.resolve(rpcResult(id, `0x${"ab".repeat(64)}1b`))),
+    );
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { result } = await renderStealth();
+
+    let ok: boolean | undefined;
+    await act(async () => {
+      ok = await result.current.initializeKeys();
+    });
+
+    expect(ok).toBe(false);
+    expect(result.current.error).toMatch(/signs with its own key/);
+    expect(result.current.getKeys()).toBeNull();
+    expect(result.current.keyStatus).toBe("none");
+    expect(localStorage.getItem(CACHE_KEY)).toBeNull();
+  });
+
+  it("joins a pending setup instead of prompting again", async () => {
+    const reply = Promise.withResolvers<Response>();
+    const signRequests: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      signingFetch(() => reply.promise, signRequests),
+    );
+    const { result } = await renderStealth();
+
+    let first!: Promise<boolean>;
+    let second!: Promise<boolean>;
+    act(() => {
+      first = result.current.initializeKeys();
+      second = result.current.initializeKeys();
+    });
+    await waitFor(() => expect(signRequests).toHaveLength(1));
+    await act(async () => {
+      reply.resolve(rpcResult(signRequests[0], signAsTestAccount(STEALTH_DERIVE_MESSAGE)));
+      expect(await Promise.all([first, second])).toEqual([true, true]);
+    });
+    expect(signRequests).toHaveLength(1);
+    expect(result.current.keyStatus).toBe("unlocked");
+  });
+
+  it("keeps the key-seed signature out of the query cache", async () => {
+    vi.stubGlobal("fetch", apiStub({}));
+    const { result, queryClient } = await renderStealth();
+
+    await act(async () => {
+      expect(await result.current.initializeKeys()).toBe(true);
+    });
+
+    const signature = signAsTestAccount(STEALTH_DERIVE_MESSAGE);
+    const cached = [
+      ...queryClient.getMutationCache().getAll(),
+      ...queryClient.getQueryCache().getAll(),
+    ].map((entry) => JSON.stringify(entry.state.data ?? null));
+    expect(cached.some((data) => data.includes(signature.slice(2)))).toBe(false);
+  });
+
+  it("reads locked, not new, after a network switch on a chain without a cached meta-address", async () => {
+    vi.stubGlobal("fetch", apiStub({}));
+    const { result, config } = await renderStealth();
+    await act(async () => {
+      expect(await result.current.initializeKeys()).toBe(true);
+    });
+    await waitFor(() => expect(localStorage.getItem(CACHE_KEY)).not.toBeNull());
+
+    await act(async () => {
+      config.setState((state) => ({ ...state, status: "reconnecting" }));
+      config.setState((state) => ({ ...state, status: "connected" }));
+    });
+    await act(() => switchChain(config, { chainId: base.id }));
+
+    expect(result.current.keysReady).toBe(false);
+    expect(result.current.isInitialized).toBe(false);
+    expect(result.current.keyStatus).toBe("locked");
   });
 });
 
@@ -275,8 +447,12 @@ describe.each(["connector", "reconnect", "batched reconnect"] as const)(
             ),
           );
         };
-        const obsoleteSignature = `0x${"ab".repeat(64)}1b` as const;
-        const currentSignature = `0x${"cd".repeat(64)}1b` as const;
+        const obsoleteSignature = signAsTestAccount(STEALTH_DERIVE_MESSAGE, {
+          extraEntropy: new Uint8Array(32).fill(1),
+        });
+        const currentSignature = signAsTestAccount(STEALTH_DERIVE_MESSAGE, {
+          extraEntropy: new Uint8Array(32).fill(2),
+        });
         if (completionOrder === "obsolete first") {
           await act(async () => {
             respond(0, obsoleteSignature);

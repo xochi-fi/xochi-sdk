@@ -10,6 +10,7 @@ import { useState } from "react";
 import { Chevron } from "./Chevron.js";
 import { PROVIDERS, CATEGORIES } from "../lib/providers.js";
 import { getFeeRate, getTierName } from "@xochi/client";
+import type { StealthKeyStatus } from "../hooks/useStealth.js";
 import "../styles/privacy-panel.css";
 
 interface PrivacyPanelProps {
@@ -30,11 +31,18 @@ interface PrivacyPanelProps {
   connectedProviders: string[];
   isConnected: boolean;
   // Stealth
-  stealthInitialized: boolean;
+  stealthKeys: StealthKeyStatus;
+  /** A meta-address for this chain is known, so it can be registered. */
+  stealthRegistrable: boolean;
   stealthRegistered: boolean;
+  /** First setup: derive the keys from a wallet signature. */
   onInitializeStealth: () => void;
+  /** Locked keys: the Claims action (sign in if needed, unlock, scan). */
+  onUnlockStealth: () => void;
   onRegisterStealth: () => void;
-  stealthLoading: boolean;
+  /** A sign-in, key derivation or scan is in flight. */
+  stealthKeysBusy: boolean;
+  stealthRegistering: boolean;
 }
 
 export function PrivacyPanel({
@@ -43,11 +51,14 @@ export function PrivacyPanel({
   shieldedAccountsLive = false,
   connectedProviders,
   isConnected,
-  stealthInitialized,
+  stealthKeys,
+  stealthRegistrable,
   stealthRegistered,
   onInitializeStealth,
+  onUnlockStealth,
   onRegisterStealth,
-  stealthLoading,
+  stealthKeysBusy,
+  stealthRegistering,
 }: PrivacyPanelProps) {
   const [showDisclosures, setShowDisclosures] = useState(false);
 
@@ -125,33 +136,48 @@ export function PrivacyPanel({
         )}
       </div>
 
-      {/* Stealth status row */}
+      {/* Stealth status rows */}
       <div className="pp-status-rows">
         <div className="pp-status-row">
           <span className="pp-status-label">Stealth</span>
-          {!stealthInitialized ? (
-            <button
-              className="pp-status-action"
-              onClick={onInitializeStealth}
-              disabled={!isConnected || stealthLoading}
-            >
-              {stealthLoading ? "..." : "Setup"}
-            </button>
-          ) : stealthRegistered ? (
-            <span className="pp-status-value pp-status--ok">Ready</span>
+          {stealthKeys === "unlocked" ? (
+            <span className="pp-status-value pp-status--ok">Unlocked</span>
           ) : (
-            <button
-              className="pp-status-action"
-              onClick={onRegisterStealth}
-              disabled={!isConnected || stealthLoading}
-            >
-              {stealthLoading ? "..." : "Register"}
-            </button>
+            <span className="pp-status-value">
+              {stealthKeys === "locked" && "Keys locked. "}
+              <button
+                className="pp-status-action"
+                onClick={stealthKeys === "locked" ? onUnlockStealth : onInitializeStealth}
+                disabled={!isConnected || stealthKeysBusy}
+              >
+                {stealthKeysBusy ? "..." : stealthKeys === "locked" ? "Sign to unlock" : "Setup"}
+              </button>
+            </span>
           )}
         </div>
 
-        {stealthInitialized && !stealthRegistered && (
-          <p className="pp-status-hint">Register onchain to receive Stealth payments.</p>
+        {stealthRegistrable && (
+          <>
+            <div className="pp-status-row">
+              <span className="pp-status-label">Registry</span>
+              {stealthRegistered ? (
+                <span className="pp-status-value pp-status--ok">Registered</span>
+              ) : (
+                <button
+                  className="pp-status-action"
+                  onClick={onRegisterStealth}
+                  disabled={!isConnected || stealthRegistering}
+                >
+                  {stealthRegistering ? "..." : "Register"}
+                </button>
+              )}
+            </div>
+            {!stealthRegistered && (
+              <p className="pp-status-hint">
+                Only for receiving Stealth payments from others. Not needed to claim.
+              </p>
+            )}
+          </>
         )}
 
         {/* Shielded accounts. Inert while not offered: there is no setup to

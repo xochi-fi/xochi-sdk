@@ -29,6 +29,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, cleanup, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import type { Config } from "wagmi";
 import { QuoteResponseSchema } from "@xochi/client";
+import {
+  STEALTH_DERIVE_MESSAGE,
+  computeMetaAddressFromKeys,
+  deriveStealthKeys,
+} from "@xochi/signer";
 import { quoteWire, statusWire } from "../../test/intentHarness.js";
 import { intentAPI } from "../../lib/intentAPI.js";
 import { RampDiscoveryContext } from "../../ramp/availability/useRampDiscovery.js";
@@ -37,6 +42,7 @@ import {
   renderTrade,
   makeTestConfig,
   apiStub,
+  signAsTestAccount,
   TEST_ACCOUNT,
   type ApiStubOptions,
   type StubbedRoute,
@@ -648,6 +654,107 @@ describe("Claims sign-in scans", () => {
       screen.getByRole<HTMLButtonElement>("button", { name: "Sign in to scan" }).disabled,
     ).toBe(false);
     expect(screen.queryByText("No stealth payments found")).toBeNull();
+  });
+});
+
+describe("Claims with locked keys", () => {
+  const DAI_BASE = "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb";
+  const stealthSwap = swapRecord({
+    id: "xi_stealth_base",
+    status: "completed",
+    intentStatus: "completed",
+    data: {
+      ...swapRecord().data,
+      toChainId: 8453,
+      toToken: DAI_BASE,
+      toAmount: "4980000000000000000",
+      settlementType: "stealth",
+    },
+  });
+  const signatures: string[] = [];
+  let scans = 0;
+  const stubClaims = (): void => {
+    signatures.length = 0;
+    scans = 0;
+    stubApi(
+      {
+        "/api/settlement": {
+          body: {
+            settlements: [
+              {
+                status: "claimable",
+                intentId: "xi_stealth_base",
+                tokenAddress: DAI_BASE,
+                amount: "4980000000000000000",
+              },
+            ],
+          },
+        },
+        "/api/intent/history": { body: { orders: [], hasMore: false } },
+        "/api/auth/wallet/challenge": { body: { message: "Sign in", nonce: "claims-nonce" } },
+        "/api/auth/wallet/verify": { body: { token: "claims-session", wallet: TEST_ACCOUNT } },
+        "/api/stealth/announcements": {
+          answer: () => {
+            scans += 1;
+            return { announcements: [], count: 0 };
+          },
+        },
+      },
+      {
+        onWalletRpc: (method) => {
+          if (method === "eth_sign" || method === "personal_sign") signatures.push(method);
+        },
+      },
+    );
+  };
+
+  it("shows what is waiting before any signature, then unlocks and scans in one click", async () => {
+    sessionStorage.setItem(
+      STORAGE_KEYS.walletSession,
+      JSON.stringify({ token: "harness-wallet-session", wallet: TEST_ACCOUNT.toLowerCase() }),
+    );
+    // Set up on this device in an earlier session: only the public meta-address remains.
+    window.localStorage.setItem(
+      `${STORAGE_KEYS.stealthPrefix}${TEST_ACCOUNT.toLowerCase()}:1`,
+      JSON.stringify(
+        computeMetaAddressFromKeys(deriveStealthKeys(signAsTestAccount(STEALTH_DERIVE_MESSAGE)), 1),
+      ),
+    );
+    stubClaims();
+    seedActivity(stealthSwap);
+    await renderTrade(<Trade look={FULL_LOOK} />, { connected: true });
+
+    await screen.findByRole("button", { name: /^4\.98 DAI waiting on Base\. Open Claims/ }, WAIT);
+    fireEvent.click(tab("Claims"));
+    expect(
+      within(visiblePanel()).getByText("4.98 DAI waiting on Base. Sign to unlock and claim."),
+    ).toBeTruthy();
+    expect(signatures).toEqual([]);
+    expect(within(visiblePanel()).getByText(/Keys locked\./)).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Unlock and scan" }));
+    });
+
+    await screen.findByText("No stealth payments found", {}, WAIT);
+    expect(signatures).toHaveLength(1);
+    expect(scans).toBeGreaterThan(0);
+  });
+
+  it("tells a never-set-up wallet to set up, then signs in, sets up and scans in one click", async () => {
+    stubClaims();
+    await renderTrade(<Trade look={FULL_LOOK} />, { connected: true });
+    fireEvent.click(tab("Claims"));
+    expect(within(visiblePanel()).queryByText(/Keys locked/)).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Sign in and set up" }));
+    });
+
+    await screen.findByText("No stealth payments found", {}, WAIT);
+    expect(getWalletToken()).toBe("claims-session");
+    expect(signatures).toHaveLength(2);
+    expect(scans).toBeGreaterThan(0);
   });
 });
 
