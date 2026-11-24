@@ -4,6 +4,19 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 
 ## [Unreleased]
 
+### Clarified
+
+- Specify the taker-derived escrow minimum and its rounding in
+  [ESCROW-RFC §7](ESCROW-RFC.md#7-activation-semantics-implemented-client-guard).
+  [SPEC §3.3](SPEC.md#33-quote-request-fields) documents quote slippage
+  admission and the sources of `min_to_amount`. Signed wire data, conformance
+  vectors and the client's `escrowMinOut` behavior remain unchanged. Firm
+  quote-through can fail the guard when the committed public reserve is below
+  the minimum derived from the settled output. A separate rounding discrepancy
+  could leave a Canton direct-award opening one base unit below the client
+  guard's minimum. The proposed Canton fix is in
+  [Riddler PR #1501](https://github.com/axol-io/Riddler/pull/1501).
+
 ## [0.14.0] - 2026-11-13
 
 **Riddler lockstep:** `Riddler.Integrations.Xochi.Config` `@spec_version` MUST move from `0.13.0` to `0.14.0` (and Riddler's pinned `test/support/vectors/XOCHI_SPEC_VERSION`) in the Riddler vendor PR that follows this release's publication. Until then `verify:spec-version` reports drift. No wire byte, signed struct, fee artifact or vector moves: the bump records a normative change to what a client must do (the escrow binding is live), not a served-shape change.

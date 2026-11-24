@@ -267,7 +267,8 @@ not a lost record (that is the 404, remedied by `/xochi/claim/rebuild`).
 `swap_kind` (`exact_input` default | `exact_output`) with exactly one of
 `from_amount` / `output_amount`; `recipient_address` (required cross-VM);
 `origin` (`acp` | `direct`; `acp` waives the routing fee); `trust_score`,
-`attestations`; `slippage_bps` (default 50); `promo_discount_bps` (default 0;
+`attestations`; `slippage_bps` (integer `1..500` inclusive, default 50);
+`promo_discount_bps` (default 0;
 a Xochi promo code's discount in bps, resolved and limited by the Xochi worker,
 never by the taker directly — see §4.5 `discount`); `settlement_preference`
 (default `public`); `stealth_spending_pub_key` / `stealth_viewing_pub_key`
@@ -275,6 +276,25 @@ never by the taker directly — see §4.5 `discount`); `settlement_preference`
 attribution reference minted by the Xochi backend, `^[mk]_[0-9a-f]{64}$`: never
 priced, never echoed, outside the idempotency fingerprint, and never a
 wallet-derived value). Both snake_case and camelCase are accepted.
+
+When the venue derives the response's `min_to_amount` from quote slippage, it
+computes `to_amount - floor(to_amount * slippage_bps / 10000)` in destination
+base units. A cross-token route may cap the applied tolerance at the pair's
+advertised `max_slippage_bps`. For escrow, the client independently checks the
+committed opening using the signed quote amount and its own request tolerance
+as specified in [ESCROW-RFC §7](ESCROW-RFC.md#7-activation-semantics-implemented-client-guard).
+
+For a firm exact-input quote-through quote, the response's `min_to_amount`
+and the escrow opening's `toAmount` both carry the announced `minOutput`,
+which is the auction's public reserve. The signed intent carries the settled
+output. The escrow guard refuses before signing if the committed reserve
+falls below the client minimum described in
+[ESCROW-RFC §7](ESCROW-RFC.md#7-activation-semantics-implemented-client-guard).
+Indicative previews on these corridors skip the auction and carry no firm
+solver commitment. The firm auction is specified in
+[SOLVER-RFC §2.5](SOLVER-RFC.md#25-quote-through-corridors--implemented-venue-behind-config).
+
+A limit order's `min_to_amount` is the floor derived from its limit price.
 
 The response MAY carry `input_amount_usd`: the gross origin notional in USD at
 the token valuation conversion pricing accepted, a decimal string (absent on
