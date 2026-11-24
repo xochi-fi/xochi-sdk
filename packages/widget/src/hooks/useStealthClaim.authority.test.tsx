@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiProvider, type Config } from "wagmi";
-import { connect, disconnect } from "wagmi/actions";
+import { connect, disconnect, switchChain } from "wagmi/actions";
+import { base } from "wagmi/chains";
 import {
   bytesToHex,
   encodeFunctionData,
@@ -125,7 +126,7 @@ function switchWallet(config: Config): void {
   });
 }
 
-async function renderClaims(fetch: FetchStub) {
+async function renderClaims(fetch: FetchStub, { unlock = true }: { unlock?: boolean } = {}) {
   vi.stubGlobal("fetch", fetch);
   setSession(TEST_ACCOUNT);
   const config = makeTestConfig(1n);
@@ -142,9 +143,11 @@ async function renderClaims(fetch: FetchStub) {
   );
   const hook = renderHook(() => ({ claim: useStealthClaim(), stealth: useStealth() }), { wrapper });
   await waitFor(() => expect(config.state.status).toBe("connected"));
-  await act(async () => {
-    expect(await hook.result.current.stealth.initializeKeys()).toBe(true);
-  });
+  if (unlock) {
+    await act(async () => {
+      expect(await hook.result.current.stealth.initializeKeys()).toBe(true);
+    });
+  }
   return { ...hook, config };
 }
 
@@ -199,6 +202,46 @@ describe("stealth claim authority", () => {
     expect(
       await recoverAddress({ hash: submitted[0].userOpHash, signature: submitted[0].signature }),
     ).toBe(owner);
+  });
+
+  it("unlocks locked keys with one signature, then scans", async () => {
+    const walletRequests: string[] = [];
+    const routes = claimRoutes();
+    const { result } = await renderClaims(
+      (input, init) => {
+        const body: unknown = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+        if (body && typeof body === "object" && "method" in body && body.method === "eth_sign")
+          walletRequests.push("eth_sign");
+        return routes(input, init);
+      },
+      { unlock: false },
+    );
+    expect(result.current.claim.keysReady).toBe(false);
+
+    await act(() => result.current.claim.scan());
+
+    await waitFor(() => expect(result.current.claim.hasScanned).toBe(true));
+    expect(walletRequests).toEqual(["eth_sign"]);
+    expect(result.current.claim.keysReady).toBe(true);
+    expect(result.current.claim.error).toBeNull();
+    expect(result.current.claim.payments.some((row) => row.chainId === 1)).toBe(true);
+  });
+
+  it("keeps scanned payments claimable across a network switch", async () => {
+    const submitted: unknown[] = [];
+    const { result, config } = await renderClaims(claimRoutes(submitted));
+    await act(() => result.current.claim.scan());
+    const payment = result.current.claim.payments.find((row) => row.chainId === 1)!;
+
+    await act(() => switchChain(config, { chainId: base.id }));
+
+    expect(result.current.claim.payments).toContain(payment);
+    let outcome!: ClaimResult;
+    await act(async () => {
+      outcome = await result.current.claim.claim(payment, TEST_ACCOUNT);
+    });
+    expect(outcome).toMatchObject({ success: true });
+    expect(submitted).toHaveLength(1);
   });
 
   it.each([

@@ -13,8 +13,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiProvider } from "wagmi";
-import { connect, getAccount, switchAccount } from "wagmi/actions";
-import { mainnet } from "wagmi/chains";
+import { connect, getAccount, switchAccount, switchChain } from "wagmi/actions";
+import { base, mainnet } from "wagmi/chains";
 import { mock } from "wagmi/connectors";
 import {
   COMPROMISED_STEALTH_SPENDING_PUB_KEYS,
@@ -196,6 +196,64 @@ describe("stealth setup lifetime", () => {
     expect(getKeys()).toBeNull();
     expect(localStorage.getItem(CACHE_KEY)).toBeNull();
   });
+});
+
+describe("unlocked key scope", () => {
+  it("keeps the keys unlocked across a network switch on the same wallet", async () => {
+    const walletRequests: string[] = [];
+    vi.stubGlobal("fetch", apiStub({}, { onWalletRpc: (method) => walletRequests.push(method) }));
+    const { result, config } = await renderStealth();
+    await act(async () => {
+      expect(await result.current.initializeKeys()).toBe(true);
+    });
+    const unlocked = result.current.getKeys()!;
+
+    await act(() => switchChain(config, { chainId: base.id }));
+
+    expect(getAccount(config).chainId).toBe(base.id);
+    expect(result.current.keysReady).toBe(true);
+    expect(result.current.getKeys()).toBe(unlocked);
+    expect(unlocked.spendingKey.some((byte) => byte !== 0)).toBe(true);
+    expect(result.current.metaAddress).toEqual(computeMetaAddressFromKeys(unlocked, base.id));
+    expect(walletRequests.filter((method) => method === "eth_sign")).toHaveLength(1);
+  });
+
+  it.each(["address", "connector"] as const)(
+    "locks and zeroes the keys on a %s change",
+    async (change) => {
+      vi.stubGlobal("fetch", apiStub({}));
+      const { result, config } = await renderStealth();
+      await act(async () => {
+        expect(await result.current.initializeKeys()).toBe(true);
+      });
+      const unlocked = result.current.getKeys()!;
+
+      await act(async () => {
+        if (change === "address") {
+          config.setState((state) => {
+            const connection = state.current && state.connections.get(state.current);
+            if (!connection || !state.current) throw new Error("Harness wallet is not connected");
+            return {
+              ...state,
+              connections: new Map(state.connections).set(state.current, {
+                ...connection,
+                accounts: ["0x2222222222222222222222222222222222222222"],
+              }),
+            };
+          });
+        } else {
+          await connect(config, {
+            connector: mock({ accounts: [TEST_ACCOUNT], features: { reconnect: true } }),
+          });
+        }
+      });
+
+      expect(result.current.getKeys()).toBeNull();
+      expect(result.current.keysReady).toBe(false);
+      expect(unlocked.spendingKey.every((byte) => byte === 0)).toBe(true);
+      expect(unlocked.viewingKey.every((byte) => byte === 0)).toBe(true);
+    },
+  );
 });
 
 describe.each(["connector", "reconnect", "batched reconnect"] as const)(

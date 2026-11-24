@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Claims no longer dead-ends on locked Stealth keys. One action signs in (if needed), unlocks the keys with a wallet signature (if locked), then scans; the post-sign-in scan never runs keyless.
+- Stealth secret keys are scoped to the wallet (address and connector), not the network: switching networks keeps them unlocked and keeps scanned payments claimable. Address change, connector change, reconnect, disconnect and reload still lock them and zero their bytes. Keys are never persisted.
+- Claims shows what is waiting before any signature ("4.98 DAI waiting on Base. Sign to unlock and claim."), from the wallet's claimable settlements and its own activity; the Swap and Activity notices name the amounts and point to Claims.
+- A stealth swap's receipt offers Claim in place while the keys are unlocked.
+- Locked keys read "Keys locked. Sign to unlock"; the Register hint says it is only for receiving payments from others and is not needed to claim.
+
 ## [0.1.2] - 2026-11-23
 
 ### Added

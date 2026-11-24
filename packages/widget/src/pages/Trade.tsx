@@ -33,7 +33,12 @@ import { AssetsStrip } from "../components/AssetsStrip.js";
 import { MobileSigningBanner } from "../components/MobileSigningBanner.js";
 import { ActivityFeed } from "../components/ActivityFeed.js";
 import { PrivacyPanel } from "../components/PrivacyPanel.js";
-import { StealthClaims } from "../components/StealthClaims.js";
+import { StealthClaims, type ClaimsAction, type ClaimsBusy } from "../components/StealthClaims.js";
+import {
+  StealthCompletionContext,
+  type StealthCompletion,
+} from "../components/stealthCompletionContext.js";
+import { describeWaiting, waitingPayouts } from "../lib/waitingPayouts.js";
 import { AccountChip } from "../components/AccountChip.js";
 import { useLocalSends } from "../hooks/useLocalSends.js";
 import { useLocalOfframps } from "../ramp/offramp/OfframpActivityList.js";
@@ -172,7 +177,7 @@ export function Trade({
   // Claimable settlements, shared by the assets strip chip and the stealth panel
   // badge. Lifted here (rather than a second useSettlements inside each) so a
   // settle can refresh it once and every surface updates together.
-  const { claimableCount, refresh: refreshSettlements } = useSettlements();
+  const { claimableCount, claimable, refresh: refreshSettlements } = useSettlements();
   const handleActivitySignIn = useCallback(async (): Promise<void> => {
     const token = await ensureSession();
     if (token) refreshOrders();
@@ -268,6 +273,17 @@ export function Trade({
     }
     return [...byId.values()].sort((a, b) => b.timestamp - a.timestamp);
   }, [orders, localSwaps]);
+
+  // The destination chain of each swap on record, so a claimable settlement row
+  // (which names a token and amount, not a chain) reads "4.98 DAI waiting on Base".
+  const waiting = useMemo(
+    () =>
+      waitingPayouts(claimable, new Map(activities.map((item) => [item.id, item.data.toChainId]))),
+    [claimable, activities],
+  );
+  const waitingAmounts = waiting.every((payout) => payout.kind === "known")
+    ? describeWaiting(waiting)
+    : null;
 
   // Drive the refresh-button spinner from the action itself, not from the
   // server hook's incidental loading flag: that flag never turns on for the
@@ -403,17 +419,11 @@ export function Trade({
   }, [selectedTab, showSendQuote, swapShown, swapSurface]);
 
   // A stealth swap settles to a one-time private address the user must claim. When
-  // one settles in the full widget, auto-scan so the payment appears in the receive
-  // panel, and switch to the Claims tab -- otherwise the claim step is invisible
-  // (see #352). The receipt's "Claim your payment" lands here too, in that layout.
-  //
-  // With tabs, `scan()` is not gated on `keysReady`. It used to be, and that
-  // was read from a SEPARATE useStealth instance than the one the swap panel
-  // derived keys into, so it was false on the very swap that just settled and
-  // the auto-scan never ran (fixed at the source: useStealth is now a single
-  // shared provider). Calling it regardless is also more honest than the old
-  // silent skip: when keys or a wallet session really are missing, the scanner
-  // sets a visible reason and the panel renders the matching affordance.
+  // one settles in the full widget, switch to the Claims tab -- otherwise the
+  // claim step is invisible (see #352) -- and, with the keys unlocked, scan so
+  // the payment is there to claim. With the keys locked the Claims tab offers
+  // the one-click unlock instead of prompting for a signature unasked. The
+  // receipt's "Claim your payment" lands here too, in that layout.
   //
   // Without tabs (`layout=swap`) there is no Claims panel to land on, so a
   // settlement refreshes the count and does not scan; the receipt's Claim
@@ -431,17 +441,16 @@ export function Trade({
       setStealthSettledHere(true);
       return;
     }
-    void stealthClaim.scan();
+    if (stealthClaim.keysReady) void stealthClaim.scan();
     selectTab("claims");
   }, [tabsShown, stealthClaim, refreshSettlements, selectTab]);
 
   // The claims nudge (and the history row's claim action) promise "a payment is
   // ready", so the landing must show that payment or the step that unlocks it.
-  // With keys absent, StealthClaims is unmounted (gated on isInitialized below)
-  // and a scan can only fail into a panel that is not there -- skip it and let
-  // the Claims tab show PrivacyPanel's initialize affordance instead.
+  // A navigation never prompts for a signature: with the keys locked the
+  // Claims tab shows what is waiting and the one-click unlock.
   const handleClaimNudge = useCallback((): void => {
-    if (stealthClaim.isInitialized) {
+    if (stealthClaim.keysReady) {
       void stealthClaim.scan();
     }
     refreshSettlements();
@@ -504,9 +513,43 @@ export function Trade({
       return;
     }
     stealthSignInRequest.current = null;
+    // Unlocks the keys first when they are locked: the scan never runs keyless.
     void stealthClaim.scan();
     refreshSettlements();
   }, [pendingStealthScan, sessionState, stealthClaim.scan, refreshSettlements]);
+
+  // The Claims tab's one action: sign in, then unlock, then scan, skipping
+  // whichever step is already done.
+  const handleClaimsAction = (): void => {
+    if (stealthNeedsSignIn) handleStealthSignIn();
+    else void stealthClaim.scan();
+  };
+  const claimsAction: ClaimsAction = stealthNeedsSignIn
+    ? { kind: stealthClaim.keysReady ? "sign-in" : "sign-in-and-unlock" }
+    : { kind: stealthClaim.keysReady ? "scan" : "unlock" };
+  const claimsBusy: ClaimsBusy =
+    sessionState === "signing"
+      ? "signing-in"
+      : stealthClaim.isLoading
+        ? "unlocking"
+        : stealthClaim.isScanning
+          ? "scanning"
+          : null;
+  const stealthCompletion: StealthCompletion | null =
+    STEALTH_CLAIM_LIVE &&
+    !claimInXochiApp &&
+    address &&
+    stealthClaim.keysReady &&
+    !stealthNeedsSignIn
+      ? {
+          payments: stealthClaim.payments.filter(
+            (payment) => !stealthClaim.settledPayments.has(payment),
+          ),
+          isScanning: stealthClaim.isScanning,
+          scan: () => void stealthClaim.scan(),
+          claim: (payment) => stealthClaim.claim(payment, address),
+        }
+      : null;
 
   const handleRetrySwap = useCallback(
     (item: SwapActivityItem): void => {
@@ -645,269 +688,278 @@ export function Trade({
   return (
     <WidgetTabsContext value={tabsShown}>
       <ClaimInXochiAppContext value={claimInXochiApp}>
-        <main
-          className={[
-            "launch-screen",
-            tabsShown ? "launch-screen--full" : null,
-            look.height === null ? null : "launch-screen--fixed",
-          ]
-            .filter(Boolean)
-            .join(" ")}
-          style={look.height === null ? undefined : { height: `${look.height}px` }}
-        >
-          {/* Top row at the card's width: the tabs, plus the connected wallet's
+        <StealthCompletionContext value={stealthCompletion}>
+          <main
+            className={[
+              "launch-screen",
+              tabsShown ? "launch-screen--full" : null,
+              look.height === null ? null : "launch-screen--fixed",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            style={look.height === null ? undefined : { height: `${look.height}px` }}
+          >
+            {/* Top row at the card's width: the tabs, plus the connected wallet's
           account chip. The card's own CTA is the one connect action, so the
           chip renders nothing while disconnected (and the row collapses). */}
-          <div className="widget-bar">
-            {tabsShown && (
-              <WidgetTabs
-                baseId={tabsBaseId}
-                tabs={tabs}
-                active={selectedTab}
-                onSelect={selectTab}
-              />
-            )}
-            {!hostOwnsWalletUi && <AccountChip />}
-          </div>
-
-          {tabsShown && tabs.length === 0 && (
-            <p className="send-note" role="note">
-              This host has not enabled any section of the widget.
-            </p>
-          )}
-
-          {tabShown("trade") && (
-            <div {...panelProps("trade")}>
+            <div className="widget-bar">
               {tabsShown && (
-                <div className="widget-bar">
-                  <WidgetTabs
-                    baseId={modesBaseId}
-                    tabs={modeTabs}
-                    active={tradeMode}
-                    onSelect={setTradeMode}
-                    label="Trade mode"
-                    className="widget-tabs trade-modes"
-                  />
-                </div>
+                <WidgetTabs
+                  baseId={tabsBaseId}
+                  tabs={tabs}
+                  active={selectedTab}
+                  onSelect={selectTab}
+                />
               )}
+              {!hostOwnsWalletUi && <AccountChip />}
+            </div>
 
-              {tabsShown && surfaces.modes.includes("onramp") && (
-                <div {...modePanelProps("onramp")}>
-                  <BuyPanel
-                    active={selectedTab === "trade" && tradeMode === "onramp"}
-                    fiatCurrency={fiatCurrency}
-                    onConnectRequest={hostOwnsWalletUi ? requestHostConnect : openConnectModal}
-                  />
-                </div>
-              )}
+            {tabsShown && tabs.length === 0 && (
+              <p className="send-note" role="note">
+                This host has not enabled any section of the widget.
+              </p>
+            )}
 
-              {tabsShown && surfaces.modes.includes("offramp") && (
-                <div {...modePanelProps("offramp")}>
-                  <div className="send-card">
-                    {rampGate === "ready" ? (
-                      <PaymentAppSend
-                        active={selectedTab === "trade" && tradeMode === "offramp"}
-                        fiatCurrency={fiatCurrency}
-                        onConnectRequest={hostOwnsWalletUi ? requestHostConnect : openConnectModal}
-                      />
-                    ) : (
-                      <p className="ramp-resume__blocked" role="status">
-                        {RAMP_HOST_GATE_COPY[rampGate]}
-                      </p>
-                    )}
+            {tabShown("trade") && (
+              <div {...panelProps("trade")}>
+                {tabsShown && (
+                  <div className="widget-bar">
+                    <WidgetTabs
+                      baseId={modesBaseId}
+                      tabs={modeTabs}
+                      active={tradeMode}
+                      onSelect={setTradeMode}
+                      label="Trade mode"
+                      className="widget-tabs trade-modes"
+                    />
                   </div>
-                </div>
-              )}
+                )}
 
-              {swapShown && (
-                <div {...modePanelProps("swap")}>
-                  <h2 className="sr-only">Swap</h2>
-                  <div className="send-swap-mount" ref={tradeSwapMount} />
+                {tabsShown && surfaces.modes.includes("onramp") && (
+                  <div {...modePanelProps("onramp")}>
+                    <BuyPanel
+                      active={selectedTab === "trade" && tradeMode === "onramp"}
+                      fiatCurrency={fiatCurrency}
+                      onConnectRequest={hostOwnsWalletUi ? requestHostConnect : openConnectModal}
+                    />
+                  </div>
+                )}
 
-                  <MobileSigningBanner />
+                {tabsShown && surfaces.modes.includes("offramp") && (
+                  <div {...modePanelProps("offramp")}>
+                    <div className="send-card">
+                      {rampGate === "ready" ? (
+                        <PaymentAppSend
+                          active={selectedTab === "trade" && tradeMode === "offramp"}
+                          fiatCurrency={fiatCurrency}
+                          onConnectRequest={
+                            hostOwnsWalletUi ? requestHostConnect : openConnectModal
+                          }
+                        />
+                      ) : (
+                        <p className="ramp-resume__blocked" role="status">
+                          {RAMP_HOST_GATE_COPY[rampGate]}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
 
-                  {/* Compact claims row, rendered only while something is actually waiting
+                {swapShown && (
+                  <div {...modePanelProps("swap")}>
+                    <h2 className="sr-only">Swap</h2>
+                    <div className="send-swap-mount" ref={tradeSwapMount} />
+
+                    <MobileSigningBanner />
+
+                    {/* Compact claims row, rendered only while something is actually waiting
             (the fable pass-1 ruling: claimable settlements surface after the
             card, not as a standing panel). Clicking scans and switches to the
             Claims tab, or without tabs opens the full widget on Claims; there
             it also stays after a stealth swap settles in this frame, even
             before a session can count the payment. */}
-                  {STEALTH_CLAIM_LIVE &&
-                    (claimableCount > 0 || (!tabsShown && stealthSettledHere)) &&
-                    (claimInXochiApp ? (
-                      // The host's wallet: no claim here or in a tab of the widget's own.
-                      <p className="claims-nudge" role="note">
-                        {claimableCount > 0
-                          ? `${claimableCount} ${claimableCount === 1 ? "payment is" : "payments are"} ready to claim. `
-                          : "Your Stealth payment landed. "}
-                        {CLAIM_IN_XOCHI_APP}
-                      </p>
-                    ) : (
-                      <button
-                        type="button"
-                        className="claims-nudge"
-                        onClick={tabsShown ? handleClaimNudge : openClaims}
-                      >
-                        {claimableCount > 0 ? (
-                          <>
-                            <span className="claims-nudge__count">{claimableCount}</span>
-                            {claimableCount === 1 ? "payment is" : "payments are"} ready to claim
-                          </>
-                        ) : (
-                          "Open Claims"
-                        )}
-                        <span className="claims-nudge__arrow" aria-hidden="true">
-                          {"→"}
-                        </span>
-                      </button>
-                    ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {tabsShown && tabShown("send") && (
-            <div {...panelProps("send")}>
-              <SendPanel
-                active={selectedTab === "send"}
-                initialChain={fromChainId}
-                destinations={surfaces.destinations}
-                showQuote={showSendQuote}
-                retry={sendRetry}
-                onEditRetry={cancelSendRetry}
-                quoteMount={sendSwapMount}
-                onQuote={handleSendQuote}
-                onCloseQuote={() => {
-                  setSendQuoteRecipient(undefined);
-                  setRetryPrefill(null);
-                }}
-                onConnectRequest={hostOwnsWalletUi ? requestHostConnect : undefined}
-              />
-            </div>
-          )}
-
-          {(swapShown || retryPrefill) &&
-            createPortal(
-              <SwapPanel
-                prefill={retryPrefill}
-                sendRecipient={selectedTab === "send" ? sendQuoteRecipient : undefined}
-                onStealthSettled={handleStealthSettled}
-                onGoToClaims={tabsShown || claimInXochiApp ? undefined : openClaims}
-                howItWorks={look.howItWorks && !(selectedTab === "send" && showSendQuote)}
-                onConnectRequest={hostOwnsWalletUi ? requestHostConnect : undefined}
-              />,
-              swapSurface,
+                    {STEALTH_CLAIM_LIVE &&
+                      (claimableCount > 0 || (!tabsShown && stealthSettledHere)) &&
+                      (claimInXochiApp ? (
+                        // The host's wallet: no claim here or in a tab of the widget's own.
+                        <p className="claims-nudge" role="note">
+                          {waitingAmounts !== null
+                            ? `${waitingAmounts}. `
+                            : claimableCount > 0
+                              ? `${claimableCount} ${claimableCount === 1 ? "payment is" : "payments are"} ready to claim. `
+                              : "Your Stealth payment landed. "}
+                          {CLAIM_IN_XOCHI_APP}
+                        </p>
+                      ) : (
+                        <button
+                          type="button"
+                          className="claims-nudge"
+                          onClick={tabsShown ? handleClaimNudge : openClaims}
+                        >
+                          {waitingAmounts !== null ? (
+                            `${waitingAmounts}. Open Claims`
+                          ) : claimableCount > 0 ? (
+                            <>
+                              <span className="claims-nudge__count">{claimableCount}</span>
+                              {claimableCount === 1 ? "payment is" : "payments are"} ready to claim
+                            </>
+                          ) : (
+                            "Open Claims"
+                          )}
+                          <span className="claims-nudge__arrow" aria-hidden="true">
+                            {"→"}
+                          </span>
+                        </button>
+                      ))}
+                  </div>
+                )}
+              </div>
             )}
 
-          {tabsShown && tabShown("activity") && (
-            <div {...panelProps("activity")}>
-              {/* Holdings breakdown. Disconnected visitors already see balance context
-              inline in the pay field ("--"), so the strip's old connect prompt
-              would be a second wallet ask; render nothing instead. */}
-              {isConnected && <AssetsStrip />}
-
-              {/* Narrowing removes ways to start a Peer operation, never the
-                  way back to one already submitted (trade/RampRecovery.tsx). */}
-              {tabsShown && !surfaces.modes.includes("onramp") && <PurchaseRecovery />}
-              {tabsShown && !surfaces.modes.includes("offramp") && (
-                <CashOutRecovery
-                  items={localOfframps}
-                  fiatCurrency={fiatCurrency}
-                  active={selectedTab === "activity"}
+            {tabsShown && tabShown("send") && (
+              <div {...panelProps("send")}>
+                <SendPanel
+                  active={selectedTab === "send"}
+                  initialChain={fromChainId}
+                  destinations={surfaces.destinations}
+                  showQuote={showSendQuote}
+                  retry={sendRetry}
+                  onEditRetry={cancelSendRetry}
+                  quoteMount={sendSwapMount}
+                  onQuote={handleSendQuote}
+                  onCloseQuote={() => {
+                    setSendQuoteRecipient(undefined);
+                    setRetryPrefill(null);
+                  }}
+                  onConnectRequest={hostOwnsWalletUi ? requestHostConnect : undefined}
                 />
+              </div>
+            )}
+
+            {(swapShown || retryPrefill) &&
+              createPortal(
+                <SwapPanel
+                  prefill={retryPrefill}
+                  sendRecipient={selectedTab === "send" ? sendQuoteRecipient : undefined}
+                  onStealthSettled={handleStealthSettled}
+                  onGoToClaims={tabsShown || claimInXochiApp ? undefined : openClaims}
+                  howItWorks={look.howItWorks && !(selectedTab === "send" && showSendQuote)}
+                  onConnectRequest={hostOwnsWalletUi ? requestHostConnect : undefined}
+                />,
+                swapSurface,
               )}
 
-              <section className="launch-txlog" aria-label="Transaction log">
-                {!isConnected ? (
-                  <div className="send-card">
-                    <p className="send-note">
-                      See your swaps, sends, purchases and cash outs here.
-                    </p>
-                    <button
-                      className="submit-btn send-cta"
-                      type="button"
-                      onClick={hostOwnsWalletUi ? requestHostConnect : openConnectModal}
-                    >
-                      Connect wallet
-                    </button>
-                  </div>
-                ) : (
-                  <ActivityFeed
-                    activities={activities}
-                    localHistory={{
-                      sends: localSends,
-                      purchases: localRamps,
-                      cashOuts: localOfframps,
-                    }}
-                    isLoading={ordersLoading || isRefreshing}
-                    error={ordersError}
-                    hasMore={hasMoreOrders}
-                    isConnected={isConnected}
-                    enableAgents={enableAgents}
-                    connectedWallet={address}
-                    sessionWallet={sessionWallet}
-                    needsSignIn={historyNeedsSignIn}
-                    isSigningIn={sessionState === "signing"}
-                    onSignIn={handleActivitySignIn}
-                    onRefresh={refreshActivity}
-                    onLoadMore={loadMoreOrders}
-                    onReportSwap={handleReportSwap}
-                    onRetrySwap={swapShown ? handleRetrySwap : undefined}
-                    onClaimNudge={STEALTH_CLAIM_LIVE ? handleClaimNudge : undefined}
+            {tabsShown && tabShown("activity") && (
+              <div {...panelProps("activity")}>
+                {/* Holdings breakdown. Disconnected visitors already see balance context
+              inline in the pay field ("--"), so the strip's old connect prompt
+              would be a second wallet ask; render nothing instead. */}
+                {isConnected && <AssetsStrip />}
+
+                {/* Narrowing removes ways to start a Peer operation, never the
+                  way back to one already submitted (trade/RampRecovery.tsx). */}
+                {tabsShown && !surfaces.modes.includes("onramp") && <PurchaseRecovery />}
+                {tabsShown && !surfaces.modes.includes("offramp") && (
+                  <CashOutRecovery
+                    items={localOfframps}
+                    fiatCurrency={fiatCurrency}
+                    active={selectedTab === "activity"}
                   />
                 )}
-              </section>
-            </div>
-          )}
 
-          {/* Standalone privacy/trust UI renders only when it is relevant: a
+                <section className="launch-txlog" aria-label="Transaction log">
+                  {!isConnected ? (
+                    <div className="send-card">
+                      <p className="send-note">
+                        See your swaps, sends, purchases and cash outs here.
+                      </p>
+                      <button
+                        className="submit-btn send-cta"
+                        type="button"
+                        onClick={hostOwnsWalletUi ? requestHostConnect : openConnectModal}
+                      >
+                        Connect wallet
+                      </button>
+                    </div>
+                  ) : (
+                    <ActivityFeed
+                      activities={activities}
+                      localHistory={{
+                        sends: localSends,
+                        purchases: localRamps,
+                        cashOuts: localOfframps,
+                      }}
+                      isLoading={ordersLoading || isRefreshing}
+                      error={ordersError}
+                      hasMore={hasMoreOrders}
+                      isConnected={isConnected}
+                      enableAgents={enableAgents}
+                      connectedWallet={address}
+                      sessionWallet={sessionWallet}
+                      needsSignIn={historyNeedsSignIn}
+                      isSigningIn={sessionState === "signing"}
+                      onSignIn={handleActivitySignIn}
+                      onRefresh={refreshActivity}
+                      onLoadMore={loadMoreOrders}
+                      onReportSwap={handleReportSwap}
+                      onRetrySwap={swapShown ? handleRetrySwap : undefined}
+                      onClaimNudge={STEALTH_CLAIM_LIVE ? handleClaimNudge : undefined}
+                      claimWaiting={waitingAmounts}
+                    />
+                  )}
+                </section>
+              </div>
+            )}
+
+            {/* Standalone privacy/trust UI renders only when it is relevant: a
           connected wallet can initialize keys, register, scan, and claim; an
           anonymous visitor can do none of that, so the Claims tab does not
           exist for them (trade-widget-mvp.md: "appears only when relevant or
           requested"). The in-form surfaces (toggle captions, contextual stealth
           notices) carry the education. */}
-          {claimsAvailable && (
-            <div {...panelProps("claims")}>
-              <section className="launch-stealth" aria-label="Stealth receiving">
-                <PrivacyPanel
-                  trustScore={trustScore}
-                  disclosuresLive={features.verificationBetaLive}
-                  shieldedAccountsLive={SHIELDED_ACCOUNTS_LIVE}
-                  connectedProviders={verifyState?.connectedProviders ?? []}
-                  isConnected={isConnected}
-                  stealthInitialized={stealthClaim.isInitialized}
-                  stealthRegistered={stealthClaim.isRegistered}
-                  onInitializeStealth={stealthClaim.initializeKeys}
-                  onRegisterStealth={stealthClaim.registerMetaAddress}
-                  stealthLoading={stealthClaim.isLoading}
-                />
+            {claimsAvailable && (
+              <div {...panelProps("claims")}>
+                <section className="launch-stealth" aria-label="Stealth receiving">
+                  <PrivacyPanel
+                    trustScore={trustScore}
+                    disclosuresLive={features.verificationBetaLive}
+                    shieldedAccountsLive={SHIELDED_ACCOUNTS_LIVE}
+                    connectedProviders={verifyState?.connectedProviders ?? []}
+                    isConnected={isConnected}
+                    stealthKeys={
+                      stealthClaim.keysReady
+                        ? "unlocked"
+                        : stealthClaim.isInitialized
+                          ? "locked"
+                          : "none"
+                    }
+                    stealthRegistered={stealthClaim.isRegistered}
+                    onInitializeStealth={stealthClaim.initializeKeys}
+                    onUnlockStealth={handleClaimsAction}
+                    onRegisterStealth={stealthClaim.registerMetaAddress}
+                    stealthLoading={stealthClaim.isLoading}
+                  />
 
-                {stealthClaim.isInitialized && (
                   <StealthClaims
                     payments={stealthClaim.payments}
-                    isScanning={stealthClaim.isScanning}
                     isClaiming={stealthClaim.isClaiming}
                     isConfirming={stealthClaim.isConfirming}
-                    isStealthReady={stealthClaim.keysReady}
-                    onResign={stealthClaim.initializeKeys}
-                    isResigning={stealthClaim.isLoading}
+                    action={claimsAction}
+                    busy={claimsBusy}
+                    onAction={handleClaimsAction}
                     walletAddress={address}
                     error={stealthClaim.error}
                     lastScannedBlock={stealthClaim.lastScannedBlock}
                     hasScanned={stealthClaim.hasScanned}
-                    needsSignIn={stealthNeedsSignIn}
-                    isSigningIn={sessionState === "signing"}
-                    onSignIn={handleStealthSignIn}
-                    claimableCount={claimableCount}
-                    onScan={stealthClaim.scan}
+                    waiting={waiting}
                     onClaim={stealthClaim.claim}
                     onClaimAll={stealthClaim.claimAll}
                   />
-                )}
-              </section>
-            </div>
-          )}
-        </main>
+                </section>
+              </div>
+            )}
+          </main>
+        </StealthCompletionContext>
       </ClaimInXochiAppContext>
     </WidgetTabsContext>
   );

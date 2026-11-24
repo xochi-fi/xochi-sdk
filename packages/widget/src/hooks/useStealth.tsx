@@ -8,9 +8,7 @@
  * `useStealth()` reads that same instance. This is load-bearing, not tidiness:
  * the send side (`useSwapPanel`) and the receive side (`useStealthClaim`) both
  * consume it, and when they each owned private `useState` the derived secret
- * keys were invisible across the split. Only the PUBLIC meta-address is cached
- * to localStorage, and the reader effect is keyed on `[address, chainId]`, so
- * nothing re-read it mid-session either.
+ * keys were invisible across the split.
  *
  * The cost was the whole of xochi#352: selecting Stealth derived keys on the
  * swap-panel instance, so on the receive instance `keysReady` stayed false (the
@@ -23,6 +21,11 @@
  * `useStealth` therefore throws outside a provider rather than falling back to a
  * local instance: a silent fallback would restore exactly that failure, and it
  * fails invisibly.
+ *
+ * Secret keys live only in memory, scoped to the wallet (address + connector):
+ * a network switch keeps them; an address or connector change, any status
+ * change, a reset or unmount zeroes them. Only the PUBLIC meta-address, which
+ * names a chain, is cached to localStorage per `address:chainId`.
  */
 
 import { HOST_WALLET_ID, refusesStealth } from "../wagmi.js";
@@ -84,13 +87,13 @@ export interface UseStealthReturn {
   metaAddress: StealthMetaAddress | null;
   /** Encoded meta-address string (st:eth:0x...) */
   encodedMetaAddress: string | null;
-  /** Whether stealth keys have been derived (meta-address cached) */
+  /** Whether a meta-address is known for this wallet on this chain (keys may still be locked) */
   isInitialized: boolean;
   /**
-   * Whether stealth keys are currently held in memory (getKeys() !== null).
-   * Distinct from isInitialized: after a reload the meta-address is cached but
-   * the secret keys are not, so scanning needs a re-sign. This is the honest
-   * scan-readiness signal.
+   * Whether the secret keys are in memory (getKeys() !== null). They are scoped
+   * to the wallet (address + connector), survive a network switch, and are
+   * never stored: a reload, a different address or connector, a reconnect or a
+   * disconnect locks them until the user signs again.
    */
   keysReady: boolean;
   /** Whether meta-address is registered on-chain */
@@ -115,6 +118,13 @@ export interface UseStealthReturn {
 
 function getStorageKey(address: string, chainId: number): string {
   return `${STORAGE_KEY_PREFIX}${address.toLowerCase()}:${chainId}`;
+}
+
+/** The key lifetime: one address on one connector, on any chain. */
+function walletScopeOf(account: { address?: string; connector?: { uid: string } }): string | null {
+  return account.address
+    ? `${account.address.toLowerCase()}:${account.connector?.uid ?? ""}`
+    : null;
 }
 
 function loadCachedMetaAddress(address: string, chainId: number): StealthMetaAddress | null {
@@ -169,7 +179,7 @@ function useStealthState(): UseStealthReturn {
   const [isRegistered, setIsRegistered] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const walletScope = address ? `${address.toLowerCase()}:${chainId}` : null;
+  const walletScope = walletScopeOf({ address, connector });
   const [keyScope, setKeyScope] = useState<string | null>(null);
   const authorityRef = useRef({ walletScope, active: true });
   const [, refreshAuthority] = useState<object>();
@@ -203,18 +213,11 @@ function useStealthState(): UseStealthReturn {
         onChange(account, previous) {
           if (
             account.status !== previous.status ||
-            account.address?.toLowerCase() !== previous.address?.toLowerCase() ||
-            account.chainId !== previous.chainId ||
-            account.connector?.uid !== previous.connector?.uid
+            walletScopeOf(account) !== walletScopeOf(previous)
           ) {
             revokeKeys();
             authorityRef.current.active = false;
-            authorityRef.current = {
-              walletScope: account.address
-                ? `${account.address.toLowerCase()}:${account.chainId}`
-                : null,
-              active: true,
-            };
+            authorityRef.current = { walletScope: walletScopeOf(account), active: true };
             setKeys(null);
             setIsLoading(false);
             // A same-wallet reconnect can finish inside one React batch, and
@@ -229,26 +232,39 @@ function useStealthState(): UseStealthReturn {
   // Stable even in old callers: a reset or wallet event revokes keys immediately.
   const getKeys = useCallback((): StealthKeys | null => {
     const account = getAccount(config);
-    const scope = account.address ? `${account.address.toLowerCase()}:${account.chainId}` : null;
     return account.status === "connected" &&
       authorityRef.current.active &&
       !refusesStealth(account.connector) &&
-      scope === authorityRef.current.walletScope
+      walletScopeOf(account) === authorityRef.current.walletScope
       ? keysRef.current
       : null;
   }, [config]);
-  const currentMetaAddress = keyScope === walletScope && !stealthRefused ? metaAddress : null;
+  const currentMetaAddress =
+    keyScope === walletScope && !stealthRefused && metaAddress?.chainId === chainId
+      ? metaAddress
+      : null;
 
-  // Load cached meta-address on mount/address change
+  // A new wallet starts locked.
   useEffect(() => {
     setKeyScope(walletScope);
     setKeys(null);
     revokeKeys();
-    setMetaAddress(null);
     setError(null);
     setIsLoading(false);
-    if (!address || stealthRefused) return;
+  }, [walletScope, stealthRefused, revokeKeys]);
 
+  // The meta-address for the current chain: computed from the keys while they
+  // are unlocked, else the public copy cached on this device.
+  useEffect(() => {
+    setMetaAddress(null);
+    if (!address || stealthRefused) return;
+    const unlocked = keys === null ? null : getKeys();
+    if (unlocked) {
+      const meta = computeMetaAddressFromKeys(unlocked, chainId);
+      setMetaAddress(meta);
+      saveCachedMetaAddress(address, chainId, meta);
+      return;
+    }
     const cached = loadCachedMetaAddress(address, chainId);
     // A meta-address an older build derived from a `0x` signature has public
     // private keys: drop it so the next setup re-derives (and refuses).
@@ -256,9 +272,8 @@ function useStealthState(): UseStealthReturn {
       clearCachedMetaAddress(address, chainId);
     } else if (cached) {
       setMetaAddress(cached);
-      // Keys are not cached (derived on demand from signature)
     }
-  }, [address, chainId, walletScope, stealthRefused, revokeKeys]);
+  }, [address, chainId, walletScope, stealthRefused, keys, getKeys]);
 
   // Check registration status when meta-address changes
   useEffect(() => {
@@ -317,11 +332,7 @@ function useStealthState(): UseStealthReturn {
   const initializeKeys = useCallback(async (): Promise<boolean> => {
     if (authorityRef.current !== authority || !authority.active) return false;
     const account = getAccount(config);
-    if (
-      !address ||
-      account.status !== "connected" ||
-      `${account.address?.toLowerCase()}:${account.chainId}` !== walletScope
-    ) {
+    if (!address || account.status !== "connected" || walletScopeOf(account) !== walletScope) {
       setError("Wallet not connected");
       return false;
     }
@@ -350,10 +361,7 @@ function useStealthState(): UseStealthReturn {
       ]);
       if (authorityRef.current !== authority || !authority.active) return false;
       const currentAccount = getAccount(config);
-      if (
-        currentAccount.status !== "connected" ||
-        `${currentAccount.address?.toLowerCase()}:${currentAccount.chainId}` !== walletScope
-      ) {
+      if (currentAccount.status !== "connected" || walletScopeOf(currentAccount) !== walletScope) {
         return false;
       }
 
@@ -373,19 +381,13 @@ function useStealthState(): UseStealthReturn {
         }
       }
 
-      // Derive keys from signature
+      // Derive keys from signature; the meta-address effect publishes and caches
+      // the public half for the current chain.
       const derivedKeys = deriveStealthKeys(signature);
       revokeKeys();
       keysRef.current = derivedKeys;
       setKeys(derivedKeys);
       setKeyScope(walletScope);
-
-      // Compute meta-address
-      const meta = computeMetaAddressFromKeys(derivedKeys, chainId);
-      setMetaAddress(meta);
-
-      // Cache meta-address (but not keys)
-      saveCachedMetaAddress(address, chainId, meta);
 
       debugLog("[useStealth] Keys initialized:", {
         spendingPub: derivedKeys.spendingPubKey.slice(0, 20) + "...",
@@ -407,16 +409,7 @@ function useStealthState(): UseStealthReturn {
       if (promptTimer) clearTimeout(promptTimer);
       if (authorityRef.current === authority && authority.active) setIsLoading(false);
     }
-  }, [
-    address,
-    authority,
-    chainId,
-    config,
-    walletScope,
-    publicClient,
-    signMessageAsync,
-    revokeKeys,
-  ]);
+  }, [address, authority, config, walletScope, publicClient, signMessageAsync, revokeKeys]);
 
   // Register meta-address on-chain
   const registerMetaAddress = useCallback(async (): Promise<string | null> => {

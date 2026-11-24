@@ -30,9 +30,13 @@ interface PrivacyPanelProps {
   connectedProviders: string[];
   isConnected: boolean;
   // Stealth
-  stealthInitialized: boolean;
+  /** none: never set up here; locked: set up, keys not in memory; unlocked: keys in memory. */
+  stealthKeys: "none" | "locked" | "unlocked";
   stealthRegistered: boolean;
+  /** First setup: derive the keys from a wallet signature. */
   onInitializeStealth: () => void;
+  /** Locked keys: the Claims action (sign in if needed, unlock, scan). */
+  onUnlockStealth: () => void;
   onRegisterStealth: () => void;
   stealthLoading: boolean;
 }
@@ -43,9 +47,10 @@ export function PrivacyPanel({
   shieldedAccountsLive = false,
   connectedProviders,
   isConnected,
-  stealthInitialized,
+  stealthKeys,
   stealthRegistered,
   onInitializeStealth,
+  onUnlockStealth,
   onRegisterStealth,
   stealthLoading,
 }: PrivacyPanelProps) {
@@ -125,33 +130,48 @@ export function PrivacyPanel({
         )}
       </div>
 
-      {/* Stealth status row */}
+      {/* Stealth status rows */}
       <div className="pp-status-rows">
         <div className="pp-status-row">
           <span className="pp-status-label">Stealth</span>
-          {!stealthInitialized ? (
-            <button
-              className="pp-status-action"
-              onClick={onInitializeStealth}
-              disabled={!isConnected || stealthLoading}
-            >
-              {stealthLoading ? "..." : "Setup"}
-            </button>
-          ) : stealthRegistered ? (
-            <span className="pp-status-value pp-status--ok">Ready</span>
+          {stealthKeys === "unlocked" ? (
+            <span className="pp-status-value pp-status--ok">Unlocked</span>
           ) : (
-            <button
-              className="pp-status-action"
-              onClick={onRegisterStealth}
-              disabled={!isConnected || stealthLoading}
-            >
-              {stealthLoading ? "..." : "Register"}
-            </button>
+            <span className="pp-status-value">
+              {stealthKeys === "locked" && "Keys locked. "}
+              <button
+                className="pp-status-action"
+                onClick={stealthKeys === "locked" ? onUnlockStealth : onInitializeStealth}
+                disabled={!isConnected || stealthLoading}
+              >
+                {stealthLoading ? "..." : stealthKeys === "locked" ? "Sign to unlock" : "Setup"}
+              </button>
+            </span>
           )}
         </div>
 
-        {stealthInitialized && !stealthRegistered && (
-          <p className="pp-status-hint">Register onchain to receive Stealth payments.</p>
+        {stealthKeys !== "none" && (
+          <>
+            <div className="pp-status-row">
+              <span className="pp-status-label">Registry</span>
+              {stealthRegistered ? (
+                <span className="pp-status-value pp-status--ok">Registered</span>
+              ) : (
+                <button
+                  className="pp-status-action"
+                  onClick={onRegisterStealth}
+                  disabled={!isConnected || stealthLoading}
+                >
+                  {stealthLoading ? "..." : "Register"}
+                </button>
+              )}
+            </div>
+            {!stealthRegistered && (
+              <p className="pp-status-hint">
+                Only for receiving Stealth payments from others. Not needed to claim.
+              </p>
+            )}
+          </>
         )}
 
         {/* Shielded accounts. Inert while not offered: there is no setup to

@@ -651,6 +651,98 @@ describe("Claims sign-in scans", () => {
   });
 });
 
+describe("Claims with locked keys", () => {
+  const DAI_BASE = "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb";
+  const stealthSwap = swapRecord({
+    id: "xi_stealth_base",
+    status: "completed",
+    intentStatus: "completed",
+    data: {
+      ...swapRecord().data,
+      toChainId: 8453,
+      toToken: DAI_BASE,
+      toAmount: "4980000000000000000",
+      settlementType: "stealth",
+    },
+  });
+  const signatures: string[] = [];
+  let scans = 0;
+  const stubClaims = (): void => {
+    signatures.length = 0;
+    scans = 0;
+    stubApi(
+      {
+        "/api/settlement": {
+          body: {
+            settlements: [
+              {
+                status: "claimable",
+                intentId: "xi_stealth_base",
+                tokenAddress: DAI_BASE,
+                amount: "4980000000000000000",
+              },
+            ],
+          },
+        },
+        "/api/intent/history": { body: { orders: [], hasMore: false } },
+        "/api/auth/wallet/challenge": { body: { message: "Sign in", nonce: "claims-nonce" } },
+        "/api/auth/wallet/verify": { body: { token: "claims-session", wallet: TEST_ACCOUNT } },
+        "/api/stealth/announcements": {
+          answer: () => {
+            scans += 1;
+            return { announcements: [], count: 0 };
+          },
+        },
+      },
+      {
+        onWalletRpc: (method) => {
+          if (method === "eth_sign" || method === "personal_sign") signatures.push(method);
+        },
+      },
+    );
+  };
+
+  it("shows what is waiting before any signature, then unlocks and scans in one click", async () => {
+    sessionStorage.setItem(
+      STORAGE_KEYS.walletSession,
+      JSON.stringify({ token: "harness-wallet-session", wallet: TEST_ACCOUNT.toLowerCase() }),
+    );
+    stubClaims();
+    seedActivity(stealthSwap);
+    await renderTrade(<Trade look={FULL_LOOK} />, { connected: true });
+
+    await screen.findByRole("button", { name: /^4\.98 DAI waiting on Base\. Open Claims/ }, WAIT);
+    fireEvent.click(tab("Claims"));
+    expect(
+      within(visiblePanel()).getByText("4.98 DAI waiting on Base. Sign to unlock and claim."),
+    ).toBeTruthy();
+    expect(signatures).toEqual([]);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Unlock and scan" }));
+    });
+
+    await screen.findByText("No stealth payments found", {}, WAIT);
+    expect(signatures).toHaveLength(1);
+    expect(scans).toBeGreaterThan(0);
+  });
+
+  it("signs in, unlocks and scans from one click", async () => {
+    stubClaims();
+    await renderTrade(<Trade look={FULL_LOOK} />, { connected: true });
+    fireEvent.click(tab("Claims"));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Sign in and unlock" }));
+    });
+
+    await screen.findByText("No stealth payments found", {}, WAIT);
+    expect(getWalletToken()).toBe("claims-session");
+    expect(signatures).toHaveLength(2);
+    expect(scans).toBeGreaterThan(0);
+  });
+});
+
 // ============================================================
 // Account chip
 // ============================================================

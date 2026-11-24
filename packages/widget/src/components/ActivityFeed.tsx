@@ -706,6 +706,8 @@ interface ActivityFeedProps {
    * into the action it is describing (#352 item 3).
    */
   onClaimNudge?: () => void;
+  /** What is waiting, e.g. "4.98 DAI waiting on Base"; null when amounts are unknown. */
+  claimWaiting?: string | null;
 }
 
 /** Explicit "sign in to load history" affordance (no auto signature on connect). */
@@ -745,6 +747,7 @@ export function ActivityFeed({
   onReportSwap,
   onRetrySwap,
   onClaimNudge,
+  claimWaiting = null,
 }: ActivityFeedProps) {
   const [open, setOpen] = useState(false);
   const [expandedIds, setExpandedIds] = useState(new Set<string>());
@@ -924,7 +927,9 @@ export function ActivityFeed({
             >
               <span className="activity-strip__claim-chip">{claimableCount} claimable</span>
               <span className="activity-strip__claimable-text">
-                {claimableCount === 1 ? "settlement is" : "settlements are"} ready to claim.
+                {claimWaiting !== null
+                  ? `${claimWaiting}.`
+                  : `${claimableCount === 1 ? "settlement is" : "settlements are"} ready to claim.`}
                 {onClaimNudge ? " Open Claims." : ""}
               </span>
             </button>
