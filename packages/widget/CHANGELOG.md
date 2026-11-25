@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-11-25
+
+### Changed
+
+- Distinguish the Pay and Receive network pickers and searches. Canton is identified as a receive-only public destination over the currently advertised Base USDC route in the widget and configurator, without broadening capability-based route eligibility.
+- Explain unsupported payment apps and currencies, unavailable offers and failed lookups in Peer Buy. A connected wallet can inspect Buy offers with a zero balance, and empty results expire at their freshness boundary.
+- Explain verified Base USDC shortfalls in direct Cash out, including the available and requested amounts when reducing the amount may help. Stale estimates are discarded when the selection or balance changes while they load.
+
 ## [0.1.3] - 2026-11-24
 
 ### Added
