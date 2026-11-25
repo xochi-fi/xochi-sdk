@@ -187,12 +187,35 @@ describe("estimate and review", () => {
     expect(screen.queryByRole("radio")).toBeNull();
     fireEvent.change(amount, { target: { value: "55" } });
     expect(screen.getByText(/Your wallet has 0 USDC on Base/)).toBe(zero);
-    fireEvent.click(screen.getByRole("button", { name: "Check balance again" }));
+    const retry = screen.getByRole("button", { name: "Check balance again" });
+    retry.focus();
+    fireEvent.click(retry);
     await screen.findByRole("radio", { name: /Wise/ }, WAIT);
     expect(screen.queryByText(/Your wallet has 0 USDC on Base/)).toBeNull();
+    expect(document.activeElement).toBe(amount);
 
     fireEvent.change(screen.getByLabelText("Cash out from"), { target: { value: "other" } });
     expect(screen.queryByText(/Your wallet has 0 USDC on Base/)).toBeNull();
+  });
+
+  it("keeps a recent verified shortfall when the balance refresh fails", async () => {
+    const port = memoryOfframpPort({ account: TEST_ACCOUNT, makerRails: ["wise"] });
+    port.spendable = vi
+      .fn()
+      .mockResolvedValueOnce(0n)
+      .mockRejectedValueOnce(new Error("RPC unavailable"));
+    await mount(port);
+    fireEvent.change(screen.getByLabelText("USDC to cash out"), { target: { value: "55" } });
+    const retry = await screen.findByRole("button", { name: "Check balance again" });
+    retry.focus();
+    fireEvent.click(retry);
+    const status = await screen.findByText(
+      /Could not refresh your balance.*Last verified on Base.*0 USDC/,
+    );
+    expect(status.getAttribute("role")).toBe("status");
+    expect(document.activeElement).toBe(retry);
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.getByRole("button", { name: "Get estimate" })).toHaveProperty("disabled", true);
   });
 
   it("shows available and requested USDC when reducing the amount could help", async () => {

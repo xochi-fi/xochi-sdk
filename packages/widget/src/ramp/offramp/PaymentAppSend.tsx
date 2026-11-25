@@ -242,8 +242,19 @@ function EditStep({
     refetchInterval: TIMEOUTS.balanceRefresh / 2,
     retry: false,
   });
-  const balance =
-    balanceEnabled && balanceRead.isSuccess && !balanceRead.isStale ? balanceRead.data : null;
+  // A failed refresh invalidates the query, but the last verified read has its own deadline.
+  const [, expireBalance] = useState(0);
+  useEffect(() => {
+    if (!balanceEnabled || !balanceRead.isRefetchError) return;
+    const remaining = balanceRead.dataUpdatedAt + TIMEOUTS.balanceRefresh - Date.now();
+    if (remaining <= 0) return;
+    const timer = setTimeout(() => expireBalance(balanceRead.dataUpdatedAt), remaining);
+    return () => clearTimeout(timer);
+  }, [balanceEnabled, balanceRead.isRefetchError, balanceRead.dataUpdatedAt]);
+  const recentBalance = balanceRead.isRefetchError
+    ? Date.now() - balanceRead.dataUpdatedAt < TIMEOUTS.balanceRefresh
+    : balanceRead.isSuccess && !balanceRead.isStale;
+  const balance = balanceEnabled && recentBalance ? (balanceRead.data ?? null) : null;
   const checkingBalance = balanceEnabled && balanceRead.isPending;
   const cap = port.canaryCap();
   const max =
@@ -266,6 +277,13 @@ function EditStep({
         : `Your wallet has ${formatUsdc(balance.toString())} on Base. You entered ${formatUsdc(amount)}. Try a smaller amount, or receive more USDC on Base.`
       : undefined;
   const canCheck = !overCap && !balanceNote && !checkingBalance;
+  const amountInput = useRef<HTMLInputElement>(null);
+  const focusAfterBalanceRetry = useRef(false);
+  useLayoutEffect(() => {
+    if (balanceNote || !focusAfterBalanceRetry.current) return;
+    focusAfterBalanceRetry.current = false;
+    if (document.activeElement === document.body) amountInput.current?.focus();
+  }, [balanceNote]);
   const { state, now, refresh } = useOfframpRails({
     port,
     runtime: flow.runtime,
@@ -312,7 +330,10 @@ function EditStep({
   else if (!settlement)
     status = "Peer’s Base USDC configuration is unavailable. Check again later.";
   else if (overCap) status = overCap;
-  else if (balanceNote) status = balanceNote;
+  else if (balanceNote)
+    status = balanceRead.isRefetchError
+      ? `Could not refresh your balance. Last verified on Base: ${formatUsdc(balance!.toString())}.`
+      : balanceNote;
   else if (lost) status = "That app is unavailable. Choose again.";
   else if (flow.runtimeFailed)
     status = "Cash out is unavailable for this wallet. Reconnect your wallet and check again.";
@@ -359,6 +380,7 @@ function EditStep({
             <label className="send-field">
               <span className="send-field__label">USDC to cash out</span>
               <input
+                ref={amountInput}
                 className="send-field__control"
                 inputMode="decimal"
                 autoComplete="off"
@@ -430,8 +452,10 @@ function EditStep({
               type="button"
               className="send-secondary"
               aria-disabled={balanceRead.isFetching || balanceRead.isPaused}
-              onClick={() => {
-                if (!balanceRead.isFetching && !balanceRead.isPaused) void balanceRead.refetch();
+              onClick={(event) => {
+                if (balanceRead.isFetching || balanceRead.isPaused) return;
+                focusAfterBalanceRetry.current = document.activeElement === event.currentTarget;
+                void balanceRead.refetch();
               }}
             >
               Check balance again
