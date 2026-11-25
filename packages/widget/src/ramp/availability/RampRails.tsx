@@ -194,7 +194,13 @@ export function RampRails({
 
       <div aria-live="polite">
         {checked && cards.length === 0 && (
-          <OverallCard {...overallCard(state.result.availability, direction)} />
+          <OverallCard
+            {...overallCard(
+              state.result.availability,
+              direction,
+              state.result.noOfferUntil !== undefined && state.result.noOfferUntil <= now,
+            )}
+          />
         )}
       </div>
 
@@ -222,12 +228,16 @@ export function RampRails({
         </button>
       )}
 
-      {checked && (
+      {(checked || state.status === "loading") && !mobile && !unsupportedCurrency && (
         <button
           type="button"
           className="send-secondary"
           disabled={locked !== undefined}
-          onClick={refresh}
+          aria-disabled={!checked}
+          aria-busy={state.status === "loading"}
+          onClick={() => {
+            if (checked) refresh();
+          }}
         >
           Check again
         </button>

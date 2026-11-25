@@ -271,6 +271,62 @@ describe("Buy rails", () => {
     ]);
   });
 
+  it("keeps keyboard focus on the retry control during a fresh lookup", async () => {
+    const next = Promise.withResolvers<PeerDiscoveryResult>();
+    const discover = vi
+      .fn<RampDiscoveryPort["discover"]>()
+      .mockRejectedValueOnce(new Error("lookup failed"))
+      .mockReturnValueOnce(next.promise);
+    renderRails(
+      { discover, settlement: () => peerConfiguration().settlement, now: Date.now, debounceMs: 0 },
+      <RampRails direction="onramp" account={ACCOUNT} active />,
+    );
+    typeAmount("5");
+    await screen.findByText("Lookup failed");
+    const retry = screen.getByRole("button", { name: "Check again" });
+    retry.focus();
+    fireEvent.click(retry);
+    await waitFor(() => expect(discover).toHaveBeenCalledTimes(2));
+    expect(document.activeElement).toBe(retry);
+    expect(retry.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(retry);
+    expect(discover).toHaveBeenCalledTimes(2);
+    await act(async () =>
+      next.resolve({
+        offers: [],
+        estimates: [],
+        availability: { state: "temporarily_unavailable", reason_code: "capability_unavailable" },
+      }),
+    );
+    expect(document.activeElement).toBe(retry);
+    expect(retry.getAttribute("aria-disabled")).toBe("false");
+  });
+
+  it("expires an empty lookup without continuing to claim no offer", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let now = RECORDED_AT;
+    renderRails(
+      {
+        discover: async () => ({
+          offers: [],
+          estimates: [],
+          availability: { state: "temporarily_unavailable", reason_code: "capability_unavailable" },
+          noOfferUntil: RECORDED_AT + 500,
+        }),
+        settlement: () => peerConfiguration().settlement,
+        now: () => now,
+        debounceMs: 0,
+      },
+      <RampRails direction="onramp" account={ACCOUNT} active />,
+    );
+    typeAmount("5");
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(screen.getByRole("note").textContent).toMatch(/no offers for this amount right now/);
+    now += 501;
+    await act(() => vi.advanceTimersByTimeAsync(501));
+    expect(screen.getByRole("note").textContent).toMatch(/Check expired.*current Peer offers/);
+  });
+
   it("reads nothing while hidden, without a wallet, or with a bad amount", async () => {
     const clock: Clock = { t: RECORDED_AT };
     const port = recordedPort({ account: ACCOUNT, clock });

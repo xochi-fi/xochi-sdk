@@ -257,7 +257,15 @@ export function railCard(
 export function overallCard(
   availability: RampAvailability,
   direction: RampDirection,
+  noOfferExpired = false,
 ): Omit<RailCard, "id" | "name" | "needs"> {
+  if (noOfferExpired)
+    return {
+      state: "expired",
+      selectable: false,
+      status: "Check expired",
+      reason: "Check again for current Peer offers.",
+    };
   if (
     direction === "onramp" &&
     availability.state === "temporarily_unavailable" &&

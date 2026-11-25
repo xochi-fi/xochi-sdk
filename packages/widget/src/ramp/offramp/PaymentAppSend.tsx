@@ -17,7 +17,16 @@
  * confirmed, then only in S5's provider-private store.
  */
 
-import { useContext, useEffect, useId, useMemo, useState, type FormEvent } from "react";
+import {
+  useContext,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { useAccount, useConfig } from "wagmi";
 import { skipToken, useQuery } from "@tanstack/react-query";
 import { formatTokenAmount } from "../../utils/format.js";
@@ -226,7 +235,7 @@ function EditStep({
   const balanceEnabled =
     active && source === "base_usdc" && !!account && !!settlement && !!spendable;
   const balanceRead = useQuery({
-    queryKey: ["cash-out-balance", settlement?.asset_id, account],
+    queryKey: ["cash-out-balance", settlement?.asset_id, account, routeAmount],
     queryFn: account && spendable ? () => spendable(account) : skipToken,
     enabled: balanceEnabled,
     staleTime: TIMEOUTS.balanceRefresh,
@@ -235,6 +244,7 @@ function EditStep({
   });
   const balance =
     balanceEnabled && balanceRead.isSuccess && !balanceRead.isStale ? balanceRead.data : null;
+  const checkingBalance = balanceEnabled && balanceRead.isPending && balanceRead.isFetching;
   const cap = port.canaryCap();
   const max =
     balance !== null && cap !== undefined && balance > BigInt(cap) ? BigInt(cap) : balance;
@@ -255,7 +265,7 @@ function EditStep({
         ? "Your wallet has 0 USDC on Base. Receive USDC on Base to cash out."
         : `Your wallet has ${formatUsdc(balance.toString())} on Base. You entered ${formatUsdc(amount)}. Try a smaller amount, or receive more USDC on Base.`
       : undefined;
-  const canCheck = !overCap && !balanceNote;
+  const canCheck = !overCap && !balanceNote && !checkingBalance;
   const { state, now, refresh } = useOfframpRails({
     port,
     runtime: flow.runtime,
@@ -282,6 +292,13 @@ function EditStep({
   const selectable = cards.filter((c) => c.card.selectable);
   const blocked = cards.filter((c) => !c.card.selectable);
   const chosen = selectable.find((c) => c.card.id === selected);
+  const currentEstimate = useRef<RampOffer | undefined>(undefined);
+  useLayoutEffect(() => {
+    currentEstimate.current = active && source === "base_usdc" ? chosen?.offer : undefined;
+    return () => {
+      currentEstimate.current = undefined;
+    };
+  }, [active, source, chosen?.offer]);
   const lost = selected !== undefined && chosen === undefined && checked;
   const currencies = [...new Set([fiatCurrency, "USD"])];
   const estimateFor = (offer: RampOffer) =>
@@ -301,6 +318,7 @@ function EditStep({
     status = "Cash out is unavailable for this wallet. Reconnect your wallet and check again.";
   else if (account && amount === undefined && !amountInvalid)
     status = "Enter an amount to check payment apps.";
+  else if (amount !== undefined && checkingBalance) status = "Checking your USDC balance on Base…";
   else if (state.status === "loading") status = "Checking payment apps…";
 
   const sourcePicker = (
@@ -479,7 +497,11 @@ function EditStep({
                 }
                 onClick={() => {
                   if (chosen && state.status === "done")
-                    void flow.estimate(chosen.offer, state.intent);
+                    void flow.estimate(
+                      chosen.offer,
+                      state.intent,
+                      () => currentEstimate.current === chosen.offer,
+                    );
                 }}
               >
                 {flow.busy === "estimating" ? "Getting estimate..." : "Get estimate"}

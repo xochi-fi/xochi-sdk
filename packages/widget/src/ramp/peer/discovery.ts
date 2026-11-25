@@ -4,9 +4,10 @@ import { PEER_ENVIRONMENT } from "../../config.js";
 import { isPeerMobileWeb } from "./environment.js";
 import { formatUnits } from "viem";
 import {
-  isEmptyBuyResult,
+  emptyBuyResultExpiry,
   livePeerRails,
   normalizePeerQuotes,
+  PEER_FRESHNESS_MS,
   unavailable,
   type NormalizedPeerQuote,
 } from "./normalization.js";
@@ -28,13 +29,14 @@ const URLS = {
 const TIMEOUT_MS = 10_000;
 class ReadTimeout extends Error {}
 class NoPeerOffer extends Error {}
-function buyLookupUnavailable(noOffer: boolean): PeerDiscoveryResult {
-  const code = noOffer ? "capability_unavailable" : "capabilities_unavailable";
+function buyLookupUnavailable(noOfferUntil?: number): PeerDiscoveryResult {
+  const code = noOfferUntil === undefined ? "capabilities_unavailable" : "capability_unavailable";
   return {
     offers: [],
     estimates: [],
     availability: { state: "temporarily_unavailable", reason_code: code },
     code,
+    ...(noOfferUntil !== undefined ? { noOfferUntil } : {}),
   };
 }
 /** Fixed public cancellation error; never forwards AbortSignal.reason or provider errors. */
@@ -237,8 +239,12 @@ export async function readPeerQuotes(
     let quotes: NormalizedPeerQuote[];
     if (intent.direction === "onramp") {
       quotes = normalizePeerQuotes(raw, intent, config, now, rail);
-      if (!quotes.length && rail === undefined)
-        return { quotes, result: buyLookupUnavailable(isEmptyBuyResult(raw, intent, config, now)) };
+      if (!quotes.length && rail === undefined) {
+        const expiry = emptyBuyResultExpiry(raw, intent, config, now);
+        const validUntil =
+          expiry === undefined ? undefined : Math.min(expiry, now + PEER_FRESHNESS_MS);
+        return { quotes, result: buyLookupUnavailable(validUntil) };
+      }
     } else {
       // Buyer rates/availability never authorize a maker deposit. Live platform names are
       // candidates only; S5's read port must establish bounds, net rate and seller status.
@@ -313,7 +319,10 @@ export async function readPeerQuotes(
     if (error instanceof NoPeerOffer && rail === undefined) {
       const parsed = parseRamp(input);
       if (parsed.ok && parsed.value.kind === "intent" && parsed.value.direction === "onramp")
-        return { quotes: [], result: buyLookupUnavailable(true) };
+        return {
+          quotes: [],
+          result: buyLookupUnavailable((options.now ?? Date.now)() + PEER_FRESHNESS_MS),
+        };
     }
     return {
       quotes: [],

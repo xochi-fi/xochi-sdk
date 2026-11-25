@@ -123,13 +123,16 @@ export function useRampDiscovery({
   }, [port, settlement, direction, amount, currency, account, enabled, capped, nonce]);
 
   const offers = state.status === "done" ? state.result.offers : undefined;
+  const noOfferUntil = state.status === "done" ? state.result.noOfferUntil : undefined;
   useEffect(() => {
     if (!offers) return;
-    const at = nextExpiry(offers, now);
+    const at =
+      nextExpiry(offers, now) ??
+      (noOfferUntil !== undefined && noOfferUntil > now ? noOfferUntil : undefined);
     if (at === undefined) return;
     const timer = setTimeout(() => setNow(port.now()), Math.max(0, at - now) + 1);
     return () => clearTimeout(timer);
-  }, [port, offers, now]);
+  }, [port, offers, noOfferUntil, now]);
 
   const refresh = useCallback(() => setNonce((n) => n + 1), []);
   return { state, now, settlement, refresh, cap: capped ? cap : undefined };

@@ -20,7 +20,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { apiStub, renderTrade, TEST_ACCOUNT } from "../../pages/trade/harness.js";
 import { WAIT, testBudget } from "../../test/waitBudget.js";
 import {
@@ -33,6 +33,7 @@ import { OfframpPortContext } from "./port.js";
 import { OfframpActivityList, useLocalOfframps } from "./OfframpActivityList.js";
 import { listLocalOfframps } from "./localOfframps.js";
 import { clearWalletSession } from "../../lib/walletSession.js";
+import { TIMEOUTS } from "../../config.js";
 
 vi.setConfig({ testTimeout: testBudget({ renders: 2, waits: 12 }) });
 
@@ -112,10 +113,52 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
 describe("estimate and review", () => {
+  it("holds maker estimates while the initial Base USDC read is pending", async () => {
+    const port = memoryOfframpPort({ account: TEST_ACCOUNT, makerRails: ["wise"] });
+    const balance = Promise.withResolvers<bigint>();
+    port.spendable = () => balance.promise;
+    await mount(port);
+    fireEvent.change(screen.getByLabelText("USDC to cash out"), { target: { value: "5" } });
+    expect(screen.getByRole("status").textContent).toMatch(/Checking your USDC balance/);
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.getByRole("button", { name: "Get estimate" })).toHaveProperty("disabled", true);
+    await act(async () => balance.resolve(0n));
+    await screen.findByText(/Your wallet has 0 USDC on Base/, {}, WAIT);
+    expect(screen.queryByRole("radio")).toBeNull();
+  });
+
+  it("discards an outstanding estimate after a refreshed balance shows a shortfall", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const port = memoryOfframpPort({ account: TEST_ACCOUNT, makerRails: ["wise"] });
+    let spendable = 55_000_000n;
+    port.spendable = async () => spendable;
+    const runtime = await port.runtime(TEST_ACCOUNT);
+    const preview = runtime.client.preview.bind(runtime.client);
+    const release = Promise.withResolvers<void>();
+    const previewReady = Promise.withResolvers<void>();
+    runtime.client.preview = async (...args) => {
+      const result = await preview(...args);
+      previewReady.resolve();
+      await release.promise;
+      return result;
+    };
+    await mount(port);
+    fireEvent.change(screen.getByLabelText("USDC to cash out"), { target: { value: "5" } });
+    fireEvent.click(await screen.findByRole("radio", { name: /Wise/ }, WAIT));
+    fireEvent.click(screen.getByRole("button", { name: "Get estimate" }));
+    await previewReady.promise;
+    spendable = 0n;
+    await act(() => vi.advanceTimersByTimeAsync(TIMEOUTS.balanceRefresh / 2));
+    await screen.findByText(/Your wallet has 0 USDC on Base/, {}, WAIT);
+    await act(async () => release.resolve());
+    expect(screen.queryByRole("region", { name: "Review cash-out" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Get estimate" })).toHaveProperty("disabled", true);
+  });
   it("explains verified zero Base USDC at 5 and 55", async () => {
     const port = memoryOfframpPort({ account: TEST_ACCOUNT, makerRails: ["wise"] });
     port.spendable = async () => 0n;
