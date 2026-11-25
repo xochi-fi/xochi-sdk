@@ -220,7 +220,8 @@ describe("live Peer normalization", () => {
       .fn()
       .mockResolvedValueOnce(Response.json({ errorCode: "no_quotes_found" }, { status: 404 }))
       .mockResolvedValueOnce(new Response(null, { status: 404 }))
-      .mockResolvedValueOnce(Response.json({ errorCode: "no_quotes_found" }, { status: 503 }));
+      .mockResolvedValueOnce(Response.json({ errorCode: "no_quotes_found" }, { status: 503 }))
+      .mockResolvedValueOnce(Response.json({ errorCode: "no_quotes_found" }, { status: 404 }));
     vi.stubGlobal("fetch", fetch);
     try {
       for (const reason_code of [
@@ -233,6 +234,9 @@ describe("live Peer normalization", () => {
           reason_code,
         });
       }
+      expect(
+        (await fetchPeerCapabilities({ ...intent(), region: "US" })).availability,
+      ).toMatchObject({ reason_code: "capabilities_unavailable" });
     } finally {
       vi.unstubAllGlobals();
     }

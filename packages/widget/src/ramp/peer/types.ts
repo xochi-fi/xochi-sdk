@@ -63,8 +63,8 @@ export interface PeerDiscoveryResult {
   offers: RampOffer[];
   availability: RampAvailability;
   code?: RampErrorCode;
-  /** Expiry of an authoritative empty Buy discovery result, in Unix milliseconds. */
-  noOfferUntil?: number;
+  /** Expiry of the authoritative Buy discovery status, in Unix milliseconds. */
+  offerStatusUntil?: number;
 }
 export interface PeerConfiguration {
   settlement: RampSettlement;

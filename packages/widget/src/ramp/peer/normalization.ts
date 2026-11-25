@@ -86,26 +86,26 @@ function currency(value: string, config: PeerConfiguration, intent: RampIntent):
     value === intent.fiat.currency || value.toLowerCase() === config.currencyHash.toLowerCase()
   );
 }
-/** An empty result proves absence only when the provider envelope matches the request. */
-export function emptyBuyResultExpiry(
+/** Discovery status expires with its request-matched provider envelope. */
+export function buyDiscoveryStatus(
   raw: unknown,
   intent: RampIntent,
   config: PeerConfiguration,
   now: number,
-): number | undefined {
+): { empty: boolean; expiresAt: number } | undefined {
   const parsed = envelope.safeParse(raw);
   if (!parsed.success) return undefined;
   const body = parsed.data.responseObject;
   const expiresAt = Date.parse(body.quoteExpiresAt);
   if (
-    body.platformQuotes?.length === 0 &&
+    body.platformQuotes !== undefined &&
     body.token.token.toLowerCase() === config.settlement.asset_id.toLowerCase() &&
     currency(body.fiat.currencyCode, config, intent) &&
     body.orchestratorAddress.toLowerCase() === config.orchestrator.toLowerCase() &&
     expiresAt > now &&
     intent.region === undefined
   )
-    return expiresAt;
+    return { empty: body.platformQuotes.length === 0, expiresAt };
 }
 export function makeOffer(
   intent: RampIntent,

@@ -141,6 +141,7 @@ describe("Buy rails", () => {
     typeAmount("25");
     await act(() => vi.advanceTimersByTimeAsync(0));
     expect(radioNames()).toContain("Wise");
+    expect(blockedCard("Venmo").textContent).toMatch(/no offer for this amount/);
     fireEvent.click(
       within(screen.getByRole("group", { name: "Payment apps" })).getByLabelText(/Wise/),
     );
@@ -150,6 +151,7 @@ describe("Buy rails", () => {
     expect(radios()).toHaveLength(0);
     expect(blockedCard("Wise").textContent).toMatch(/Offer expired/);
     expect(blockedCard("Wise").textContent).toMatch(/Check again/);
+    expect(within(blockedList()).queryByText("Venmo")).toBeNull();
     expect(screen.getByRole("status").textContent).toMatch(/unavailable\. Check again/);
     expect(port.calls).toHaveLength(1);
   });
@@ -311,7 +313,7 @@ describe("Buy rails", () => {
           offers: [],
           estimates: [],
           availability: { state: "temporarily_unavailable", reason_code: "capability_unavailable" },
-          noOfferUntil: RECORDED_AT + 500,
+          offerStatusUntil: RECORDED_AT + 500,
         }),
         settlement: () => peerConfiguration().settlement,
         now: () => now,

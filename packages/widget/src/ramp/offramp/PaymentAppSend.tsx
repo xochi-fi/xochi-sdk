@@ -244,7 +244,7 @@ function EditStep({
   });
   const balance =
     balanceEnabled && balanceRead.isSuccess && !balanceRead.isStale ? balanceRead.data : null;
-  const checkingBalance = balanceEnabled && balanceRead.isPending && balanceRead.isFetching;
+  const checkingBalance = balanceEnabled && balanceRead.isPending;
   const cap = port.canaryCap();
   const max =
     balance !== null && cap !== undefined && balance > BigInt(cap) ? BigInt(cap) : balance;
@@ -318,7 +318,10 @@ function EditStep({
     status = "Cash out is unavailable for this wallet. Reconnect your wallet and check again.";
   else if (account && amount === undefined && !amountInvalid)
     status = "Enter an amount to check payment apps.";
-  else if (amount !== undefined && checkingBalance) status = "Checking your USDC balance on Base…";
+  else if (amount !== undefined && checkingBalance)
+    status = balanceRead.isPaused
+      ? "Reconnect to check your USDC balance on Base."
+      : "Checking your USDC balance on Base…";
   else if (state.status === "loading") status = "Checking payment apps…";
 
   const sourcePicker = (
@@ -421,6 +424,18 @@ function EditStep({
             <p className="send-note" id={`${id}-cash-out-status`} role="status">
               {status}
             </p>
+          )}
+          {balanceNote && !overCap && (
+            <button
+              type="button"
+              className="send-secondary"
+              aria-disabled={balanceRead.isFetching || balanceRead.isPaused}
+              onClick={() => {
+                if (!balanceRead.isFetching && !balanceRead.isPaused) void balanceRead.refetch();
+              }}
+            >
+              Check balance again
+            </button>
           )}
 
           {checked && cards.length === 0 && (

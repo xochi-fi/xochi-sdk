@@ -4,7 +4,7 @@ import { PEER_ENVIRONMENT } from "../../config.js";
 import { isPeerMobileWeb } from "./environment.js";
 import { formatUnits } from "viem";
 import {
-  emptyBuyResultExpiry,
+  buyDiscoveryStatus,
   livePeerRails,
   normalizePeerQuotes,
   PEER_FRESHNESS_MS,
@@ -29,14 +29,15 @@ const URLS = {
 const TIMEOUT_MS = 10_000;
 class ReadTimeout extends Error {}
 class NoPeerOffer extends Error {}
-function buyLookupUnavailable(noOfferUntil?: number): PeerDiscoveryResult {
-  const code = noOfferUntil === undefined ? "capabilities_unavailable" : "capability_unavailable";
+function buyLookupUnavailable(offerStatusUntil?: number): PeerDiscoveryResult {
+  const code =
+    offerStatusUntil === undefined ? "capabilities_unavailable" : "capability_unavailable";
   return {
     offers: [],
     estimates: [],
     availability: { state: "temporarily_unavailable", reason_code: code },
     code,
-    ...(noOfferUntil !== undefined ? { noOfferUntil } : {}),
+    ...(offerStatusUntil !== undefined ? { offerStatusUntil } : {}),
   };
 }
 /** Fixed public cancellation error; never forwards AbortSignal.reason or provider errors. */
@@ -237,13 +238,17 @@ export async function readPeerQuotes(
     const now = (options.now ?? Date.now)();
     if (!Number.isSafeInteger(now)) return { quotes: [], result: unavailable() };
     let quotes: NormalizedPeerQuote[];
+    let offerStatusUntil: number | undefined;
     if (intent.direction === "onramp") {
       quotes = normalizePeerQuotes(raw, intent, config, now, rail);
-      if (!quotes.length && rail === undefined) {
-        const expiry = emptyBuyResultExpiry(raw, intent, config, now);
-        const validUntil =
-          expiry === undefined ? undefined : Math.min(expiry, now + PEER_FRESHNESS_MS);
-        return { quotes, result: buyLookupUnavailable(validUntil) };
+      if (rail === undefined) {
+        const status = buyDiscoveryStatus(raw, intent, config, now);
+        if (status) offerStatusUntil = Math.min(status.expiresAt, now + PEER_FRESHNESS_MS);
+        if (!quotes.length)
+          return {
+            quotes,
+            result: buyLookupUnavailable(status?.empty ? offerStatusUntil : undefined),
+          };
       }
     } else {
       // Buyer rates/availability never authorize a maker deposit. Live platform names are
@@ -310,6 +315,7 @@ export async function readPeerQuotes(
             : [],
         ),
         availability,
+        ...(offerStatusUntil !== undefined ? { offerStatusUntil } : {}),
         ...(quotes.length ? {} : { code: "capability_unavailable" as const }),
       },
     };
@@ -318,7 +324,12 @@ export async function readPeerQuotes(
     if (error instanceof PeerReadAborted) throw error;
     if (error instanceof NoPeerOffer && rail === undefined) {
       const parsed = parseRamp(input);
-      if (parsed.ok && parsed.value.kind === "intent" && parsed.value.direction === "onramp")
+      if (
+        parsed.ok &&
+        parsed.value.kind === "intent" &&
+        parsed.value.direction === "onramp" &&
+        parsed.value.region === undefined
+      )
         return {
           quotes: [],
           result: buyLookupUnavailable((options.now ?? Date.now)() + PEER_FRESHNESS_MS),

@@ -85,9 +85,13 @@ export function RampRails({
     state.intent.exact.money.atomic === amount &&
     state.intent.fiat.currency === currency &&
     state.intent.recipient === account;
+  const lookupExpired =
+    checked && state.result.offerStatusUntil !== undefined && state.result.offerStatusUntil <= now;
   const cards: RailCard[] =
     checked && settlement
-      ? state.result.offers.map((offer) => railCard(offer, state.intent, settlement, now))
+      ? state.result.offers
+          .filter((offer) => !lookupExpired || offer.availability.state === "available")
+          .map((offer) => railCard(offer, state.intent, settlement, now))
       : [];
   const selectable = cards.filter((c) => c.selectable);
   const blocked = cards
@@ -193,14 +197,8 @@ export function RampRails({
       )}
 
       <div aria-live="polite">
-        {checked && cards.length === 0 && (
-          <OverallCard
-            {...overallCard(
-              state.result.availability,
-              direction,
-              state.result.noOfferUntil !== undefined && state.result.noOfferUntil <= now,
-            )}
-          />
+        {checked && (cards.length === 0 || lookupExpired) && (
+          <OverallCard {...overallCard(state.result.availability, direction, lookupExpired)} />
         )}
       </div>
 

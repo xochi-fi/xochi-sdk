@@ -33,6 +33,7 @@ import { OfframpPortContext } from "./port.js";
 import { OfframpActivityList, useLocalOfframps } from "./OfframpActivityList.js";
 import { listLocalOfframps } from "./localOfframps.js";
 import { clearWalletSession } from "../../lib/walletSession.js";
+import { onlineManager } from "@tanstack/react-query";
 import { TIMEOUTS } from "../../config.js";
 
 vi.setConfig({ testTimeout: testBudget({ renders: 2, waits: 12 }) });
@@ -113,6 +114,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  onlineManager.setOnline(true);
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -130,6 +132,19 @@ describe("estimate and review", () => {
     await act(async () => balance.resolve(0n));
     await screen.findByText(/Your wallet has 0 USDC on Base/, {}, WAIT);
     expect(screen.queryByRole("radio")).toBeNull();
+  });
+
+  it("holds maker estimates while an initial balance lookup is paused offline", async () => {
+    const port = memoryOfframpPort({ account: TEST_ACCOUNT, makerRails: ["wise"] });
+    port.spendable = vi.fn().mockResolvedValue(0n);
+    onlineManager.setOnline(false);
+    await mount(port);
+    fireEvent.change(screen.getByLabelText("USDC to cash out"), { target: { value: "55" } });
+    expect(screen.getByRole("status").textContent).toMatch(/Reconnect to check your USDC balance/);
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(port.spendable).not.toHaveBeenCalled();
+    await act(async () => onlineManager.setOnline(true));
+    await screen.findByText(/Your wallet has 0 USDC on Base/, {}, WAIT);
   });
 
   it("discards an outstanding estimate after a refreshed balance shows a shortfall", async () => {
@@ -161,7 +176,7 @@ describe("estimate and review", () => {
   });
   it("explains verified zero Base USDC at 5 and 55", async () => {
     const port = memoryOfframpPort({ account: TEST_ACCOUNT, makerRails: ["wise"] });
-    port.spendable = async () => 0n;
+    port.spendable = vi.fn().mockResolvedValueOnce(0n).mockResolvedValueOnce(55_000_000n);
     await mount(port);
     const amount = screen.getByLabelText("USDC to cash out");
     fireEvent.change(amount, { target: { value: "5" } });
@@ -172,6 +187,9 @@ describe("estimate and review", () => {
     expect(screen.queryByRole("radio")).toBeNull();
     fireEvent.change(amount, { target: { value: "55" } });
     expect(screen.getByText(/Your wallet has 0 USDC on Base/)).toBe(zero);
+    fireEvent.click(screen.getByRole("button", { name: "Check balance again" }));
+    await screen.findByRole("radio", { name: /Wise/ }, WAIT);
+    expect(screen.queryByText(/Your wallet has 0 USDC on Base/)).toBeNull();
 
     fireEvent.change(screen.getByLabelText("Cash out from"), { target: { value: "other" } });
     expect(screen.queryByText(/Your wallet has 0 USDC on Base/)).toBeNull();
