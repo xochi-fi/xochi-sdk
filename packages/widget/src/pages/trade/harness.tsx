@@ -27,7 +27,13 @@
 import { afterAll } from "vitest";
 import type { ReactNode } from "react";
 import { render, type RenderResult } from "@testing-library/react";
-import { WagmiProvider, createConfig, createConnector, type Config } from "wagmi";
+import {
+  WagmiProvider,
+  createConfig,
+  createConnector,
+  type Config,
+  type CreateConnectorFn,
+} from "wagmi";
 import { mock } from "wagmi/connectors";
 import { mainnet, base, arbitrum, optimism, polygon } from "wagmi/chains";
 import { connect } from "@wagmi/core";
@@ -253,6 +259,7 @@ export function makeTestConfig(
   tokenBalance = 0n,
   hostWallet = false,
   chains: readonly [Chain, ...Chain[]] = CHAINS,
+  connector?: CreateConnectorFn,
 ): Config {
   return createConfig({
     chains: [onHarnessRpc(chains[0]), ...chains.slice(1).map(onHarnessRpc)],
@@ -264,9 +271,10 @@ export function makeTestConfig(
     // and the wallet-context effect in useSwapPanel closes the flow modal it
     // had just restored.
     connectors: [
-      hostWallet
-        ? hostWalletMock()
-        : mock({ accounts: [TEST_ACCOUNT], features: { reconnect: true } }),
+      connector ??
+        (hostWallet
+          ? hostWalletMock()
+          : mock({ accounts: [TEST_ACCOUNT], features: { reconnect: true } })),
     ],
     transports: {
       [mainnet.id]: testTransport(mainnet, tokenBalance),
@@ -303,6 +311,8 @@ function Providers({ config, children }: { config: Config; children: ReactNode }
 }
 
 interface RenderTradeOptions {
+  /** An existing config for fixtures that drive a real widget bridge. */
+  config?: Config;
   /** Connect the mock wallet before the first render (default: anonymous). */
   connected?: boolean;
   /**
@@ -331,6 +341,7 @@ interface RenderTradeOptions {
 export async function renderTrade(
   ui: ReactNode,
   {
+    config: existingConfig,
     connected = false,
     walletChainId,
     tokenBalance,
@@ -360,7 +371,7 @@ export async function renderTrade(
       `${window.location.pathname}?${params}${window.location.hash}`,
     );
   }
-  const config = makeTestConfig(tokenBalance, hostWallet);
+  const config = existingConfig ?? makeTestConfig(tokenBalance, hostWallet);
   if (connected) {
     const connector = config.connectors[0];
     if (walletChainId === undefined) {
