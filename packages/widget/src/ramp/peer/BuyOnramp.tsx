@@ -84,7 +84,14 @@ export function BuyOnramp({
   const [clock, setClock] = useState(Date.now());
   const emitter = useRef<ReturnType<typeof createRampEmitter> | undefined>(undefined);
   const generation = useRef(0);
-  const bound = JSON.stringify([intent, offer.offer_id, offer.capability_revision]);
+  const selectionExpiry =
+    offer.availability.state === "available" ? Date.parse(offer.availability.valid_until) : NaN;
+  const bound = JSON.stringify([
+    intent,
+    offer.offer_id,
+    offer.capability_revision,
+    selectionExpiry,
+  ]);
   const submitted = snapshot !== undefined && !["quoted", "failed"].includes(snapshot.peer.state);
   const summary = useRef<RampOperationSummary | undefined>(undefined);
   function remember(next: RampOperationSummary) {
@@ -222,12 +229,14 @@ export function BuyOnramp({
                   if (current !== generation.current) return;
                   setSetup(requirement);
                   if (requirement) return;
+                  if (!(selectionExpiry > Date.now())) throw new Error("quote_expired");
                   const quote = await client.preview(
                     intent,
                     offer.offer_id,
                     offer.capability_revision,
                   );
                   if (current !== generation.current) return;
+                  if (!(selectionExpiry > Date.now())) throw new Error("quote_expired");
                   const previous = summary.current;
                   if (previous && !previous.submitted) abandonRampSummary(previous.operation_id);
                   const now = new Date().toISOString();

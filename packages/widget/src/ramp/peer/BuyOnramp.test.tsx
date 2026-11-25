@@ -2,8 +2,13 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { BuyOnramp } from "./BuyOnramp.js";
-import { buyerHarness } from "../../test/buyerPort.js";
-import type { PeerOnrampRuntime } from "./onramp.js";
+import { buyerHarness, MemoryExtension } from "../../test/buyerPort.js";
+import { buildRampIntent } from "../availability/model.js";
+import { createPeerBuyerDriver } from "./buyerDriver.js";
+import { fetchPeerCapabilities, peerConfiguration } from "./discovery.js";
+import { createPeerOnrampProvider, type PeerOnrampRuntime } from "./onramp.js";
+import recorded from "./fixtures/usd-best-by-platform.json";
+import type { PublicClient, WalletClient } from "viem";
 const runtimes: PeerOnrampRuntime[] = [];
 afterEach(() => {
   cleanup();
@@ -86,6 +91,130 @@ it("keeps an embedded extension with a broken version API on the update path", a
   fireEvent.click(screen.getByRole("button", { name: "Review exact Peer quote" }));
   await screen.findByText(/Update the Peer extension/);
   expect(screen.queryByRole("link", { name: "Open Peer Buy in a new tab" })).toBeNull();
+});
+
+it.each([
+  ["expiry renewal", 2, 1],
+  ["stale original", 1, 0],
+  ["original expires during review", 2, 1],
+  ["expired rediscovery", 2, 0],
+  ["rediscovery expires during exact quote", 2, 1],
+  ["expired exact quote", 2, 1],
+  ["changed economics on rediscovery", 2, 0],
+  ["changed economics on exact quote", 2, 1],
+  ["changed maker on exact quote", 2, 1],
+  ["changed payee on exact quote", 2, 1],
+  ["changed settlement on exact quote", 2, 1],
+] as const)("validates %s through Buy Review", async (scenario, discoveryCalls, exactCalls) => {
+  const now = Date.now();
+  const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+  const config = peerConfiguration();
+  const address = "0x1111111111111111111111111111111111111111";
+  const intent = buildRampIntent({
+    direction: "onramp",
+    amount: "25000000",
+    currency: "USD",
+    recipient: address,
+    settlement: config.settlement,
+  });
+  const source = recorded.responseObject.platformQuotes.find((row) => row.platform === "wise")!;
+  const terms = {
+    ...source.bestQuote!,
+    intent: {
+      ...source.bestQuote!.intent,
+      toAddress: address,
+      depositId: 123,
+      escrowAddress: config.escrow,
+      payeeDetails: `0x${"3".repeat(64)}`,
+    },
+  };
+  const expiry = (offset: number) => new Date(now + offset).toISOString();
+  const discovery = (offset: number, freshTerms = terms) => ({
+    ...recorded,
+    responseObject: {
+      ...recorded.responseObject,
+      quoteExpiresAt: expiry(offset),
+      platformQuotes: [{ ...source, bestQuote: freshTerms }],
+    },
+  });
+  const exactTerms = structuredClone(terms);
+  if (scenario === "changed economics on exact quote") exactTerms.fiatAmount = "26000000";
+  if (scenario === "changed maker on exact quote") exactTerms.intent.depositId++;
+  if (scenario === "changed payee on exact quote")
+    exactTerms.intent.payeeDetails = `0x${"4".repeat(64)}`;
+  if (scenario === "changed settlement on exact quote") {
+    exactTerms.intent.escrowAddress = "0x2222222222222222222222222222222222222222";
+  }
+  const reads = {
+    bestByPlatform: vi
+      .fn()
+      .mockResolvedValueOnce(discovery(10_000))
+      .mockResolvedValueOnce(
+        discovery(
+          scenario === "expired rediscovery" ? -1 : 20_000,
+          scenario === "changed economics on rediscovery"
+            ? { ...terms, fiatAmount: "26000000" }
+            : terms,
+        ),
+      ),
+    quote: vi.fn(async () => {
+      if (scenario === "original expires during review") clock.mockReturnValue(now + 10_001);
+      if (scenario === "rediscovery expires during exact quote")
+        clock.mockReturnValue(now + 20_001);
+      return {
+        ...recorded,
+        responseObject: {
+          ...recorded.responseObject,
+          quoteExpiresAt: expiry(scenario === "expired exact quote" ? -1 : 25_000),
+          platformQuotes: undefined,
+          quotes: [exactTerms],
+        },
+      };
+    }),
+  };
+  const { offers } = await fetchPeerCapabilities(intent, { reads });
+  expect(offers).toHaveLength(1);
+  const sendTransaction = vi.fn();
+  const signTypedData = vi.fn();
+  const signMessage = vi.fn();
+  const driver = createPeerBuyerDriver({
+    wallet: {
+      account: { address },
+      sendTransaction,
+      signTypedData,
+      signMessage,
+    } as unknown as WalletClient,
+    publicClient: { chain: { id: 8453 } } as PublicClient,
+    reads,
+  });
+  const extension = new MemoryExtension();
+  const runtime = createPeerOnrampProvider({
+    user: address,
+    driver,
+    extension,
+    reads,
+    desktop: true,
+  });
+  runtimes.push(runtime);
+  render(<BuyOnramp intent={intent} offer={offers[0]!} runtime={runtime} />);
+  if (scenario === "stale original") clock.mockReturnValue(now + 10_001);
+  fireEvent.click(screen.getByRole("button", { name: "Review exact Peer quote" }));
+  if (scenario === "expiry renewal") {
+    await screen.findByText("Pay exactly");
+    expect(document.querySelector(`time[datetime="${expiry(25_000)}"]`)).toBeTruthy();
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Confirm purchase" }).disabled,
+    ).toBe(true);
+  } else {
+    await screen.findByText(/Peer could not validate this operation/);
+    expect(screen.queryByText("Pay exactly")).toBeNull();
+  }
+  expect(reads.bestByPlatform).toHaveBeenCalledTimes(discoveryCalls);
+  expect(reads.quote).toHaveBeenCalledTimes(exactCalls);
+  expect(sendTransaction).not.toHaveBeenCalled();
+  expect(signTypedData).not.toHaveBeenCalled();
+  expect(signMessage).not.toHaveBeenCalled();
+  expect(extension.opens).toBe(0);
 });
 
 it("reviews exact economics, names wallet actions and waits for receipt confirmation", async () => {

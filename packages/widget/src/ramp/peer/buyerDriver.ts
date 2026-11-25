@@ -239,6 +239,10 @@ export function createPeerBuyerDriver(
   return {
     async quote(intent, offer, signal) {
       if (!same(intent.recipient, account.address)) throw new Error("invalid_request");
+      const now = options.now ?? Date.now;
+      const selectionExpiry =
+        offer.availability.state === "available" ? Date.parse(offer.availability.valid_until) : NaN;
+      if (!(selectionExpiry > now())) throw new Error("quote_expired");
       const request = {
         fiatCurrency: intent.fiat.currency,
         user: account.address,
@@ -275,13 +279,9 @@ export function createPeerBuyerDriver(
         if (!response.ok) throw new Error("capabilities_unavailable");
         return response.json();
       }, signal);
-      const normalized = normalizePeerQuotes(
-        raw,
-        intent,
-        config,
-        (options.now ?? Date.now)(),
-        offer.rail.id,
-      )[0];
+      const readAt = now();
+      if (!(selectionExpiry > readAt)) throw new Error("quote_expired");
+      const normalized = normalizePeerQuotes(raw, intent, config, readAt, offer.rail.id)[0];
       if (
         !normalized ||
         normalized.offer.availability.state !== "available" ||
