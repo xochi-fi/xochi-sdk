@@ -8,7 +8,84 @@ const runtimes: PeerOnrampRuntime[] = [];
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.restoreAllMocks();
+  window.history.replaceState(null, "", "/");
   for (const runtime of runtimes.splice(0)) runtime.dispose();
+});
+
+it.each(["/embed", "/partner"])(
+  "hands off embedded Buy at %s to a fresh standalone review",
+  async (path) => {
+    window.history.replaceState(null, "", `${path}?amount=25&offer=private&quote=private`);
+    const parent = vi.spyOn(window, "parent", "get").mockReturnValue({} as Window);
+    const embedded = await buyerHarness(Date.now());
+    runtimes.push(embedded.runtime);
+    embedded.extension.state = "needs_install";
+    const view = render(
+      <BuyOnramp intent={embedded.intent} offer={embedded.offer} runtime={embedded.runtime} />,
+    );
+    const review = () =>
+      fireEvent.click(screen.getByRole("button", { name: "Review exact Peer quote" }));
+    review();
+    const link = await screen.findByRole<HTMLAnchorElement>("link", {
+      name: "Open Peer Buy in a new tab",
+    });
+    const target = new URL(link.href);
+    expect(target.origin).toBe(
+      path === "/embed" ? window.location.origin : "https://widget.xochi.fi",
+    );
+    expect(target.pathname + target.search).toBe(
+      "/embed?initialTab=trade&initialMode=onramp&fiatCurrency=USD",
+    );
+    expect(link.target).toBe("_blank");
+    expect(link.rel).toBe("noopener noreferrer");
+    expect(screen.getByRole("status").textContent).toContain(
+      "Connect your wallet there, re-enter the amount, and select a fresh offer.",
+    );
+    expect(screen.queryByRole("button", { name: "Install Peer extension" })).toBeNull();
+    expect(screen.queryByText("Pay exactly")).toBeNull();
+    view.unmount();
+    parent.mockRestore();
+
+    const standalone = await buyerHarness(Date.now());
+    runtimes.push(standalone.runtime);
+    standalone.extension.state = "needs_install";
+    const install = vi.spyOn(standalone.extension, "openInstallPage");
+    render(
+      <BuyOnramp
+        intent={standalone.intent}
+        offer={standalone.offer}
+        runtime={standalone.runtime}
+      />,
+    );
+    review();
+    fireEvent.click(await screen.findByRole("button", { name: "Install Peer extension" }));
+    expect(install).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("link", { name: "Open Peer Buy in a new tab" })).toBeNull();
+    standalone.extension.state = "needs_connection";
+    review();
+    fireEvent.click(await screen.findByRole("button", { name: "Connect Peer extension" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Connect Peer extension" })).toBeNull(),
+    );
+    review();
+    await screen.findByText("Pay exactly");
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Confirm purchase" }).disabled,
+    ).toBe(true);
+    expect(standalone.counts()).toEqual({ signals: 0, fulfills: 0 });
+  },
+);
+
+it("keeps an embedded extension with a broken version API on the update path", async () => {
+  vi.spyOn(window, "parent", "get").mockReturnValue({} as Window);
+  const h = await buyerHarness(Date.now());
+  runtimes.push(h.runtime);
+  vi.spyOn(h.extension, "getVersion").mockRejectedValue(new Error());
+  render(<BuyOnramp intent={h.intent} offer={h.offer} runtime={h.runtime} />);
+  fireEvent.click(screen.getByRole("button", { name: "Review exact Peer quote" }));
+  await screen.findByText(/Update the Peer extension/);
+  expect(screen.queryByRole("link", { name: "Open Peer Buy in a new tab" })).toBeNull();
 });
 
 it("reviews exact economics, names wallet actions and waits for receipt confirmation", async () => {
