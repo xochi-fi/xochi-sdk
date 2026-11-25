@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-11-25
+
+### Added
+
+- Offer an explicit **Add Robinhood to MetaMask** action when a hosted swap needs Robinhood mainnet. The shared wallet operation prevents repeated taps or late switch responses from opening duplicate add prompts.
+
+### Fixed
+
+- Reconcile hosted-wallet network switches after the user returns from the wallet, including providers that acknowledge a request before updating `eth_chainId` or never emit `chainChanged`. Robinhood setup can recover when the add request never replies, and a stalled read can be replaced with **Check network again** without allowing results from an older wallet session to advance the trade.
+
 ## [0.1.5] - 2026-11-25
 
 ### Changed
