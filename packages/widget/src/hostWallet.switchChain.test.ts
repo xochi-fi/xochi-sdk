@@ -197,7 +197,7 @@ describe("adding Robinhood from the swap panel", () => {
       ),
     );
     fireEvent(window, new Event("pageshow"));
-    await screen.findByText("Still waiting for MetaMask.");
+    await screen.findByText("Still waiting for MetaMask to reply to the add request.");
     expect(getAccount(config).chainId).toBe(mainnet.id);
     expect(screen.getByRole("button", { name: "Switch to Robinhood" })).toHaveProperty(
       "disabled",
@@ -254,7 +254,9 @@ describe("adding Robinhood from the swap panel", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(getAccount(config).chainId).toBe(mainnet.id);
     expect(nextAdd.isConnected).toBe(true);
-    expect(screen.queryByText("Still waiting for MetaMask.")).toBeNull();
+    expect(
+      screen.queryByText("Still waiting for MetaMask to reply to the add request."),
+    ).toBeNull();
   });
 
   it("takes over a pending switch and verifies the chain after explicit approval", async () => {
@@ -288,8 +290,12 @@ describe("adding Robinhood from the swap panel", () => {
         }),
       ],
     });
-    wallet.chain = "0x1237";
+    fireEvent(window, new Event("pageshow"));
+    await screen.findByText("Still waiting for MetaMask to reply to the add request.");
     approve();
+    await screen.findByText("MetaMask confirmed the add request. Checking the active network.");
+    wallet.chain = "0x1237";
+    fireEvent.click(screen.getByRole("button", { name: "Check network again" }));
     await waitFor(() => expect(getAccount(config).chainId).toBe(robinhood.id));
     await waitFor(() => expect(addButton.isConnected).toBe(false));
     expect(
@@ -300,6 +306,9 @@ describe("adding Robinhood from the swap panel", () => {
   it("keeps the swap gated and explains how to retry after add leaves the chain inactive", async () => {
     const { config, request, addButton } = await renderRobinhood();
     fireEvent.click(addButton);
+    await screen.findByText("MetaMask confirmed the add request. Checking the active network.");
+    expect(screen.queryByText(/Still waiting for MetaMask to reply/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Check network again" })).toBeTruthy();
     await screen.findByText(/Robinhood is still inactive/, {}, { timeout: 4_000 });
     expect(addButton).toHaveProperty("disabled", false);
     expect(getAccount(config).chainId).toBe(mainnet.id);

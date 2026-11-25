@@ -234,6 +234,7 @@ export function SwapPanel({
       : undefined;
   const [addingRobinhood, setAddingRobinhood] = useState(false);
   const [waitingForRobinhood, setWaitingForRobinhood] = useState(false);
+  const [robinhoodAddAcknowledged, setRobinhoodAddAcknowledged] = useState(false);
   const [robinhoodNotice, setRobinhoodNotice] = useState("");
   const addingRobinhoodRef = useRef(false);
   const recheckRobinhood =
@@ -264,14 +265,14 @@ export function SwapPanel({
     setAddingRobinhood(true);
     setRobinhoodNotice("Approve the network in MetaMask, then return here.");
     try {
-      await addRobinhood();
+      await addRobinhood(() => setRobinhoodAddAcknowledged(true));
       setRobinhoodNotice("");
     } catch (error) {
       if (error instanceof HostWalletDisconnectedError) {
         setRobinhoodNotice("");
       } else if (error instanceof WalletChainUnchangedError) {
         setRobinhoodNotice(
-          "Robinhood is still inactive. Select Robinhood Chain in MetaMask or try Switch to Robinhood again.",
+          "MetaMask confirmed the add request, but Robinhood is still inactive for this site. Select Robinhood Chain in MetaMask or try Switch to Robinhood again.",
         );
       } else if (error instanceof UserRejectedRequestError) {
         setRobinhoodNotice("You declined the network request. You can try adding Robinhood again.");
@@ -284,6 +285,7 @@ export function SwapPanel({
       addingRobinhoodRef.current = false;
       setAddingRobinhood(false);
       setWaitingForRobinhood(false);
+      setRobinhoodAddAcknowledged(false);
     }
   }
   const [recipientSheetOpen, setRecipientSheetOpen] = useState(false);
@@ -1393,9 +1395,13 @@ export function SwapPanel({
               >
                 Add Robinhood to MetaMask
               </button>
-              {waitingForRobinhood ? (
+              {waitingForRobinhood || robinhoodAddAcknowledged ? (
                 <>
-                  <p role="status">Still waiting for MetaMask.</p>
+                  <p role="status">
+                    {robinhoodAddAcknowledged
+                      ? "MetaMask confirmed the add request. Checking the active network."
+                      : "Still waiting for MetaMask to reply to the add request."}
+                  </p>
                   <button
                     type="button"
                     className="btn btn--ghost btn--sm"
@@ -1403,10 +1409,12 @@ export function SwapPanel({
                   >
                     Check network again
                   </button>
-                  <p>
-                    If the wait continues, disconnect and reconnect MetaMask in the site’s wallet
-                    menu.
-                  </p>
+                  {waitingForRobinhood && !robinhoodAddAcknowledged && (
+                    <p>
+                      If MetaMask showed an approval, check the network again. If the wait
+                      continues, disconnect and reconnect MetaMask in the site’s wallet menu.
+                    </p>
+                  )}
                 </>
               ) : (
                 robinhoodNotice && <p role="status">{robinhoodNotice}</p>

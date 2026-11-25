@@ -236,7 +236,7 @@ export function hostWallet(bridge: HostConnection): Wallet {
         let currentSwitch:
           | {
               chainId: number;
-              add: (explicit?: boolean) => void;
+              add: (onAcknowledged?: () => void) => void;
               recheck: () => void;
               cancel: () => void;
               result: Promise<Chain>;
@@ -247,13 +247,13 @@ export function hostWallet(bridge: HostConnection): Wallet {
             chainId,
             addEthereumChainParameter,
           }: Parameters<NonNullable<typeof base.switchChain>>[0],
-          addOnly = false,
+          onAddAcknowledged?: () => void,
         ) {
           const chain = wagmiConfig.chains.find((candidate) => candidate.id === chainId);
           if (!chain) throw new SwitchChainError(new ChainNotConfiguredError());
           if (currentSwitch) {
-            if (addOnly && currentSwitch.chainId === chainId) {
-              currentSwitch.add(true);
+            if (onAddAcknowledged && currentSwitch.chainId === chainId) {
+              currentSwitch.add(onAddAcknowledged);
               return currentSwitch.result;
             }
             throw new SwitchChainError(new Error("A network switch is in progress"));
@@ -264,6 +264,8 @@ export function hostWallet(bridge: HostConnection): Wallet {
           let accepted = false;
           let adding = false;
           let recoverable = false;
+          let addAcknowledged = false;
+          let notifyAddAcknowledged: (() => void) | undefined;
           let observed = false;
           let chainEvent = 0;
           let finished = false;
@@ -371,9 +373,14 @@ export function hostWallet(bridge: HostConnection): Wallet {
                 ? new UserRejectedRequestError(error)
                 : new SwitchChainError(error),
             );
-          const requestAdd = async (explicit: boolean) => {
-            if (explicit) recoverable = true;
-            if (finished || adding) return;
+          const requestAdd = async (onAcknowledged?: () => void) => {
+            if (finished) return;
+            if (onAcknowledged) {
+              recoverable = true;
+              notifyAddAcknowledged = onAcknowledged;
+              if (addAcknowledged) onAcknowledged();
+            }
+            if (adding) return;
             adding = true;
             chainEvent += 1;
             if (accepted) {
@@ -383,8 +390,8 @@ export function hostWallet(bridge: HostConnection): Wallet {
               remaining = HOST_CHAIN_CHECK_TIMEOUT_MS;
             }
             observed = false;
-            const options = explicit ? undefined : addEthereumChainParameter;
-            const metadata: Chain = explicit ? robinhood : chain;
+            const options = onAcknowledged ? undefined : addEthereumChainParameter;
+            const metadata: Chain = onAcknowledged ? robinhood : chain;
             const { default: explorer, ...otherExplorers } = metadata.blockExplorers ?? {};
             await provider.request({
               method: "wallet_addEthereumChain",
@@ -405,9 +412,13 @@ export function hostWallet(bridge: HostConnection): Wallet {
                 },
               ],
             });
+            if (finished) return;
+            addAcknowledged = true;
+            notifyAddAcknowledged?.();
             accept();
           };
-          const add = (explicit = false) => void requestAdd(explicit).catch(reject);
+          const add = (onAcknowledged?: () => void) =>
+            void requestAdd(onAcknowledged).catch(reject);
           const requestSwitch = async () => {
             try {
               await provider.request({
@@ -429,7 +440,7 @@ export function hostWallet(bridge: HostConnection): Wallet {
           };
           const completion = result.then(() => chain);
           currentSwitch = { chainId, add, recheck, cancel, result: completion };
-          if (addOnly) add(true);
+          if (onAddAcknowledged) add(onAddAcknowledged);
           else void requestSwitch();
           try {
             return await completion;
@@ -485,7 +496,8 @@ export function hostWallet(bridge: HostConnection): Wallet {
             await base.disconnect.call(this);
           },
           switchChain: (options: Parameters<typeof changeChain>[0]) => changeChain(options),
-          addRobinhoodNetwork: () => changeChain({ chainId: robinhood.id }, true),
+          addRobinhoodNetwork: (onAcknowledged: () => void = () => {}) =>
+            changeChain({ chainId: robinhood.id }, onAcknowledged),
           recheckRobinhoodNetwork: () => currentSwitch?.recheck(),
         };
       }),
