@@ -152,7 +152,10 @@ describe("live Peer normalization", () => {
     reads.response = kind === "malformed" ? { message: "must_never_escape" } : r;
     const result = await fetchPeerCapabilities(intent(), opts(reads));
     expect(result.offers).toEqual([]);
-    expect(result.availability.state).toBe("availability_unknown");
+    expect(result.availability).toEqual({
+      state: "temporarily_unavailable",
+      reason_code: kind === "empty" ? "capability_unavailable" : "capabilities_unavailable",
+    });
   });
   it.each(["amount", "fee", "recipient", "rail", "numeric_money", "stake"])(
     "checks quote-level %s",
@@ -210,6 +213,32 @@ describe("live Peer normalization", () => {
       expect(vi.getTimerCount()).toBe(0);
     } finally {
       vi.useRealTimers();
+    }
+  });
+  it("only treats a documented no-quotes 404 as a successful absence of Buy offers", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ errorCode: "no_quotes_found" }, { status: 404 }))
+      .mockResolvedValueOnce(new Response(null, { status: 404 }))
+      .mockResolvedValueOnce(Response.json({ errorCode: "no_quotes_found" }, { status: 503 }))
+      .mockResolvedValueOnce(Response.json({ errorCode: "no_quotes_found" }, { status: 404 }));
+    vi.stubGlobal("fetch", fetch);
+    try {
+      for (const reason_code of [
+        "capability_unavailable",
+        "capabilities_unavailable",
+        "capabilities_unavailable",
+      ]) {
+        expect((await fetchPeerCapabilities(intent())).availability).toEqual({
+          state: "temporarily_unavailable",
+          reason_code,
+        });
+      }
+      expect(
+        (await fetchPeerCapabilities({ ...intent(), region: "US" })).availability,
+      ).toMatchObject({ reason_code: "capabilities_unavailable" });
+    } finally {
+      vi.unstubAllGlobals();
     }
   });
 });

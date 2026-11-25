@@ -115,9 +115,11 @@ describe("Buy rails", () => {
     expect(new Set(radios().map((r) => r.name)).size).toBe(1);
 
     expect(blockedCard("Venmo").textContent).toMatch(/Temporarily unavailable/);
-    expect(blockedCard("Venmo").textContent).toMatch(/no usable liquidity/);
+    expect(blockedCard("Venmo").textContent).toMatch(/no offer for this amount/);
+    expect(blockedCard("Venmo").textContent).toMatch(/Choose an available payment app/);
     expect(blockedCard("Monzo").textContent).toMatch(/Not supported/);
-    expect(blockedCard("Monzo").textContent).toMatch(/Choose another rail/);
+    expect(blockedCard("Monzo").textContent).toMatch(/does not support this app for USD/);
+    expect(blockedCard("Monzo").textContent).toMatch(/Choose an available payment app/);
     const revolut = blockedCard("Revolut").textContent ?? "";
     expect(revolut).toMatch(/Setup required/);
     expect(revolut).toMatch(/hold the payout for up to 14 days/);
@@ -139,6 +141,7 @@ describe("Buy rails", () => {
     typeAmount("25");
     await act(() => vi.advanceTimersByTimeAsync(0));
     expect(radioNames()).toContain("Wise");
+    expect(blockedCard("Venmo").textContent).toMatch(/no offer for this amount/);
     fireEvent.click(
       within(screen.getByRole("group", { name: "Payment apps" })).getByLabelText(/Wise/),
     );
@@ -148,7 +151,8 @@ describe("Buy rails", () => {
     expect(radios()).toHaveLength(0);
     expect(blockedCard("Wise").textContent).toMatch(/Offer expired/);
     expect(blockedCard("Wise").textContent).toMatch(/Check again/);
-    expect(screen.getByRole("status").textContent).toMatch(/unavailable\. Choose again/);
+    expect(within(blockedList()).queryByText("Venmo")).toBeNull();
+    expect(screen.getByRole("status").textContent).toMatch(/unavailable\. Check again/);
     expect(port.calls).toHaveLength(1);
   });
 
@@ -235,8 +239,94 @@ describe("Buy rails", () => {
     renderRails(port, <RampRails direction="onramp" account={ACCOUNT} active />);
     typeAmount("25");
     const card = (await screen.findByText(/Temporarily unavailable/)).closest("[role=note]");
-    expect(card?.textContent).toMatch(/could not be reached/);
+    expect(card?.textContent).toMatch(/lookup failed/);
     expect(card?.textContent).toMatch(/Retry after/);
+  });
+
+  it("distinguishes an unsupported currency, no offers and a failed lookup", async () => {
+    const discover = vi
+      .fn<RampDiscoveryPort["discover"]>()
+      .mockResolvedValueOnce({
+        offers: [],
+        estimates: [],
+        availability: { state: "temporarily_unavailable", reason_code: "capability_unavailable" },
+      })
+      .mockRejectedValueOnce(new Error("lookup failed"));
+    renderRails(
+      { discover, settlement: () => peerConfiguration().settlement, now: Date.now, debounceMs: 0 },
+      <RampRails direction="onramp" account={ACCOUNT} fiatCurrency="EUR" active />,
+    );
+    typeAmount("5");
+    expect(screen.getByRole("status").textContent).toBe(
+      "Peer Buy does not support EUR. Select USD.",
+    );
+    expect(discover).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Pay in"), { target: { value: "USD" } });
+    expect((await screen.findByRole("note")).textContent).toMatch(
+      /no offers for this amount.*Try a different amount/,
+    );
+    typeAmount("55");
+    expect((await screen.findByRole("note")).textContent).toMatch(/Lookup failed.*Check again/);
+    expect(discover.mock.calls.map(([intent]) => intent.exact.money.atomic)).toEqual([
+      "5000000",
+      "55000000",
+    ]);
+  });
+
+  it("keeps keyboard focus on the retry control during a fresh lookup", async () => {
+    const next = Promise.withResolvers<PeerDiscoveryResult>();
+    const discover = vi
+      .fn<RampDiscoveryPort["discover"]>()
+      .mockRejectedValueOnce(new Error("lookup failed"))
+      .mockReturnValueOnce(next.promise);
+    renderRails(
+      { discover, settlement: () => peerConfiguration().settlement, now: Date.now, debounceMs: 0 },
+      <RampRails direction="onramp" account={ACCOUNT} active />,
+    );
+    typeAmount("5");
+    await screen.findByText("Lookup failed");
+    const retry = screen.getByRole("button", { name: "Check again" });
+    retry.focus();
+    fireEvent.click(retry);
+    await waitFor(() => expect(discover).toHaveBeenCalledTimes(2));
+    expect(document.activeElement).toBe(retry);
+    expect(retry.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(retry);
+    expect(discover).toHaveBeenCalledTimes(2);
+    await act(async () =>
+      next.resolve({
+        offers: [],
+        estimates: [],
+        availability: { state: "temporarily_unavailable", reason_code: "capability_unavailable" },
+      }),
+    );
+    expect(document.activeElement).toBe(retry);
+    expect(retry.getAttribute("aria-disabled")).toBe("false");
+  });
+
+  it("expires an empty lookup without continuing to claim no offer", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let now = RECORDED_AT;
+    renderRails(
+      {
+        discover: async () => ({
+          offers: [],
+          estimates: [],
+          availability: { state: "temporarily_unavailable", reason_code: "capability_unavailable" },
+          offerStatusUntil: RECORDED_AT + 500,
+        }),
+        settlement: () => peerConfiguration().settlement,
+        now: () => now,
+        debounceMs: 0,
+      },
+      <RampRails direction="onramp" account={ACCOUNT} active />,
+    );
+    typeAmount("5");
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(screen.getByRole("note").textContent).toMatch(/no offers for this amount right now/);
+    now += 501;
+    await act(() => vi.advanceTimersByTimeAsync(501));
+    expect(screen.getByRole("note").textContent).toMatch(/Check expired.*current Peer offers/);
   });
 
   it("reads nothing while hidden, without a wallet, or with a bad amount", async () => {

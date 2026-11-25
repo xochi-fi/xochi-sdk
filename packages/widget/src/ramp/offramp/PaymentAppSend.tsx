@@ -17,10 +17,20 @@
  * confirmed, then only in S5's provider-private store.
  */
 
-import { useContext, useEffect, useId, useMemo, useState, type FormEvent } from "react";
+import {
+  useContext,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { useAccount, useConfig } from "wagmi";
+import { skipToken, useQuery } from "@tanstack/react-query";
 import { formatTokenAmount } from "../../utils/format.js";
-import { usePublicBalances } from "../../hooks/usePublicBalances.js";
+import { TIMEOUTS } from "../../config.js";
 import { RampDisclosure, RampFacts } from "../availability/RampDisclosure.js";
 import {
   RailChoice,
@@ -221,8 +231,31 @@ function EditStep({
   const [source, setSource] = useState<"base_usdc" | "other">(() =>
     account && inspectOfframpPrerequisite(account) ? "other" : "base_usdc",
   );
-  const { readBalanceOf } = usePublicBalances();
-  const balance = settlement ? readBalanceOf(BASE_CHAIN_ID, settlement.asset_id) : null;
+  const spendable = port.spendable;
+  const balanceEnabled =
+    active && source === "base_usdc" && !!account && !!settlement && !!spendable;
+  const balanceRead = useQuery({
+    queryKey: ["cash-out-balance", settlement?.asset_id, account, routeAmount],
+    queryFn: account && spendable ? () => spendable(account) : skipToken,
+    enabled: balanceEnabled,
+    staleTime: TIMEOUTS.balanceRefresh,
+    refetchInterval: TIMEOUTS.balanceRefresh / 2,
+    retry: false,
+  });
+  // A failed refresh invalidates the query, but the last verified read has its own deadline.
+  const [, expireBalance] = useState(0);
+  useEffect(() => {
+    if (!balanceEnabled || !balanceRead.isRefetchError) return;
+    const remaining = balanceRead.dataUpdatedAt + TIMEOUTS.balanceRefresh - Date.now();
+    if (remaining <= 0) return;
+    const timer = setTimeout(() => expireBalance(balanceRead.dataUpdatedAt), remaining);
+    return () => clearTimeout(timer);
+  }, [balanceEnabled, balanceRead.isRefetchError, balanceRead.dataUpdatedAt]);
+  const recentBalance = balanceRead.isRefetchError
+    ? Date.now() - balanceRead.dataUpdatedAt < TIMEOUTS.balanceRefresh
+    : balanceRead.isSuccess && !balanceRead.isStale;
+  const balance = balanceEnabled && recentBalance ? (balanceRead.data ?? null) : null;
+  const checkingBalance = balanceEnabled && balanceRead.isPending;
   const cap = port.canaryCap();
   const max =
     balance !== null && cap !== undefined && balance > BigInt(cap) ? BigInt(cap) : balance;
@@ -237,25 +270,38 @@ function EditStep({
   const amountInvalid = amountText.trim() !== "" && amount === undefined;
   // Enforced before any rail read or review: an over-cap amount is never estimated.
   const overCap = canaryCapError(amount, port.canaryCap());
+  const balanceNote =
+    amount !== undefined && balance !== null && BigInt(amount) > balance
+      ? balance === 0n
+        ? "Your wallet has 0 USDC on Base. Receive USDC on Base to cash out."
+        : `Your wallet has ${formatUsdc(balance.toString())} on Base. You entered ${formatUsdc(amount)}. Try a smaller amount, or receive more USDC on Base.`
+      : undefined;
+  const canCheck = !overCap && !balanceNote && !checkingBalance;
+  const amountInput = useRef<HTMLInputElement>(null);
+  const focusAfterBalanceRetry = useRef(false);
+  useLayoutEffect(() => {
+    if (balanceNote || !focusAfterBalanceRetry.current) return;
+    focusAfterBalanceRetry.current = false;
+    if (document.activeElement === document.body) amountInput.current?.focus();
+  }, [balanceNote]);
   const { state, now, refresh } = useOfframpRails({
     port,
     runtime: flow.runtime,
     settlement,
     account,
-    amount: overCap ? undefined : amount,
+    amount: canCheck ? amount : undefined,
     currency,
     enabled: active && source === "base_usdc",
   });
 
-  const cards: { card: RailCard; offer: RampOffer }[] =
+  const checked =
     state.status === "done" &&
-    settlement &&
-    account &&
-    amount !== undefined &&
-    !overCap &&
+    canCheck &&
     state.intent.exact.money.atomic === amount &&
     state.intent.fiat.currency === currency &&
-    state.intent.recipient === account
+    state.intent.recipient === account;
+  const cards: { card: RailCard; offer: RampOffer }[] =
+    checked && settlement
       ? state.offers.map((offer) => ({
           offer,
           card: railCard(offer, state.intent, settlement, now),
@@ -264,7 +310,14 @@ function EditStep({
   const selectable = cards.filter((c) => c.card.selectable);
   const blocked = cards.filter((c) => !c.card.selectable);
   const chosen = selectable.find((c) => c.card.id === selected);
-  const lost = selected !== undefined && chosen === undefined && state.status === "done";
+  const currentEstimate = useRef<RampOffer | undefined>(undefined);
+  useLayoutEffect(() => {
+    currentEstimate.current = active && source === "base_usdc" ? chosen?.offer : undefined;
+    return () => {
+      currentEstimate.current = undefined;
+    };
+  }, [active, source, chosen?.offer]);
+  const lost = selected !== undefined && chosen === undefined && checked;
   const currencies = [...new Set([fiatCurrency, "USD"])];
   const estimateFor = (offer: RampOffer) =>
     state.status === "done" ? state.estimates.find((e) => e.offerId === offer.offer_id) : undefined;
@@ -276,12 +329,20 @@ function EditStep({
       : "Connect a wallet and enter an amount to check availability.";
   else if (!settlement)
     status = "Peer’s Base USDC configuration is unavailable. Check again later.";
+  else if (overCap) status = overCap;
+  else if (balanceNote)
+    status = balanceRead.isRefetchError
+      ? `Could not refresh your balance. Last verified on Base: ${formatUsdc(balance!.toString())}.`
+      : balanceNote;
   else if (lost) status = "That app is unavailable. Choose again.";
   else if (flow.runtimeFailed)
     status = "Cash out is unavailable for this wallet. Reconnect your wallet and check again.";
   else if (account && amount === undefined && !amountInvalid)
     status = "Enter an amount to check payment apps.";
-  else if (overCap) status = overCap;
+  else if (amount !== undefined && checkingBalance)
+    status = balanceRead.isPaused
+      ? "Reconnect to check your USDC balance on Base."
+      : "Checking your USDC balance on Base…";
   else if (state.status === "loading") status = "Checking payment apps…";
 
   const sourcePicker = (
@@ -319,13 +380,20 @@ function EditStep({
             <label className="send-field">
               <span className="send-field__label">USDC to cash out</span>
               <input
+                ref={amountInput}
                 className="send-field__control"
                 inputMode="decimal"
                 autoComplete="off"
                 placeholder="0.00"
                 value={amountText}
-                aria-invalid={amountInvalid}
-                aria-describedby={amountInvalid ? `${id}-amount-error` : undefined}
+                aria-invalid={amountInvalid || (!!balanceNote && !overCap)}
+                aria-describedby={
+                  amountInvalid
+                    ? `${id}-amount-error`
+                    : balanceNote && !overCap
+                      ? `${id}-cash-out-status`
+                      : undefined
+                }
                 onChange={(e) => {
                   setAmountText(e.target.value);
                   setSelected(undefined);
@@ -375,16 +443,30 @@ function EditStep({
           <RampDisclosure direction="offramp" />
 
           {status && (
-            <p className="send-note" role="status">
+            <p className="send-note" id={`${id}-cash-out-status`} role="status">
               {status}
             </p>
           )}
+          {balanceNote && !overCap && (
+            <button
+              type="button"
+              className="send-secondary"
+              aria-disabled={balanceRead.isFetching || balanceRead.isPaused}
+              onClick={(event) => {
+                if (balanceRead.isFetching || balanceRead.isPaused) return;
+                focusAfterBalanceRetry.current = document.activeElement === event.currentTarget;
+                void balanceRead.refetch();
+              }}
+            >
+              Check balance again
+            </button>
+          )}
 
-          {state.status === "done" && cards.length === 0 && (
+          {checked && cards.length === 0 && (
             <OverallCard {...overallCard(state.availability, "offramp")} />
           )}
 
-          <RailTiles title="Your account" guest={!account} untested={state.status !== "done"}>
+          <RailTiles title="Your account" guest={!account} untested={!checked}>
             {selectable.map(({ card, offer }) => {
               const est = estimateFor(offer);
               return (
@@ -435,7 +517,7 @@ function EditStep({
               .map(({ card }) => card)}
           />
 
-          {state.status === "done" && (
+          {checked && (
             <button type="button" className="send-secondary" onClick={refresh}>
               Check again
             </button>
@@ -454,7 +536,11 @@ function EditStep({
                 }
                 onClick={() => {
                   if (chosen && state.status === "done")
-                    void flow.estimate(chosen.offer, state.intent);
+                    void flow.estimate(
+                      chosen.offer,
+                      state.intent,
+                      () => currentEstimate.current === chosen.offer,
+                    );
                 }}
               >
                 {flow.busy === "estimating" ? "Getting estimate..." : "Get estimate"}

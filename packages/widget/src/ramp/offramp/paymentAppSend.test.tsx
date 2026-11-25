@@ -20,7 +20,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { apiStub, renderTrade, TEST_ACCOUNT } from "../../pages/trade/harness.js";
 import { WAIT, testBudget } from "../../test/waitBudget.js";
 import {
@@ -33,6 +33,8 @@ import { OfframpPortContext } from "./port.js";
 import { OfframpActivityList, useLocalOfframps } from "./OfframpActivityList.js";
 import { listLocalOfframps } from "./localOfframps.js";
 import { clearWalletSession } from "../../lib/walletSession.js";
+import { onlineManager } from "@tanstack/react-query";
+import { TIMEOUTS } from "../../config.js";
 
 vi.setConfig({ testTimeout: testBudget({ renders: 2, waits: 12 }) });
 
@@ -112,10 +114,134 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  onlineManager.setOnline(true);
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
 describe("estimate and review", () => {
+  it("holds maker estimates while the initial Base USDC read is pending", async () => {
+    const port = memoryOfframpPort({ account: TEST_ACCOUNT, makerRails: ["wise"] });
+    const balance = Promise.withResolvers<bigint>();
+    port.spendable = () => balance.promise;
+    await mount(port);
+    fireEvent.change(screen.getByLabelText("USDC to cash out"), { target: { value: "5" } });
+    expect(screen.getByRole("status").textContent).toMatch(/Checking your USDC balance/);
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.getByRole("button", { name: "Get estimate" })).toHaveProperty("disabled", true);
+    await act(async () => balance.resolve(0n));
+    await screen.findByText(/Your wallet has 0 USDC on Base/, {}, WAIT);
+    expect(screen.queryByRole("radio")).toBeNull();
+  });
+
+  it("holds maker estimates while an initial balance lookup is paused offline", async () => {
+    const port = memoryOfframpPort({ account: TEST_ACCOUNT, makerRails: ["wise"] });
+    port.spendable = vi.fn().mockResolvedValue(0n);
+    onlineManager.setOnline(false);
+    await mount(port);
+    fireEvent.change(screen.getByLabelText("USDC to cash out"), { target: { value: "55" } });
+    expect(screen.getByRole("status").textContent).toMatch(/Reconnect to check your USDC balance/);
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(port.spendable).not.toHaveBeenCalled();
+    await act(async () => onlineManager.setOnline(true));
+    await screen.findByText(/Your wallet has 0 USDC on Base/, {}, WAIT);
+  });
+
+  it("discards an outstanding estimate after a refreshed balance shows a shortfall", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const port = memoryOfframpPort({ account: TEST_ACCOUNT, makerRails: ["wise"] });
+    let spendable = 55_000_000n;
+    port.spendable = async () => spendable;
+    const runtime = await port.runtime(TEST_ACCOUNT);
+    const preview = runtime.client.preview.bind(runtime.client);
+    const release = Promise.withResolvers<void>();
+    const previewReady = Promise.withResolvers<void>();
+    runtime.client.preview = async (...args) => {
+      const result = await preview(...args);
+      previewReady.resolve();
+      await release.promise;
+      return result;
+    };
+    await mount(port);
+    fireEvent.change(screen.getByLabelText("USDC to cash out"), { target: { value: "5" } });
+    fireEvent.click(await screen.findByRole("radio", { name: /Wise/ }, WAIT));
+    fireEvent.click(screen.getByRole("button", { name: "Get estimate" }));
+    await previewReady.promise;
+    spendable = 0n;
+    await act(() => vi.advanceTimersByTimeAsync(TIMEOUTS.balanceRefresh / 2));
+    await screen.findByText(/Your wallet has 0 USDC on Base/, {}, WAIT);
+    await act(async () => release.resolve());
+    expect(screen.queryByRole("region", { name: "Review cash-out" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Get estimate" })).toHaveProperty("disabled", true);
+  });
+  it("explains verified zero Base USDC at 5 and 55", async () => {
+    const port = memoryOfframpPort({ account: TEST_ACCOUNT, makerRails: ["wise"] });
+    port.spendable = vi.fn().mockResolvedValueOnce(0n).mockResolvedValueOnce(55_000_000n);
+    await mount(port);
+    const amount = screen.getByLabelText("USDC to cash out");
+    fireEvent.change(amount, { target: { value: "5" } });
+    const zero = await screen.findByText(/Your wallet has 0 USDC on Base/);
+    expect(zero.textContent).toMatch(/Receive USDC on Base/);
+    expect(zero.textContent).not.toMatch(/smaller/);
+    expect(amount.getAttribute("aria-describedby")).toBe(zero.id);
+    expect(screen.queryByRole("radio")).toBeNull();
+    fireEvent.change(amount, { target: { value: "55" } });
+    expect(screen.getByText(/Your wallet has 0 USDC on Base/)).toBe(zero);
+    const retry = screen.getByRole("button", { name: "Check balance again" });
+    retry.focus();
+    fireEvent.click(retry);
+    await screen.findByRole("radio", { name: /Wise/ }, WAIT);
+    expect(screen.queryByText(/Your wallet has 0 USDC on Base/)).toBeNull();
+    expect(document.activeElement).toBe(amount);
+
+    fireEvent.change(screen.getByLabelText("Cash out from"), { target: { value: "other" } });
+    expect(screen.queryByText(/Your wallet has 0 USDC on Base/)).toBeNull();
+  });
+
+  it("keeps a recent verified shortfall when the balance refresh fails", async () => {
+    const port = memoryOfframpPort({ account: TEST_ACCOUNT, makerRails: ["wise"] });
+    port.spendable = vi
+      .fn()
+      .mockResolvedValueOnce(0n)
+      .mockRejectedValueOnce(new Error("RPC unavailable"));
+    await mount(port);
+    fireEvent.change(screen.getByLabelText("USDC to cash out"), { target: { value: "55" } });
+    const retry = await screen.findByRole("button", { name: "Check balance again" });
+    retry.focus();
+    fireEvent.click(retry);
+    const status = await screen.findByText(
+      /Could not refresh your balance.*Last verified on Base.*0 USDC/,
+    );
+    expect(status.getAttribute("role")).toBe("status");
+    expect(document.activeElement).toBe(retry);
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.getByRole("button", { name: "Get estimate" })).toHaveProperty("disabled", true);
+  });
+
+  it("shows available and requested USDC when reducing the amount could help", async () => {
+    const port = memoryOfframpPort({ account: TEST_ACCOUNT, makerRails: ["wise"] });
+    port.spendable = async () => 10_000_000n;
+    await mount(port);
+    const amount = screen.getByLabelText("USDC to cash out");
+    fireEvent.change(amount, { target: { value: "55" } });
+    const insufficient = await screen.findByText(/Your wallet has 10 USDC on Base/);
+    expect(insufficient.textContent).toMatch(/You entered 55 USDC.*Try a smaller amount/);
+    expect(screen.queryByRole("radio")).toBeNull();
+    fireEvent.change(amount, { target: { value: "5" } });
+    await screen.findByRole("radio", { name: /Wise/ }, WAIT);
+    expect(screen.queryByText(/You entered 55 USDC/)).toBeNull();
+  });
+
+  it("preserves unverified maker states when the balance lookup fails", async () => {
+    const port = memoryOfframpPort({ account: TEST_ACCOUNT, makerRails: [] });
+    port.spendable = vi.fn().mockRejectedValue(new Error("RPC unavailable"));
+    await mount(port);
+    fireEvent.change(screen.getByLabelText("USDC to cash out"), { target: { value: "55" } });
+    await screen.findByText(/^Unconfirmed:/, {}, WAIT);
+    expect(port.spendable).toHaveBeenCalledWith(TEST_ACCOUNT);
+    expect(screen.queryByText(/Your wallet has/)).toBeNull();
+  });
+
   it("offers only live-proven rails and explains a non-Base-USDC source", async () => {
     const port = memoryOfframpPort({ account: TEST_ACCOUNT, makerRails: ["wise"] });
     await mount(port);

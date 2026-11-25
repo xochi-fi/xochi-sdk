@@ -313,7 +313,7 @@ export function useOfframp(
   }, [order, busy, port, readOrder, showOrder]);
 
   const estimate = useCallback(
-    async (offer: RampOffer, intent: RampIntent) => {
+    async (offer: RampOffer, intent: RampIntent, isCurrent: () => boolean = () => true) => {
       if (!runtime || busy) return;
       const capped = canaryCapError(intent.exact.money.atomic, port.canaryCap());
       if (capped) {
@@ -328,6 +328,7 @@ export function useOfframp(
           offer.offer_id,
           offer.capability_revision,
         );
+        if (!isCurrent()) return;
         const mask = registered.current.get(offer.rail.id);
         setView({
           kind: "review",
@@ -340,7 +341,8 @@ export function useOfframp(
           },
         });
       } catch {
-        setNotice("Peer could not give a fresh estimate for this rail. Check the rails again.");
+        if (isCurrent())
+          setNotice("Peer could not give a fresh estimate for this rail. Check the rails again.");
       } finally {
         setBusy(false);
       }
