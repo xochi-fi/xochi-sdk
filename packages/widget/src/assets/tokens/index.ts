@@ -12,6 +12,7 @@ import opPng from "./op.png?no-inline";
 import raxolPng from "./raxol.png?no-inline";
 import eurePng from "./eure.png?no-inline";
 import zchfPng from "./zchf.png?no-inline";
+import pyusdPng from "./pyusd.png?no-inline";
 
 export const TOKEN_ICONS: Record<string, string> = {
   ETH: ethSvg,
@@ -31,4 +32,5 @@ export const TOKEN_ICONS: Record<string, string> = {
   cbETH: ethSvg,
   EURe: eurePng,
   ZCHF: zchfPng,
+  PYUSD: pyusdPng,
 };

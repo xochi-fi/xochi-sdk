@@ -4,6 +4,22 @@
   "artworkAuthorization": "On 2026-11-10, the requester explicitly confirmed authority to permit public redistribution of all 25 listed artwork files unchanged and granted that permission. No additional provenance documents or notices were supplied. This is not an assertion that the artwork is MIT-licensed.",
   "assets": [
     {
+      "path": "src/assets/chains/canton.png",
+      "status": "project-exception",
+      "evidence": "https://www.canton.network/favicon.ico",
+      "sha256": "a812fad52226dbe7543a4ec98764d99ce84d22162140ca4e36f38cb11a847c5d",
+      "ownerDecision": "Item 85: owner answered bypass for the retained official artwork files after reviewing the project redistribution gate.",
+      "details": "Unmodified PNG served as the Canton Network site icon. Network identity only. Rights-holder redistribution permission remains unverified."
+    },
+    {
+      "path": "src/assets/tokens/pyusd.png",
+      "status": "project-exception",
+      "evidence": "https://mintcdn.com/paxos-0ac97319/Vwn6v0Q_snwFVgjM/images/pyusd_logo.png",
+      "sha256": "9e531499c918f56d9985155f965dbecfff522a5f2ce3f12a25820c16499957f5",
+      "ownerDecision": "Item 85: owner answered bypass for the retained official artwork files after reviewing the project redistribution gate.",
+      "details": "Unmodified Paxos PYUSD token image linked from https://docs.paxos.com/guides/stablecoin/pyusd. Rights-holder redistribution permission remains unverified."
+    },
+    {
       "path": "src/assets/fonts/*.woff2",
       "status": "cleared",
       "license": "OFL-1.1",
