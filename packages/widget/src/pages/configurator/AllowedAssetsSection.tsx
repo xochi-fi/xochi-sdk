@@ -6,7 +6,8 @@
  * ignores stays visible here with the frame's reason.
  */
 
-import type { SelectableChainId } from "@xochi/client";
+import { isCantonDestinationChainId, type SelectableChainId } from "@xochi/client";
+import { CANTON_RECEIVE_ROUTE } from "../../constants.js";
 import { type EmbedAllowField } from "@xochi/widget-lib";
 import {
   chainName,
@@ -104,7 +105,11 @@ export function AllowedAssetsSection({
           <CheckList
             legend="Chains"
             options={chainIds}
-            label={chainName}
+            label={(id) =>
+              isCantonDestinationChainId(id)
+                ? `${chainName(id)} · ${CANTON_RECEIVE_ROUTE}`
+                : chainName(id)
+            }
             asked={asked[chainField]?.filter((id): id is SelectableChainId =>
               chainIds.some((c) => c === id),
             )}

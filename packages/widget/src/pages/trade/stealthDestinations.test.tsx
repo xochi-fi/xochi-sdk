@@ -100,7 +100,7 @@ const guidance = (): HTMLElement =>
 
 async function openReceiveNetworks() {
   fireEvent.click(within(receiveRow()).getByRole("button", { name: /Change network$/ }));
-  return screen.findByRole("dialog", { name: "Select network" }, WAIT);
+  return screen.findByRole("dialog", { name: /^Select network for (Pay|Receive)$/ }, WAIT);
 }
 const networkNames = (dialog: HTMLElement): string[] =>
   Array.from(dialog.querySelectorAll(".token-search-chain-item")).map(
@@ -189,10 +189,9 @@ describe("live Stealth receive choices", () => {
 
     fireEvent.click(trigger);
     fireEvent.click(
-      within(await screen.findByRole("dialog", { name: "Select network" }, WAIT)).getByRole(
-        "button",
-        { name: "Base" },
-      ),
+      within(
+        await screen.findByRole("dialog", { name: /^Select network for (Pay|Receive)$/ }, WAIT),
+      ).getByRole("button", { name: "Base" }),
     );
     const chooser = await screen.findByRole("dialog", { name: "Select token" }, WAIT);
     const usdt = chooser.querySelector<HTMLButtonElement>(".token-search-row");

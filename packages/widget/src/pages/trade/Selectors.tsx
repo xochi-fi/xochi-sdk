@@ -176,6 +176,7 @@ export function TokenSelector({
       <TokenSearchModal
         open={tokenModalOpen || chainModalOpen}
         mode={modalMode ?? "token"}
+        networkLeg={isSource ? "Pay" : "Receive"}
         onClose={closeModal}
         onSelect={handleTokenSelect}
         onChainSelect={handleChainSelect}

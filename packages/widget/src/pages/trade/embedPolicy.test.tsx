@@ -64,7 +64,7 @@ const enabledControls = (row: HTMLElement): Element[] =>
 const chainOptions = (pickableOnly = false): string[] =>
   Array.from(
     document.querySelectorAll<HTMLElement>(
-      '[role="dialog"][aria-label="Select network"] .token-search-chain-item',
+      '[role="dialog"][aria-label^="Select network for "] .token-search-chain-item',
     ),
   ).flatMap((el) =>
     pickableOnly && el.getAttribute("aria-disabled") === "true"
@@ -74,7 +74,7 @@ const chainOptions = (pickableOnly = false): string[] =>
 
 async function pickableChain(name: string): Promise<HTMLButtonElement> {
   return waitFor(() => {
-    const dialog = screen.getByRole("dialog", { name: "Select network" });
+    const dialog = screen.getByRole("dialog", { name: /^Select network for (Pay|Receive)$/ });
     const option = within(dialog).getByRole("button", {
       name: new RegExp(`^${name}`),
     }) as HTMLButtonElement;

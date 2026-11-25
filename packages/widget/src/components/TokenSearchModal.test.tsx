@@ -173,12 +173,12 @@ describe("TokenSelector shared portal", () => {
     trigger.focus();
     fireEvent.click(trigger);
 
-    const dialog = screen.getByRole("dialog", { name: "Select network" });
+    const dialog = screen.getByRole("dialog", { name: "Select network for Receive" });
     expect(dialog.parentElement).toBe(document.body);
     fireEvent.click(within(dialog).getByRole("button", { name: "Ethereum" }));
 
     expect(onChainChange).toHaveBeenCalledWith(ETHEREUM);
-    expect(screen.queryByRole("dialog", { name: "Select network" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Select network for Receive" })).toBeNull();
     expect(document.activeElement).toBe(trigger);
   });
 

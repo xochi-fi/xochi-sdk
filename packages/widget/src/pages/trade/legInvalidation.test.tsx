@@ -111,7 +111,7 @@ const changeChain = async (currentChainName: string, to: string): Promise<void> 
   const option = await waitFor(() => {
     const found = Array.from(
       document.querySelectorAll<HTMLElement>(
-        '[role="dialog"][aria-label="Select network"] .token-search-chain-item',
+        '[role="dialog"][aria-label^="Select network for "] .token-search-chain-item',
       ),
     ).find((el) => (el.textContent ?? "").includes(to));
     if (!found) throw new Error(`chain option "${to}" not offered`);

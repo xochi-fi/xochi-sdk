@@ -11,7 +11,13 @@ import {
 } from "../lib/pairAvailability.js";
 import type { Token } from "../types/intent.js";
 import { TokenIcon } from "./TokenIcon.js";
-import { CHAIN_SHORT_NAMES, EXTENDED_CHAIN_NAMES, type SelectableChainId } from "@xochi/client";
+import {
+  CHAIN_SHORT_NAMES,
+  EXTENDED_CHAIN_NAMES,
+  isCantonDestinationChainId,
+  type SelectableChainId,
+} from "@xochi/client";
+import { CANTON_RECEIVE_ROUTE } from "../constants.js";
 
 const SHORT_NAMES: Readonly<Record<number, string | undefined>> = CHAIN_SHORT_NAMES;
 
@@ -31,6 +37,7 @@ export interface TokenSearchModalProps {
   classify: (token: Token) => PairAvailability;
   initialChainId?: SelectableChainId | null;
   mode?: TokenSearchMode;
+  networkLeg?: "Pay" | "Receive";
   onChainSelect?: (selection: ChainSelection) => void;
   chainBlockedReason?: (chainId: SelectableChainId) => string | null;
   zkMoney?: { readonly selected: boolean };
@@ -100,6 +107,7 @@ export function TokenSearchModal({
   classify,
   initialChainId = null,
   mode = "token",
+  networkLeg,
   onChainSelect,
   chainBlockedReason,
   zkMoney,
@@ -222,7 +230,11 @@ export function TokenSearchModal({
 
   if (!open) return null;
 
-  const dialogLabel = mode === "chain" ? "Select network" : "Select token";
+  const networkLabel = networkLeg ? `Select network for ${networkLeg}` : "Select network";
+  const networkSearchLabel = networkLeg
+    ? `Search ${networkLeg.toLowerCase()} networks`
+    : "Search networks";
+  const dialogLabel = mode === "chain" ? networkLabel : "Select token";
   const portalRoot = portalTarget?.ownerDocument.body ?? document.body;
 
   return createPortal(
@@ -257,10 +269,10 @@ export function TokenSearchModal({
                 <input
                   className="token-search-input"
                   type="text"
-                  placeholder="Search networks"
+                  placeholder={networkSearchLabel}
                   value={chainSearch}
                   onChange={(event) => setChainSearch(event.target.value)}
-                  aria-label="Search networks"
+                  aria-label={networkSearchLabel}
                 />
               </div>
             </div>
@@ -310,6 +322,9 @@ export function TokenSearchModal({
                   <img src={CHAIN_ICONS[chainId]} alt="" className="token-search-chain-icon" />
                   <span className="token-search-chain-copy">
                     <span>{EXTENDED_CHAIN_NAMES[chainId]}</span>
+                    {isCantonDestinationChainId(chainId) && (
+                      <span className="token-search-chain-reason">{CANTON_RECEIVE_ROUTE}</span>
+                    )}
                     {blocked !== null && (
                       <span className="token-search-chain-reason">{blocked}</span>
                     )}

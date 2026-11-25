@@ -278,7 +278,9 @@ describe("selector unit is sibling controls", () => {
     // chain, and nesting them under the badge would be the same defect.
     fireEvent.click(screen.getByRole("button", { name: /Change network/ }));
     expect(
-      within(screen.getByRole("dialog", { name: "Select network" })).queryAllByRole("button"),
+      within(
+        screen.getByRole("dialog", { name: /^Select network for (Pay|Receive)$/ }),
+      ).queryAllByRole("button"),
     ).not.toHaveLength(0);
     expect(container.querySelectorAll(NESTED_FOCUSABLE)).toHaveLength(0);
   });
