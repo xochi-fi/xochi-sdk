@@ -1007,14 +1007,17 @@ describe("operations and reconcile", () => {
     const journalId = "10000000-0000-4000-8000-000000000001";
 
     await core.send(account.address.toString(), 5n, null, journalId);
+    expect(await core.operations()).toMatchObject([{ id: journalId }]);
     await core.send(account.address.toString(), 5n, null);
 
     const operations = await core.operations();
-    expect(operations[0]!.id).toBe(journalId);
-    expect(operations[1]!.id).toMatch(
+    expect(operations).toHaveLength(2);
+    // Both sends share the fixed clock, so the journal may list either record first.
+    expect(operations.map(({ id }) => id)).toContain(journalId);
+    const generated = operations.find(({ id }) => id !== journalId);
+    expect(generated?.id).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     );
-    expect(operations[1]!.id).not.toBe(journalId);
     await core.close();
   });
 
