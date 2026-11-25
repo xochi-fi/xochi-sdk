@@ -14,6 +14,9 @@
 
 import { useClaimInXochiApp } from "../../components/widgetTabsContext.js";
 import { useEffect, useId, useRef, useState } from "react";
+import { useAccount } from "wagmi";
+import { UserRejectedRequestError } from "viem";
+import { HOST_WALLET_ID, robinhood, WalletChainUnchangedError } from "../../wagmi.js";
 import { InfoButton } from "../../components/InfoButton.js";
 import { STATUS_GLYPH } from "../../lib/glyphs.js";
 import { truncateServedReason } from "../../lib/declineGuidance.js";
@@ -217,6 +220,44 @@ export function SwapPanel({
     originChainBlockedReason,
     destinationChainBlockedReason,
   } = useSwapPanel(prefill, onStealthSettled, sendRecipient);
+  const { connector } = useAccount();
+  const addRobinhood =
+    connector?.id === HOST_WALLET_ID &&
+    "addRobinhoodNetwork" in connector &&
+    typeof connector.addRobinhoodNetwork === "function"
+      ? connector.addRobinhoodNetwork
+      : undefined;
+  const [addingRobinhood, setAddingRobinhood] = useState(false);
+  const [robinhoodNotice, setRobinhoodNotice] = useState("");
+  const addingRobinhoodRef = useRef(false);
+
+  async function handleAddRobinhood() {
+    if (!addRobinhood || addingRobinhoodRef.current) return;
+    addingRobinhoodRef.current = true;
+    setAddingRobinhood(true);
+    setRobinhoodNotice(
+      "Approve the network in MetaMask, then return here. If no prompt appears, reconnect MetaMask before retrying.",
+    );
+    try {
+      await addRobinhood();
+      setRobinhoodNotice("");
+    } catch (error) {
+      if (error instanceof WalletChainUnchangedError) {
+        setRobinhoodNotice(
+          "Robinhood is still inactive. Select Robinhood Chain in MetaMask or try Switch to Robinhood again.",
+        );
+      } else if (error instanceof UserRejectedRequestError) {
+        setRobinhoodNotice("You declined the network request. You can try adding Robinhood again.");
+      } else {
+        setRobinhoodNotice(
+          "Could not add Robinhood. Check that MetaMask is connected and try again.",
+        );
+      }
+    } finally {
+      addingRobinhoodRef.current = false;
+      setAddingRobinhood(false);
+    }
+  }
   const [recipientSheetOpen, setRecipientSheetOpen] = useState(false);
   useEffect(() => {
     if (recipientRetryFailed) setRecipientSheetOpen(true);
@@ -1314,11 +1355,26 @@ export function SwapPanel({
               </div>
             )}
 
+          {needsChainSwitch && fromChainId === robinhood.id && addRobinhood && (
+            <div>
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                disabled={addingRobinhood}
+                onClick={() => void handleAddRobinhood()}
+              >
+                Add Robinhood to MetaMask
+              </button>
+              {robinhoodNotice && <p role="status">{robinhoodNotice}</p>}
+            </div>
+          )}
+
           {/* Submit */}
           <button
             className={`submit-btn ${intent.isLoading ? "loading" : ""} ${!isConnected ? "submit-btn--connect" : ""}`}
             data-state={isConnected ? intent.status : undefined}
             disabled={
+              (addingRobinhood && needsChainSwitch && fromChainId === robinhood.id) ||
               (!!sendRecipient &&
                 isConnected &&
                 !flowReopenable &&
