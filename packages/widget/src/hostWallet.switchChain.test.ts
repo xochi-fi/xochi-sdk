@@ -48,6 +48,7 @@ async function setup(renderPanel = false) {
   const listeners = new Map<string, Set<(value: unknown) => void>>();
   const wallet = {
     chain: "0x1",
+    readChain: (): unknown => wallet.chain,
     switchNetwork: (): unknown => null,
     addNetwork: (): unknown => null,
     emit(event: string, value: unknown) {
@@ -60,7 +61,7 @@ async function setup(renderPanel = false) {
         case "eth_accounts":
           return [ACCOUNT];
         case "eth_chainId":
-          return wallet.chain;
+          return wallet.readChain();
         case "wallet_switchEthereumChain":
           return wallet.switchNetwork();
         case "wallet_addEthereumChain":
@@ -171,6 +172,91 @@ async function renderRobinhood() {
 }
 
 describe("adding Robinhood from the swap panel", () => {
+  it("recovers on return when the add has no reply but Robinhood is already active", async () => {
+    const { config, request, wallet, addButton } = await renderRobinhood();
+    wallet.addNetwork = () => new Promise(() => {});
+    fireEvent.click(addButton);
+    await waitFor(() =>
+      expect(request).toHaveBeenCalledWith(
+        expect.objectContaining({ method: "wallet_addEthereumChain" }),
+      ),
+    );
+    wallet.chain = "0x1237";
+    fireEvent(window, new Event("pageshow"));
+    await waitFor(() => expect(getAccount(config).chainId).toBe(robinhood.id));
+    expect(addButton.isConnected).toBe(false);
+  });
+
+  it("waits on the old chain and lets a manual read replace a stalled check", async () => {
+    const { config, request, wallet, addButton } = await renderRobinhood();
+    wallet.addNetwork = () => new Promise(() => {});
+    fireEvent.click(addButton);
+    await waitFor(() =>
+      expect(request).toHaveBeenCalledWith(
+        expect.objectContaining({ method: "wallet_addEthereumChain" }),
+      ),
+    );
+    fireEvent(window, new Event("pageshow"));
+    await screen.findByText("Still waiting for MetaMask.");
+    expect(getAccount(config).chainId).toBe(mainnet.id);
+    expect(screen.getByRole("button", { name: "Switch to Robinhood" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(
+      screen.getByText(/disconnect and reconnect MetaMask in the site’s wallet menu/),
+    ).toBeTruthy();
+    const recheck = screen.getByRole("button", { name: "Check network again" });
+    const stalled = vi.fn(() => new Promise(() => {}));
+    wallet.readChain = stalled;
+    fireEvent.click(recheck);
+    await waitFor(() => expect(stalled).toHaveBeenCalledTimes(1));
+    wallet.readChain = () => "0x1237";
+    fireEvent.click(recheck);
+    await waitFor(() => expect(getAccount(config).chainId).toBe(robinhood.id));
+    expect(
+      request.mock.calls
+        .filter(([args]) => args.method.startsWith("wallet_"))
+        .map(([args]) => args.method),
+    ).toEqual(["wallet_addEthereumChain"]);
+  });
+
+  it("ignores late reads, replies and events from the old provider after reconnect", async () => {
+    const { config, widget, wallet, addButton } = await renderRobinhood();
+    let approve!: () => void;
+    wallet.addNetwork = () =>
+      new Promise<void>((resolve) => {
+        approve = resolve;
+      });
+    fireEvent.click(addButton);
+    await waitFor(() => expect(approve).toBeDefined());
+    let resolveRead!: (chain: string) => void;
+    wallet.readChain = () =>
+      new Promise<string>((resolve) => {
+        resolveRead = resolve;
+      });
+    fireEvent(window, new Event("pageshow"));
+    await waitFor(() => expect(resolveRead).toBeDefined());
+    widget.updateProvider(null);
+    await waitFor(() => expect(getAccount(config).status).toBe("disconnected"));
+
+    const replacement: Eip1193Provider = {
+      request: vi.fn(async ({ method }) => (method === "eth_chainId" ? "0x1" : [ACCOUNT])),
+    };
+    widget.updateProvider(replacement);
+    await connect(config, { connector: config.connectors[0]! });
+    const nextAdd = await screen.findByRole("button", { name: "Add Robinhood to MetaMask" });
+    expect(nextAdd).toHaveProperty("disabled", false);
+    resolveRead("0x1237");
+    approve();
+    wallet.emit("chainChanged", "0x1237");
+    // Drain the wallet promises and bridge messages before checking the new session.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(getAccount(config).chainId).toBe(mainnet.id);
+    expect(nextAdd.isConnected).toBe(true);
+    expect(screen.queryByText("Still waiting for MetaMask.")).toBeNull();
+  });
+
   it("takes over a pending switch and verifies the chain after explicit approval", async () => {
     const { config, request, wallet, addButton } = await renderRobinhood();
     let respondToSwitch!: (error: unknown) => void;

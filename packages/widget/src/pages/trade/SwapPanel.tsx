@@ -16,7 +16,12 @@ import { useClaimInXochiApp } from "../../components/widgetTabsContext.js";
 import { useEffect, useId, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 import { UserRejectedRequestError } from "viem";
-import { HOST_WALLET_ID, robinhood, WalletChainUnchangedError } from "../../wagmi.js";
+import {
+  HOST_WALLET_ID,
+  HostWalletDisconnectedError,
+  robinhood,
+  WalletChainUnchangedError,
+} from "../../wagmi.js";
 import { InfoButton } from "../../components/InfoButton.js";
 import { STATUS_GLYPH } from "../../lib/glyphs.js";
 import { truncateServedReason } from "../../lib/declineGuidance.js";
@@ -228,21 +233,43 @@ export function SwapPanel({
       ? connector.addRobinhoodNetwork
       : undefined;
   const [addingRobinhood, setAddingRobinhood] = useState(false);
+  const [waitingForRobinhood, setWaitingForRobinhood] = useState(false);
   const [robinhoodNotice, setRobinhoodNotice] = useState("");
   const addingRobinhoodRef = useRef(false);
+  const recheckRobinhood =
+    connector?.id === HOST_WALLET_ID &&
+    "recheckRobinhoodNetwork" in connector &&
+    typeof connector.recheckRobinhoodNetwork === "function"
+      ? connector.recheckRobinhoodNetwork
+      : undefined;
+
+  useEffect(() => {
+    if (!addingRobinhood) return;
+    const onReturn = () => {
+      if (document.visibilityState === "visible") setWaitingForRobinhood(true);
+    };
+    const timer = setTimeout(onReturn, 3_000);
+    document.addEventListener("visibilitychange", onReturn);
+    window.addEventListener("pageshow", onReturn);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onReturn);
+      window.removeEventListener("pageshow", onReturn);
+    };
+  }, [addingRobinhood]);
 
   async function handleAddRobinhood() {
     if (!addRobinhood || addingRobinhoodRef.current) return;
     addingRobinhoodRef.current = true;
     setAddingRobinhood(true);
-    setRobinhoodNotice(
-      "Approve the network in MetaMask, then return here. If no prompt appears, reconnect MetaMask before retrying.",
-    );
+    setRobinhoodNotice("Approve the network in MetaMask, then return here.");
     try {
       await addRobinhood();
       setRobinhoodNotice("");
     } catch (error) {
-      if (error instanceof WalletChainUnchangedError) {
+      if (error instanceof HostWalletDisconnectedError) {
+        setRobinhoodNotice("");
+      } else if (error instanceof WalletChainUnchangedError) {
         setRobinhoodNotice(
           "Robinhood is still inactive. Select Robinhood Chain in MetaMask or try Switch to Robinhood again.",
         );
@@ -256,6 +283,7 @@ export function SwapPanel({
     } finally {
       addingRobinhoodRef.current = false;
       setAddingRobinhood(false);
+      setWaitingForRobinhood(false);
     }
   }
   const [recipientSheetOpen, setRecipientSheetOpen] = useState(false);
@@ -1365,7 +1393,24 @@ export function SwapPanel({
               >
                 Add Robinhood to MetaMask
               </button>
-              {robinhoodNotice && <p role="status">{robinhoodNotice}</p>}
+              {waitingForRobinhood ? (
+                <>
+                  <p role="status">Still waiting for MetaMask.</p>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => recheckRobinhood?.()}
+                  >
+                    Check network again
+                  </button>
+                  <p>
+                    If the wait continues, disconnect and reconnect MetaMask in the site’s wallet
+                    menu.
+                  </p>
+                </>
+              ) : (
+                robinhoodNotice && <p role="status">{robinhoodNotice}</p>
+              )}
             </div>
           )}
 

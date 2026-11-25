@@ -200,6 +200,12 @@ export class WalletChainUnchangedError extends SwitchChainError {
   }
 }
 
+export class HostWalletDisconnectedError extends SwitchChainError {
+  constructor() {
+    super(new Error("The wallet disconnected"));
+  }
+}
+
 /** A relay can see the signature that derives the Stealth keys. */
 export function refusesStealth(connector: { readonly id: string } | undefined): boolean {
   if (connector?.id !== HOST_WALLET_ID) return false;
@@ -231,6 +237,7 @@ export function hostWallet(bridge: HostConnection): Wallet {
           | {
               chainId: number;
               add: (explicit?: boolean) => void;
+              recheck: () => void;
               cancel: () => void;
               result: Promise<Chain>;
             }
@@ -256,10 +263,12 @@ export function hostWallet(bridge: HostConnection): Wallet {
           const target = numberToHex(chainId);
           let accepted = false;
           let adding = false;
+          let recoverable = false;
           let observed = false;
           let chainEvent = 0;
           let finished = false;
           let activeRead: symbol | undefined;
+          let readStartedAt = 0;
           let poll: ReturnType<typeof setInterval> | undefined;
           let timeout: ReturnType<typeof setTimeout> | undefined;
           let remaining = HOST_CHAIN_CHECK_TIMEOUT_MS;
@@ -279,17 +288,19 @@ export function hostWallet(bridge: HostConnection): Wallet {
           const onChainChanged = (value: unknown) => {
             chainEvent += 1;
             observed = typeof value === "string" && Number(value) === chainId;
-            if (accepted && observed) finish();
+            if ((accepted || recoverable) && observed) finish();
           };
           const checkChain = async () => {
-            if (!accepted || finished || activeRead) return;
+            if ((!accepted && !recoverable) || finished || activeRead) return;
             const read = Symbol();
             activeRead = read;
+            readStartedAt = Date.now();
             const previousEvent = chainEvent;
             try {
               const current = await provider.request({ method: "eth_chainId" });
               if (
                 !finished &&
+                activeRead === read &&
                 previousEvent === chainEvent &&
                 typeof current === "string" &&
                 Number(current) === chainId
@@ -303,6 +314,13 @@ export function hostWallet(bridge: HostConnection): Wallet {
               if (activeRead === read) activeRead = undefined;
             }
           };
+          const recheck = () => {
+            if (!recoverable || finished) return;
+            // A previous read can stall along with the interactive request.
+            // Only the latest read may publish a chain change.
+            activeRead = undefined;
+            void checkChain();
+          };
           const stopChecks = () => {
             clearInterval(poll);
             clearTimeout(timeout);
@@ -310,14 +328,14 @@ export function hostWallet(bridge: HostConnection): Wallet {
             timeout = undefined;
           };
           const onVisibility = () => {
-            if (!accepted || finished) return;
+            if (finished) return;
             if (document.visibilityState !== "visible") {
               stopChecks();
               return;
             }
             // The wallet can acknowledge while the browser is backgrounded.
             // Spend the verification budget only while the user is back.
-            if (timeout === undefined) {
+            if (accepted && timeout === undefined) {
               startedAt = Date.now();
               poll = setInterval(() => void checkChain(), HOST_CHAIN_CHECK_INTERVAL_MS);
               timeout = setTimeout(
@@ -325,9 +343,14 @@ export function hostWallet(bridge: HostConnection): Wallet {
                 remaining,
               );
             }
-            void checkChain();
+            if (
+              recoverable &&
+              (!activeRead || Date.now() - readStartedAt >= HOST_CHAIN_CHECK_INTERVAL_MS)
+            )
+              recheck();
+            else void checkChain();
           };
-          const cancel = () => finish(new SwitchChainError(new Error("The wallet disconnected")));
+          const cancel = () => finish(new HostWalletDisconnectedError());
           provider.on("chainChanged", onChainChanged);
           wagmiConfig.emitter.on("disconnect", cancel);
           const stopAvailability = bridge.onAvailability((available) => {
@@ -349,6 +372,7 @@ export function hostWallet(bridge: HostConnection): Wallet {
                 : new SwitchChainError(error),
             );
           const requestAdd = async (explicit: boolean) => {
+            if (explicit) recoverable = true;
             if (finished || adding) return;
             adding = true;
             chainEvent += 1;
@@ -404,7 +428,7 @@ export function hostWallet(bridge: HostConnection): Wallet {
             }
           };
           const completion = result.then(() => chain);
-          currentSwitch = { chainId, add, cancel, result: completion };
+          currentSwitch = { chainId, add, recheck, cancel, result: completion };
           if (addOnly) add(true);
           else void requestSwitch();
           try {
@@ -462,6 +486,7 @@ export function hostWallet(bridge: HostConnection): Wallet {
           },
           switchChain: (options: Parameters<typeof changeChain>[0]) => changeChain(options),
           addRobinhoodNetwork: () => changeChain({ chainId: robinhood.id }, true),
+          recheckRobinhoodNetwork: () => currentSwitch?.recheck(),
         };
       }),
   };
