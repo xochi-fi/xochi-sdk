@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-11-25
+
+### Fixed
+
+- Distinguish a pending Robinhood network-add request from MetaMask acknowledging it while the site remains on another chain. The recovery action rechecks the active network without treating request acknowledgement as a successful network switch.
+
 ## [0.1.6] - 2026-11-25
 
 ### Added
