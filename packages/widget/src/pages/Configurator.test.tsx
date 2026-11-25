@@ -127,10 +127,12 @@ const leg = (name: LegName) => within(screen.getByRole("group", { name }));
 
 /** A leg's chain menu option, opening the menu (the frame's chain badge). */
 function chainOption(name: LegName, chain: string): HTMLElement {
-  if (screen.queryByRole("dialog", { name: "Select network" }) === null) {
+  if (screen.queryByRole("dialog", { name: /^Select network for (Pay|Receive)$/ }) === null) {
     fireEvent.click(leg(name).getByRole("button", { name: /Change network$/ }));
   }
-  return within(screen.getByRole("dialog", { name: "Select network" })).getByRole("button", {
+  return within(
+    screen.getByRole("dialog", { name: /^Select network for (Pay|Receive)$/ }),
+  ).getByRole("button", {
     name: new RegExp(`^${chain}`),
   });
 }

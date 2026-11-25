@@ -830,7 +830,11 @@ describe("zk.money destination", () => {
     const tagQuoteCount = bodies.length;
 
     fireEvent.click(screen.getByRole("button", { name: "On zk.money - Change network" }));
-    const dialog = await screen.findByRole("dialog", { name: "Select network" }, WAIT);
+    const dialog = await screen.findByRole(
+      "dialog",
+      { name: /^Select network for (Pay|Receive)$/ },
+      WAIT,
+    );
     fireEvent.click(within(dialog).getByRole("button", { name: /^Ethereum/ }));
 
     expect(screen.getByRole("button", { name: /^Public/ }).getAttribute("aria-pressed")).toBe(
@@ -863,7 +867,11 @@ describe("zk.money destination", () => {
       expect(screen.getByRole("group", { name: "Settlement privacy" })).toBeTruthy();
 
       fireEvent.click(screen.getByRole("button", { name: "On Arbitrum - Change network" }));
-      const dialog = await screen.findByRole("dialog", { name: "Select network" }, WAIT);
+      const dialog = await screen.findByRole(
+        "dialog",
+        { name: /^Select network for (Pay|Receive)$/ },
+        WAIT,
+      );
       expect(within(dialog).queryByRole("button", { name: /Aztec/ })).toBeNull();
       expect(
         Array.from(document.querySelectorAll(".token-search-chain-item")).some((option) =>

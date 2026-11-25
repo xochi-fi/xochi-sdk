@@ -63,6 +63,8 @@ export const STORAGE_KEYS = {
 // UI Strings
 // ============================================================
 
+export const CANTON_RECEIVE_ROUTE = "Receive only · Base USDC · Public";
+
 export const UI = {
   CONNECT_WALLET: "Connect wallet",
   CONNECT_PROMPT: "Connect wallet first",

@@ -171,7 +171,11 @@ function RefreshCapabilities() {
 
 async function chooseEthereumDestination(): Promise<void> {
   fireEvent.click(screen.getByRole("button", { name: "On Arbitrum - Change network" }));
-  const dialog = await screen.findByRole("dialog", { name: "Select network" }, WAIT);
+  const dialog = await screen.findByRole(
+    "dialog",
+    { name: /^Select network for (Pay|Receive)$/ },
+    WAIT,
+  );
   fireEvent.click(within(dialog).getByRole("button", { name: /^Ethereum/ }));
 }
 
@@ -496,14 +500,22 @@ describe("the selection is never switched for the user", () => {
     await waitFor(() => expect(selected()).toEqual(["Stealth"]), WAIT);
 
     fireEvent.click(screen.getByRole("button", { name: "On Ethereum - Change network" }));
-    const stealthDialog = await screen.findByRole("dialog", { name: "Select network" }, WAIT);
+    const stealthDialog = await screen.findByRole(
+      "dialog",
+      { name: /^Select network for (Pay|Receive)$/ },
+      WAIT,
+    );
     expect(within(stealthDialog).queryByRole("button", { name: /^Arbitrum/ })).toBeNull();
     fireEvent.keyDown(stealthDialog, { key: "Escape" });
     expect(selected()).toEqual(["Stealth"]);
 
     fireEvent.click(mode("Public"));
     fireEvent.click(screen.getByRole("button", { name: "On Ethereum - Change network" }));
-    const publicDialog = await screen.findByRole("dialog", { name: "Select network" }, WAIT);
+    const publicDialog = await screen.findByRole(
+      "dialog",
+      { name: /^Select network for (Pay|Receive)$/ },
+      WAIT,
+    );
     fireEvent.click(within(publicDialog).getByRole("button", { name: /^Arbitrum/ }));
     expect(screen.getByRole("button", { name: "On Arbitrum - Change network" })).toBeTruthy();
     expect(selected()).toEqual(["Public"]);

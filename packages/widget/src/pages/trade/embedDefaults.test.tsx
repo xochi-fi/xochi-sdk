@@ -283,7 +283,11 @@ describe("frame URL parameters", () => {
     await openFrame("?toChain=42161", [], true);
     const chooseDestination = async (current: string, next: string): Promise<void> => {
       fireEvent.click(screen.getByRole("button", { name: `On ${current} - Change network` }));
-      const dialog = await screen.findByRole("dialog", { name: "Select network" }, WAIT);
+      const dialog = await screen.findByRole(
+        "dialog",
+        { name: /^Select network for (Pay|Receive)$/ },
+        WAIT,
+      );
       const option = await waitFor(() => {
         const row = within(dialog).getByRole("button", { name: new RegExp(`^${next}\\b`) });
         expect(row.getAttribute("aria-disabled")).not.toBe("true");
@@ -416,7 +420,11 @@ describe("capability-driven trade selectors", () => {
     expect(chains()).toEqual(["Base", "Ethereum"]);
 
     fireEvent.click(screen.getByRole("button", { name: "On Ethereum - Change network" }));
-    const chainDialog = await screen.findByRole("dialog", { name: "Select network" }, WAIT);
+    const chainDialog = await screen.findByRole(
+      "dialog",
+      { name: /^Select network for (Pay|Receive)$/ },
+      WAIT,
+    );
     const tron = Array.from(chainDialog.querySelectorAll("button")).find(
       (button) => button.textContent?.trim() === "Tron",
     );

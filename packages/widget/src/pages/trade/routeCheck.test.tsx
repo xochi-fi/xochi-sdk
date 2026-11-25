@@ -430,12 +430,12 @@ describe("once the live route list is in", () => {
     const trigger = screen.getByRole("button", { name: "On Arbitrum - Change network" });
 
     fireEvent.click(trigger);
-    const dialog = screen.getByRole("dialog", { name: "Select network" });
+    const dialog = screen.getByRole("dialog", { name: /^Select network for (Pay|Receive)$/ });
     expect(dialog.parentElement).toBe(document.body);
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Close" }));
 
     fireEvent.keyDown(dialog, { key: "Escape" });
-    expect(screen.queryByRole("dialog", { name: "Select network" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: /^Select network for (Pay|Receive)$/ })).toBeNull();
     expect(document.activeElement).toBe(trigger);
   });
 });
