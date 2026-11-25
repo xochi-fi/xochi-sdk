@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-11-25
+
+### Changed
+
+- Use the approved official Canton Network artwork in network UI and the Paxos PYUSD artwork in token UI. Canton Coin keeps the `CC` letter fallback pending a first-party coin mark; route behavior and Pay/Receive guidance are unchanged.
+
 ## [0.1.4] - 2026-11-25
 
 ### Changed
