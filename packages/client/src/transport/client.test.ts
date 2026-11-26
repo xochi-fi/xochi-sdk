@@ -192,9 +192,11 @@ describe("failed intent support code", () => {
 
   it.each([200, 502])("keeps a terminal execute code private on HTTP %s", async (httpStatus) => {
     const log = vi.fn();
-    const { c } = client(() => json({ ...failed, reconciling: false }, httpStatus, headers), {
-      log,
-    });
+    const body =
+      httpStatus === 502
+        ? { ...failed, substatus: "not_executed" }
+        : { ...failed, reconciling: false };
+    const { c } = client(() => json(body, httpStatus, headers), { log });
     const pending = c.execute(execRequest);
     const result = await (httpStatus === 502 ? rejection(pending) : pending);
     expect(getIntentSupportCode(result)).toBe(code);

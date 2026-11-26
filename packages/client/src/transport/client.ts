@@ -893,7 +893,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
               record?.intent_id === executedIntentId &&
               record.success === false &&
               record.status === "failed" &&
-              record.reconciling !== true
+              (record.reconciling === undefined || record.reconciling === false)
             ) {
               rememberSupportCode(intentSupportCodes, error, response.headers);
             }
@@ -1268,7 +1268,12 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
           // An escrow order's own fields, raw status included: `escrowProgress`.
           ...(escrow ? { escrow } : {}),
         };
-        if (supportCode && d.intent_id === intentId && d.status === "failed" && result.terminal) {
+        if (
+          supportCode &&
+          d.intent_id === intentId &&
+          d.status === "failed" &&
+          result.terminal === true
+        ) {
           rememberSupportCode(intentSupportCodes, result, response.headers);
         }
         return result;

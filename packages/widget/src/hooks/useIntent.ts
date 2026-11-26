@@ -107,6 +107,8 @@ export interface UseIntentParams {
     viewingPubKey: string;
     chainId: ChainId;
   };
+  /** Enable failed-intent support codes in the swap panel. */
+  showFailureSupport?: boolean;
   /** Pause the pre-expiry quote auto-refresh (e.g. while a confirm modal is open). */
   paused?: boolean;
   /** Independently reviewed legs keep their held quote until expiry; refresh only on a user action. */
@@ -261,6 +263,7 @@ interface Bindings {
   /** Current exact live-route settlement authority; read again when async wallet work returns. */
   settlementAuthorized: boolean;
   manualQuoteRefresh: boolean;
+  showFailureSupport: boolean;
   render: (model: Model, failure: Runtime["intentFailure"]) => void;
   signTypedDataAsync: SignTypedDataAsync;
   ensureSession: () => Promise<string | null>;
@@ -281,6 +284,7 @@ interface Runtime {
   executionIntentId: string | null;
   /** The SDK keeps a failed poll's safety verdict, but drops its raw substatus. */
   failureSubstatus: { intentId: string; substatus: string | null } | null;
+  /** A terminal execute answer can arrive before the machine reconciles its failure. */
   intentFailure: { intentId: string; owner: string; code: string } | null;
   quoteFailure: { intent: Model["intent"]; quoteKey: string; code: string } | null;
   bindings: Bindings | null;
@@ -394,6 +398,7 @@ function createRuntime(initial: Model): Runtime {
       rt.intentFailure = null;
     }
     if (
+      io.showFailureSupport &&
       supportCode &&
       owner &&
       owner.toLowerCase() === io.ctx.wallet.address?.toLowerCase() &&
@@ -527,6 +532,7 @@ function createRuntime(initial: Model): Runtime {
           const reply = { type: "StatusReplied" as const, gen: call.gen, attempt: call.attempt };
           const owner = rt.model.intent.quotedAddress;
           const wantsSupportCode =
+            io.showFailureSupport &&
             owner !== null &&
             owner.toLowerCase() === io.ctx.wallet.address?.toLowerCase() &&
             hasWalletSession(owner);
@@ -774,6 +780,7 @@ export function useIntent(params: UseIntentParams): UseIntentReturn {
     quoteKey,
     settlementAuthorized,
     manualQuoteRefresh: params.manualQuoteRefresh === true,
+    showFailureSupport: params.showFailureSupport === true,
     render: (next, failure) => {
       setModel(next);
       setIntentFailure(failure);
