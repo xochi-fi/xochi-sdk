@@ -2,17 +2,20 @@
 
 ## [Unreleased]
 
-## [0.1.8-staging.2]
-
-### Added
-
-- Show a selectable and copyable support code and a private report link for eligible failures in the active Swap panel. Status requests opt in only for the connected order owner with a wallet-bound session. Retry or replacement clears the code, and stale replies cannot restore it.
-
-## [0.1.8-staging.1]
+## [0.1.8] - 2026-11-26
 
 ### Added
 
 - Show a selectable support code and a **Copy support code** button when a failed quote includes one. Users can paste the code into a private report.
+- Show a selectable and copyable support code and a private report link for eligible failures in the active Swap panel. Status requests opt in only for the connected order owner with a wallet-bound session. Retry or replacement clears the code, and stale replies cannot restore it.
+
+### Changed
+
+- Show the verified Canton Coin artwork for `CC` and prioritize the eligible Canton destination in the ordinary Receive network picker so it is visible without scrolling. Capability-derived eligibility, the route matrix, and production gating are unchanged.
+
+### Fixed
+
+- Pass chain-specific ERC-3009 recipient pins to the trade machine so a deployment can authorize its Arc USDC recipient independently. The hosted Arc fix requires the build to supply the verified Arc pin for each environment.
 
 ## [0.1.7] - 2026-11-25
 
@@ -35,7 +38,7 @@
 
 ### Changed
 
-- Use the approved official Canton Network artwork in network UI and the Paxos PYUSD artwork in token UI. Canton Coin keeps the `CC` letter fallback pending a first-party coin mark; route behavior and Pay/Receive guidance are unchanged.
+- Use the approved official Canton Network artwork in network UI and the Paxos PYUSD artwork in token UI. Canton Coin retains the `CC` letter fallback in this release; route behavior and Pay/Receive guidance are unchanged.
 
 ## [0.1.4] - 2026-11-25
 

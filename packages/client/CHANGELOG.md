@@ -4,17 +4,16 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
-## [0.2.1-staging.2]
-
-### Added
-
-- Add `getIntentSupportCode(result)` for eligible failed execute results or errors and opted-in failed intent status results. Use the optional `supportCode` status request with an owner session. Support metadata stays out of serialized results and errors.
-
-## [0.2.1-staging.1]
+## [0.2.1] - 2026-11-26
 
 ### Added
 
 - `getQuoteSupportCode(result)` reads an optional support code from the original declined quote or thrown quote error. The metadata stays out of serialized responses and errors.
+- Add `getIntentSupportCode(result)` for eligible failed execute results or errors and opted-in failed intent status results. Use the optional `supportCode` status request with an owner session. Support metadata stays out of serialized results and errors.
+
+### Fixed
+
+- Allow the integrator to configure a chain-specific ERC-3009 recipient list. The trade machine checks the origin-chain pin when ingesting the quote and again before approval. An override replaces the default for that chain and fails closed when empty. Permit2, amount and payout validation retain their existing checks.
 
 ## [0.2.0]
 
