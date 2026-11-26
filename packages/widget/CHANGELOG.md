@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-11-25
+
+### Fixed
+
+- Distinguish a pending Robinhood network-add request from MetaMask acknowledging it while the site remains on another chain. The recovery action rechecks the active network without treating request acknowledgement as a successful network switch.
+- Hand embedded Peer Buy off to a fresh standalone staging-compatible review when the extension bridge is unavailable, and renew an exact quote whose terms are unchanged except for a fresh expiry. Review continues to reject changed economics, maker, payee, settlement, or already-expired offers before any order, payment, or signature.
+
 ## [0.1.6] - 2026-11-25
 
 ### Added
