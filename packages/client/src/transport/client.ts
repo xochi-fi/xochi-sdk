@@ -190,6 +190,20 @@ export class ApiError extends Error {
   }
 }
 
+const QUOTE_PATH = "/api/intent/quote";
+const quoteSupportCodes = new WeakMap<object, string>();
+
+function rememberQuoteSupportCode(result: QuoteResponse | ApiError, headers: Headers): void {
+  const code = headers.get("X-Xochi-Support-Code");
+  if (code?.length === 32 && /^[0-9a-f]{32}$/.test(code)) quoteSupportCodes.set(result, code);
+}
+
+/** Read optional support metadata from the original declined quote or thrown quote error. */
+export function getQuoteSupportCode(result: unknown): string | undefined {
+  // Keep this metadata out of serialized responses, errors, and routine logs.
+  return typeof result === "object" && result !== null ? quoteSupportCodes.get(result) : undefined;
+}
+
 /**
  * A failed answer to `POST /api/intent/execute` that cannot vouch that
  * nothing moved for the executed intent. Fail
@@ -802,7 +816,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
     // (`takeApiErrorReadToken`) and never on it, or the not-accepted marker
     // (`ApiError.notAccepted`).
     executedIntentId?: string,
-  ): Promise<T> {
+  ): Promise<{ data: T; response: Response }> {
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -810,7 +824,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
       // back to exponential when absent.
       let retryAfterMs: number | null = null;
       try {
-        const data = await send(path, init, timeoutMs, async (response): Promise<unknown> => {
+        const { data, response } = await send(path, init, timeoutMs, async (response) => {
           if (!response.ok) {
             const { text: errorBody, truncated } = await readCappedText(response);
             // A 503 is a transient solver blip (saturation / gas-oracle
@@ -853,9 +867,13 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
               typeof record?.error_category === "string" ? record.error_category : undefined,
             );
             if (servedToken !== undefined) errorReadTokens.set(error, servedToken);
+            if (path === QUOTE_PATH && response.status >= 400 && response.status < 600) {
+              rememberQuoteSupportCode(error, response.headers);
+            }
             throw error;
           }
-          return response.json();
+          const data: unknown = await response.json();
+          return { data, response };
         });
         if (!validator(data)) {
           // A 2xx execute reports an execute that may already have moved funds:
@@ -868,7 +886,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
           if (servedToken !== undefined) errorReadTokens.set(error, servedToken);
           throw error;
         }
-        return data;
+        return { data, response };
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
 
@@ -945,8 +963,8 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
   }
 
   async function fetchQuote(request: QuoteRequest): Promise<QuoteResponse> {
-    const wire = await sendWithRetry<QuoteResponseWire>(
-      "/api/intent/quote",
+    const { data: wire, response } = await sendWithRetry<QuoteResponseWire>(
+      QUOTE_PATH,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -986,7 +1004,11 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
       timeouts.requestTimeoutMs,
       retry.maxAttempts,
     );
-    return mapQuoteResponse(wire);
+    const quote = mapQuoteResponse(wire);
+    if (response.status === 200 && !quote.canSolve) {
+      rememberQuoteSupportCode(quote, response.headers);
+    }
+    return quote;
   }
 
   return {
@@ -1045,7 +1067,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
     },
 
     async execute(request) {
-      const wire = await sendWithRetry<ExecuteResponseWire>(
+      const { data: wire } = await sendWithRetry<ExecuteResponseWire>(
         "/api/intent/execute",
         {
           method: "POST",

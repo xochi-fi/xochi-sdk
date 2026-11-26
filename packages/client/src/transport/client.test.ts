@@ -18,6 +18,7 @@ import {
   MAX_RETRY_WAIT_SEC,
   RedirectRefused,
   createXochiClient,
+  getQuoteSupportCode,
   parseRetryAfterMs,
   resolveRetryAfterSeconds,
   type AuthExpiredEvent,
@@ -130,6 +131,58 @@ const okQuote = (extra: Record<string, unknown> = {}) =>
   });
 
 const execRequest = { intentId: "intent-1", quoteId: "quote-1", signature: "0xsig", nonce: 1 };
+
+describe("quote support code", () => {
+  const code = "0123456789abcdef0123456789abcdef";
+  const header = { "X-Xochi-Support-Code": code };
+  const decline = { success: true, intent_id: "i", quote_id: "q", can_solve: false, expiry: "x" };
+
+  it.each([undefined, "", code.toUpperCase(), code.slice(1), `${code}, ${code}`])(
+    "ignores missing or malformed header %s",
+    async (value) => {
+      const { c } = client(() =>
+        json(decline, 200, value === undefined ? {} : { "X-Xochi-Support-Code": value }),
+      );
+      const quote = await c.getQuote(req);
+      expect(quote.canSolve).toBe(false);
+      expect(getQuoteSupportCode(quote)).toBeUndefined();
+    },
+  );
+
+  it("stores decline metadata outside the serialized quote and ignores it on success", async () => {
+    const { c } = client((call) => json({ ...decline, can_solve: call === 2 }, 200, header));
+    const quote = await c.getQuote(req);
+    expect(getQuoteSupportCode(quote)).toBe(code);
+    expect(JSON.stringify(quote)).not.toContain(code);
+    expect(getQuoteSupportCode(await c.getQuote(req))).toBeUndefined();
+  });
+
+  it.each([403, 500, 503])("retains the code on a final HTTP %s quote failure", async (status) => {
+    const log = vi.fn();
+    const { c } = client(() => json({ error: "Quote unavailable" }, status, header), { log });
+    const error = await rejection(c.getQuote(req));
+    expect(error).toMatchObject({ code: status });
+    expect(getQuoteSupportCode(error)).toBe(code);
+    expect(JSON.stringify([error, log.mock.calls])).not.toContain(code);
+  });
+
+  it("discards intermediate responses when the final attempt has no code or response", async () => {
+    for (const finalFailure of [
+      () => json({}, 403),
+      () => {
+        throw new Error("Offline");
+      },
+    ]) {
+      const { c } = client((call) => (call === 1 ? json({}, 503, header) : finalFailure()));
+      expect(getQuoteSupportCode(await rejection(c.getQuote(req)))).toBeUndefined();
+    }
+  });
+
+  it("ignores the header on execute errors", async () => {
+    const { c } = client(() => json({}, 403, header));
+    expect(getQuoteSupportCode(await rejection(c.execute(execRequest)))).toBeUndefined();
+  });
+});
 
 // The quote/execute retry loop paces a 503 off the server's Retry-After header
 // (integer seconds). parseRetryAfterMs converts + clamps it; a bad or hostile

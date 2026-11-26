@@ -48,6 +48,7 @@ const quote = await xochi.getQuote(request);
 
 - An error body is read up to its first 8 KiB; the rest is cancelled unread. A body that does not arrive within the attempt's timeout fails the attempt as a timeout.
 - `ApiError.message` is a capped, redacted excerpt of the error body; never log raw bodies. What is redacted: `src/transport/redact.ts`.
+- `getQuoteSupportCode(result)` returns the optional `X-Xochi-Support-Code` from the original declined `getQuote` result or the final error it throws. Pass that object directly to the accessor. Offer the code for manual copying into a private report and keep it out of logs, URLs, and automatic reporting.
 - 429/503 raise `ApiError` with `retryAfter` (absolute unix seconds, capped at `MAX_RETRY_WAIT_SEC`), read from `Retry-After`, else `X-RateLimit-Reset`, else a JSON body's `retryAfter`. `notAccepted` is the exception.
 - `ApiError.errorCategory` preserves a JSON error body's `error_category`. Copy it into `StructuredError.errorCategory` when reporting failures to the machine. `tag_resolution_unavailable` never auto-retries: show the lookup error and offer a manual fresh quote for the same tag. It invalidates held quotes even on silent refresh; tag quotes never cache one-time recipient addresses. `RefreshRequested` forces a new quote after this failure.
 - A confirmed missing tag still arrives as an HTTP 200 `tag_unresolved` decline. It also clears a stale held quote, including on silent refresh; the machine retains its category in `StructuredError.errorCategory`.
