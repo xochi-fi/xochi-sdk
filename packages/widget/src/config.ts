@@ -53,6 +53,8 @@ export interface WidgetSettings {
    * reaches the machine.
    */
   cantonLive?: boolean;
+  /** Show Metatarz Canton TestNet connection in Send. Enable on staging only. */
+  metatarzTestnetConnection?: boolean;
   /** Independently provisioned addresses, never populated from API capabilities. */
   solverPin: {
     erc3009Allowlist: readonly string[];
@@ -91,6 +93,7 @@ export let GNOSIS_ENABLED = false;
 export let RECIPIENT_RECEIPTS_LIVE = false;
 /** `WidgetSettings.cantonLive`. Reassigned by `configureWidget`: read it at call time, never at module load. */
 export let CANTON_DESTINATION_LIVE = false;
+export let METATARZ_TESTNET_CONNECTION = false;
 export let SOLVER_PIN: {
   erc3009Allowlist: readonly string[];
   erc3009AllowlistByChain?: Readonly<Partial<Record<number, readonly string[]>>>;
@@ -159,6 +162,7 @@ export function configureWidget(settings: WidgetSettings): void {
   GNOSIS_ENABLED = settings.gnosisLive === true;
   RECIPIENT_RECEIPTS_LIVE = settings.recipientReceiptsLive ?? false;
   CANTON_DESTINATION_LIVE = settings.cantonLive === true;
+  METATARZ_TESTNET_CONNECTION = settings.metatarzTestnetConnection === true;
   const normalize = (addresses: readonly string[]): readonly string[] =>
     Object.freeze(addresses.map((address) => address.trim().toLowerCase()).filter(Boolean));
   const erc3009AllowlistByChain = Object.freeze(

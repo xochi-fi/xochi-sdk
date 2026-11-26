@@ -25,6 +25,10 @@
   max-width: 600px;
 }
 
+.send-metatarz__party {
+  overflow-wrap: anywhere;
+}
+
 .send-card__title {
   margin: 0;
   font-family: var(--font-mono);
