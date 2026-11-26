@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-11-26
+
+### Fixed
+
+- Pass chain-specific ERC-3009 recipient pins to the trade machine so a deployment can authorize its Arc USDC recipient independently. The hosted Arc fix requires the build to supply the verified Arc pin for each environment.
+
 ## [0.1.7] - 2026-11-25
 
 ### Fixed

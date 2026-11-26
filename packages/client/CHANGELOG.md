@@ -4,6 +4,12 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-26
+
+### Fixed
+
+- Allow the integrator to configure a chain-specific ERC-3009 recipient list. The trade machine checks the origin-chain pin when ingesting the quote and again before approval. An override replaces the default for that chain and fails closed when empty. Permit2, amount and payout validation retain their existing checks.
+
 ## [0.2.0]
 
 ### Added
