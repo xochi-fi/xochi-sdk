@@ -48,6 +48,7 @@ import { TokenSelector } from "./Selectors.js";
 import { PrivacyBars } from "../../components/PrivacyBars.js";
 import { QuoteDetails } from "../../components/QuoteDetails.js";
 import { ErrorDisplay } from "../../components/ErrorDisplay.js";
+import { QuoteSupportCode } from "../../components/QuoteSupportCode.js";
 import { WrapModal } from "../../components/WrapModal.js";
 import { SwapFlowModal } from "../../components/SwapFlowModal.js";
 import { useCapabilities } from "../../hooks/useCapabilities.js";
@@ -1361,6 +1362,16 @@ export function SwapPanel({
                 mayHaveMoved={intent.receipt.phase === "may-have-moved"}
                 notExecuted={intent.notExecuted}
               />
+            )}
+
+          {sendQuoteMatches &&
+            !routeBlocked &&
+            !orderOutOfBounds &&
+            !excessiveSlippage &&
+            !flowOpen &&
+            !QUOTE_BUSY_STATES.includes(intent.status) &&
+            intent.quoteSupportCode && (
+              <QuoteSupportCode key={intent.quoteSupportCode} code={intent.quoteSupportCode} />
             )}
 
           {/* Settlement-mode escape hatch for a request the solver turned down on

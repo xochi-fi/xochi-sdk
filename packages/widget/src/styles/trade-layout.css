@@ -514,6 +514,24 @@
   color: var(--muted-gold);
 }
 
+.quote-support-code {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.quote-support-code input {
+  width: 34ch;
+  max-width: 100%;
+  font-family: monospace;
+  user-select: text;
+}
+
+.quote-support-code [role="status"]:empty {
+  position: absolute;
+}
+
 /* Two answers side by side: take the offer, or decline it. Wraps rather than
    shrinking, so the card's ~420px column never squeezes either label onto two
    lines. */

@@ -4,6 +4,10 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+### Added
+
+- `getQuoteSupportCode(result)` reads an optional support code from the original declined quote or thrown quote error. The metadata stays out of serialized responses and errors.
+
 ## [0.2.0]
 
 ### Added
