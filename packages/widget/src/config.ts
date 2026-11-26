@@ -56,6 +56,8 @@ export interface WidgetSettings {
   /** Independently provisioned addresses, never populated from API capabilities. */
   solverPin: {
     erc3009Allowlist: readonly string[];
+    /** Independently reviewed ERC-3009 recipient overrides by origin chain. */
+    erc3009AllowlistByChain?: Readonly<Partial<Record<number, readonly string[]>>>;
     permit2Allowlist: readonly string[];
     requirePin: boolean;
   };
@@ -91,6 +93,7 @@ export let RECIPIENT_RECEIPTS_LIVE = false;
 export let CANTON_DESTINATION_LIVE = false;
 export let SOLVER_PIN: {
   erc3009Allowlist: readonly string[];
+  erc3009AllowlistByChain?: Readonly<Partial<Record<number, readonly string[]>>>;
   permit2Allowlist: readonly string[];
   requirePin: boolean;
 } = { erc3009Allowlist: [], permit2Allowlist: [], requirePin: false };
@@ -158,24 +161,49 @@ export function configureWidget(settings: WidgetSettings): void {
   CANTON_DESTINATION_LIVE = settings.cantonLive === true;
   const normalize = (addresses: readonly string[]): readonly string[] =>
     Object.freeze(addresses.map((address) => address.trim().toLowerCase()).filter(Boolean));
+  const erc3009AllowlistByChain = Object.freeze(
+    Object.fromEntries(
+      Object.entries(settings.solverPin.erc3009AllowlistByChain ?? {}).map(
+        ([chainId, addresses]) => {
+          const pins = normalize(addresses ?? []);
+          if (
+            !SUPPORTED_CHAIN_IDS.some((id) => String(id) === chainId) ||
+            pins.length === 0 ||
+            pins.some((pin) => !isAddress(pin) || pin === zeroAddress)
+          ) {
+            throw new Error("Invalid chain-specific ERC-3009 pin");
+          }
+          return [chainId, pins] as const;
+        },
+      ),
+    ),
+  );
   SOLVER_PIN = Object.freeze({
     erc3009Allowlist: normalize(settings.solverPin.erc3009Allowlist),
+    erc3009AllowlistByChain,
     permit2Allowlist: normalize(settings.solverPin.permit2Allowlist),
     requirePin: settings.solverPin.requirePin,
   });
   PULL_RECIPIENTS =
-    SOLVER_PIN.erc3009Allowlist.length === 0
+    SOLVER_PIN.erc3009Allowlist.length === 0 && Object.keys(erc3009AllowlistByChain).length === 0
       ? undefined
       : Object.fromEntries(
-          SUPPORTED_CHAIN_IDS.map((chainId) => [
-            chainId,
-            {
-              erc3009: SOLVER_PIN.erc3009Allowlist,
-              ...(SOLVER_PIN.permit2Allowlist.length > 0
-                ? { permit2: SOLVER_PIN.permit2Allowlist }
-                : {}),
-            },
-          ]),
+          SUPPORTED_CHAIN_IDS.flatMap((chainId) => {
+            const erc3009 = erc3009AllowlistByChain[chainId] ?? SOLVER_PIN.erc3009Allowlist;
+            return erc3009.length === 0
+              ? []
+              : [
+                  [
+                    chainId,
+                    {
+                      erc3009,
+                      ...(SOLVER_PIN.permit2Allowlist.length > 0
+                        ? { permit2: SOLVER_PIN.permit2Allowlist }
+                        : {}),
+                    },
+                  ],
+                ];
+          }),
         );
   DEPOSIT_ATTESTATION_PIN = Object.freeze({
     signer: settings.depositAttestationSigner.trim().toLowerCase(),

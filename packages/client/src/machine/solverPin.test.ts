@@ -59,6 +59,33 @@ const pinned: SolverPinConfig = {
 };
 
 describe("validateSolverPin", () => {
+  it("uses the origin's ERC-3009 override while preserving Permit2 and amount checks", () => {
+    const arcSolver = "0x0000000000000000000000000000000000005042";
+    const config = { ...pinned, erc3009AllowlistByChain: { 5042: [arcSolver] } };
+    expect(validateSolverPin(erc3009Pull(arcSolver), config, AMOUNT, 5042)).toEqual({ ok: true });
+    expect(validateSolverPin(erc3009Pull(SOLVER), config, AMOUNT, 5042)).toMatchObject({
+      ok: false,
+      field: "pull_to",
+    });
+    expect(validateSolverPin(erc3009Pull(arcSolver), config, AMOUNT, 8453)).toMatchObject({
+      ok: false,
+      field: "pull_to",
+    });
+    expect(
+      validateSolverPin(erc3009Pull(arcSolver, "1000001"), config, AMOUNT, 5042),
+    ).toMatchObject({
+      ok: false,
+      field: "pull_amount",
+    });
+    expect(validateSolverPin(permit2Pull(PERMIT2_CONTRACT), config, AMOUNT, 5042)).toEqual({
+      ok: true,
+    });
+    expect(validateSolverPin(permit2Pull(arcSolver), config, AMOUNT, 5042)).toMatchObject({
+      ok: false,
+      field: "pull_spender",
+    });
+  });
+
   describe("ERC-3009 (to is signature-bound + msg.sender == to)", () => {
     it("accepts an unpinned `to` when no allowlist and no hard pin", () => {
       expect(validateSolverPin(erc3009Pull(ATTACKER), open, AMOUNT)).toEqual({ ok: true });
