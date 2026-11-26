@@ -30,7 +30,7 @@ This authorization is not a claim that third-party artwork is MIT-licensed
 and does not transfer ownership of any trademark.
 
 The project owner approved an exception to the redistribution clearance gate
-for the exact Canton Network and PYUSD PNGs identified by SHA-256 in
+for the exact Canton Network, Canton Coin and PYUSD PNGs identified by SHA-256 in
 licenses/assets.json (item 85). Rights-holder redistribution permission is unverified.
 
 Runtime packages remain separate dependencies under their own licenses;

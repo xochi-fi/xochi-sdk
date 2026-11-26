@@ -2,11 +2,15 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Show the verified Canton Coin artwork for `CC` and prioritize the eligible Canton destination in the ordinary Receive network picker so it is visible without scrolling. Capability-derived eligibility, the route matrix, and production gating are unchanged.
+
 ## [0.1.5] - 2026-11-25
 
 ### Changed
 
-- Use the approved official Canton Network artwork in network UI and the Paxos PYUSD artwork in token UI. Canton Coin keeps the `CC` letter fallback pending a first-party coin mark; route behavior and Pay/Receive guidance are unchanged.
+- Use the approved official Canton Network artwork in network UI and the Paxos PYUSD artwork in token UI. Canton Coin retains the `CC` letter fallback in this release; route behavior and Pay/Receive guidance are unchanged.
 
 ## [0.1.4] - 2026-11-25
 

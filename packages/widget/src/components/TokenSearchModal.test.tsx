@@ -6,7 +6,7 @@ import type { PairAvailability } from "../lib/pairAvailability.js";
 import { TokenSelector } from "../pages/trade/Selectors.js";
 import type { Token } from "../types/intent.js";
 import { TokenSearchModal } from "./TokenSearchModal.js";
-import type { SelectableChainId } from "@xochi/client";
+import { CANTON_MAINNET_CHAIN_ID, type SelectableChainId } from "@xochi/client";
 
 const ETHEREUM = 1;
 const BASE = 8453;
@@ -150,6 +150,31 @@ describe("TokenSearchModal capability inventory", () => {
     fireEvent.change(search, { target: { value: "missing" } });
     expect(within(dialog).queryByRole("button", { name: "zk.money" })).toBeNull();
     expect(within(dialog).getByText("No networks found")).toBeTruthy();
+  });
+
+  it("puts the Canton destination at the top of the ordinary Receive network list", () => {
+    render(
+      <TokenSearchModal
+        open
+        mode="chain"
+        networkLeg="Receive"
+        onClose={() => {}}
+        onSelect={() => {}}
+        onChainSelect={() => {}}
+        chainIds={[BASE, ETHEREUM, CANTON_MAINNET_CHAIN_ID]}
+        tokensByChain={tokensByChain}
+        classify={available}
+        initialChainId={ETHEREUM}
+      />,
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "Select network for Receive" });
+    const rows = [...dialog.querySelectorAll(".token-search-chain-item")];
+    expect(rows.map((row) => row.textContent)).toEqual([
+      "CantonReceive only · Base USDC · Public",
+      "Base",
+      "Ethereum",
+    ]);
   });
 });
 
