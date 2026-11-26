@@ -174,14 +174,16 @@ jobs:
             echo "tag $TAG says $version but $dir/package.json is $manifest; refusing to publish" >&2
             exit 1
           fi
-          # A prerelease goes to `next`. A stable version passes no --tag at all
+          # The Metatarz widget prerelease uses its own channel. Other
+          # prereleases go to `next`. A stable version passes no --tag at all
           # (an explicit `--tag latest` would let a backport roll `latest`
           # back), and is refused below unless it sorts above the current
           # `latest`. npm's own refusal is not relied on: it reads registry
           # versions through a path that swallows errors and then sees none.
           # Publish a backport by hand under a maintenance tag.
-          case "$version" in
-            *-*) dist_tag='next' ;;
+          case "$name@$version" in
+            '@xochi/widget@'*'-metatarz.'*) dist_tag='metatarz-testnet' ;;
+            *@*-*) dist_tag='next' ;;
             *)   dist_tag='' ;;
           esac
           if [ -z "$dist_tag" ]; then
