@@ -39,6 +39,7 @@ import {
   type WithheldIntentRecord,
   type IntentRecordWire,
   type IntentStatusResult,
+  type IntentStatusData,
   type QuoteRequest,
   type QuoteResponse,
 } from "../machine/wire.js";
@@ -193,9 +194,20 @@ export class ApiError extends Error {
 const QUOTE_PATH = "/api/intent/quote";
 const quoteSupportCodes = new WeakMap<object, string>();
 
-function rememberQuoteSupportCode(result: QuoteResponse | ApiError, headers: Headers): void {
+const intentSupportCodes = new WeakMap<object, string>();
+
+function rememberSupportCode(
+  codes: WeakMap<object, string>,
+  result: object,
+  headers: Headers,
+): void {
   const code = headers.get("X-Xochi-Support-Code");
-  if (code?.length === 32 && /^[0-9a-f]{32}$/.test(code)) quoteSupportCodes.set(result, code);
+  if (code?.length === 32 && /^[0-9a-f]{32}$/.test(code)) codes.set(result, code);
+}
+
+/** Read optional support metadata from the original failed execute or opted-in status result. */
+export function getIntentSupportCode(result: unknown): string | undefined {
+  return typeof result === "object" && result !== null ? intentSupportCodes.get(result) : undefined;
 }
 
 /** Read optional support metadata from the original declined quote or thrown quote error. */
@@ -463,6 +475,11 @@ export interface IntentReadOptions {
   readToken?: string;
 }
 
+export interface IntentStatusOptions extends IntentReadOptions {
+  /** Ask for a failure support code when the request already proves ownership. */
+  supportCode?: boolean;
+}
+
 /**
  * The read-capability header for one intent read: none without a token, null
  * for a token not of the `read_token` shape (the caller decides whether that
@@ -578,7 +595,7 @@ export interface XochiClient {
     intentId: string,
     opts?: IntentReadOptions,
   ): Promise<IntentRecord | WithheldIntentRecord | null>;
-  getIntentStatus(intentId: string, opts?: IntentReadOptions): Promise<IntentStatusResult>;
+  getIntentStatus(intentId: string, opts?: IntentStatusOptions): Promise<IntentStatusResult>;
   getIntentHistory(wallet: string, limit?: number): Promise<IntentRecord[]>;
   prepareStealthClaim(body: {
     counterfactualAddress: string;
@@ -868,7 +885,17 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
             );
             if (servedToken !== undefined) errorReadTokens.set(error, servedToken);
             if (path === QUOTE_PATH && response.status >= 400 && response.status < 600) {
-              rememberQuoteSupportCode(error, response.headers);
+              rememberSupportCode(quoteSupportCodes, error, response.headers);
+            }
+            if (
+              response.status === 502 &&
+              executedIntentId !== undefined &&
+              record?.intent_id === executedIntentId &&
+              record.success === false &&
+              record.status === "failed" &&
+              record.reconciling !== true
+            ) {
+              rememberSupportCode(intentSupportCodes, error, response.headers);
             }
             throw error;
           }
@@ -1006,7 +1033,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
     );
     const quote = mapQuoteResponse(wire);
     if (response.status === 200 && !quote.canSolve) {
-      rememberQuoteSupportCode(quote, response.headers);
+      rememberSupportCode(quoteSupportCodes, quote, response.headers);
     }
     return quote;
   }
@@ -1067,7 +1094,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
     },
 
     async execute(request) {
-      const { data: wire } = await sendWithRetry<ExecuteResponseWire>(
+      const { data: wire, response: http } = await sendWithRetry<ExecuteResponseWire>(
         "/api/intent/execute",
         {
           method: "POST",
@@ -1089,13 +1116,20 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
         request.intentId,
       );
       const { readToken, ...response } = mapExecuteResponse(wire);
-      if (readToken === undefined) return response;
       // Bound to the executed intent, exactly as on the failure path
       // (`readTokenForIntent`): a token served under another intent id would
       // only ever be presented for the wrong intent.
-      if (wire.intent_id === request.intentId) return { ...response, readToken };
-      log("warn", `[xochi-client] execute of ${request.intentId} answered for another intent`);
-      return response;
+      if (wire.intent_id !== request.intentId) {
+        if (readToken !== undefined) {
+          log("warn", `[xochi-client] execute of ${request.intentId} answered for another intent`);
+        }
+        return response;
+      }
+      const result = readToken === undefined ? response : { ...response, readToken };
+      if (wire.status === "failed" && wire.success === false && wire.reconciling === false) {
+        rememberSupportCode(intentSupportCodes, result, http.headers);
+      }
+      return result;
     },
 
     async getIntent(intentId, opts) {
@@ -1146,15 +1180,22 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
         headers = {};
       }
       const path = `/api/intent/${encodeURIComponent(intentId)}/status`;
-      const read = (init: RequestInit) =>
-        send(path, { method: "GET", ...init }, timeouts.requestTimeoutMs, readOkJson);
+      let supportCode = opts?.supportCode === true;
+      const read = (headers: Record<string, string>) =>
+        send(
+          supportCode ? `${path}?support_code=1` : path,
+          { method: "GET", headers },
+          timeouts.requestTimeoutMs,
+          readOkJson,
+        );
       try {
-        const { response, body } = await read({ headers }).catch((err: unknown) => {
+        const { response, body } = await read(headers).catch((err: unknown) => {
           if (!(err instanceof RedirectRefused) || !(READ_TOKEN_HEADER in headers)) throw err;
           warnOnce(
             `[xochi-client] status read for ${intentId} was redirected; polling it without the read token`,
           );
-          return read({ headers: {} });
+          supportCode = false;
+          return read({});
         });
         if (!response.ok) {
           // Logged, distinctly for a 404, once per id: a 404 leaves an in-flight
@@ -1192,7 +1233,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
         const decoded = decodeWireStatus(d.status);
         const status = decoded.status;
         const escrow = decodeEscrowStatus(body as Record<string, unknown>);
-        return {
+        const result: IntentStatusData = {
           intentId: d.intent_id ?? null,
           status,
           ...(decoded.kind === "unmapped" ? { unmapped: true } : {}),
@@ -1227,6 +1268,10 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
           // An escrow order's own fields, raw status included: `escrowProgress`.
           ...(escrow ? { escrow } : {}),
         };
+        if (supportCode && d.intent_id === intentId && d.status === "failed" && result.terminal) {
+          rememberSupportCode(intentSupportCodes, result, response.headers);
+        }
+        return result;
       } catch (err) {
         log("warn", "[xochi-client] status poll failed (will retry):", safeErrorForLog(err));
         return null;

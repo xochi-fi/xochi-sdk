@@ -19,6 +19,7 @@ import {
   RedirectRefused,
   createXochiClient,
   getQuoteSupportCode,
+  getIntentSupportCode,
   parseRetryAfterMs,
   resolveRetryAfterSeconds,
   type AuthExpiredEvent,
@@ -181,6 +182,62 @@ describe("quote support code", () => {
   it("ignores the header on execute errors", async () => {
     const { c } = client(() => json({}, 403, header));
     expect(getQuoteSupportCode(await rejection(c.execute(execRequest)))).toBeUndefined();
+  });
+});
+
+describe("failed intent support code", () => {
+  const code = "0123456789abcdef0123456789abcdef";
+  const headers = { "X-Xochi-Support-Code": code };
+  const failed = { success: false, intent_id: execRequest.intentId, status: "failed" };
+
+  it.each([200, 502])("keeps a terminal execute code private on HTTP %s", async (httpStatus) => {
+    const log = vi.fn();
+    const { c } = client(() => json({ ...failed, reconciling: false }, httpStatus, headers), {
+      log,
+    });
+    const pending = c.execute(execRequest);
+    const result = await (httpStatus === 502 ? rejection(pending) : pending);
+    expect(getIntentSupportCode(result)).toBe(code);
+    expect(getQuoteSupportCode(result)).toBeUndefined();
+    expect(JSON.stringify([result, log.mock.calls])).not.toContain(code);
+  });
+
+  it.each([
+    { status: "executing", reconciling: false },
+    { status: "completed", success: true, reconciling: false },
+    { status: "failed", reconciling: true },
+    { intent_id: "other" },
+  ])("ignores the header on an unrelated or nonfinal execute %j", async (patch) => {
+    const { c } = client(() => json({ ...failed, reconciling: false, ...patch }, 200, headers));
+    expect(getIntentSupportCode(await c.execute(execRequest))).toBeUndefined();
+  });
+
+  it("opts into status using the existing bearer header", async () => {
+    const { c, calls } = client(() => json(failed, 200, headers), {
+      getAuthToken: () => "synthetic-owner",
+    });
+    expect(getIntentSupportCode(await c.getIntentStatus(execRequest.intentId))).toBeUndefined();
+    expect(calls[0].url).not.toContain("?");
+    const result = await c.getIntentStatus(execRequest.intentId, { supportCode: true });
+    expect(calls[1].url).toBe("https://api.example.test/api/intent/intent-1/status?support_code=1");
+    expect(new Headers(calls[1].init.headers).get("Authorization")).toBe("Bearer synthetic-owner");
+    expect(getIntentSupportCode(result)).toBe(code);
+    expect(JSON.stringify(result)).not.toContain(code);
+  });
+
+  it.each([
+    [{ status: "settling" }, headers],
+    [{ status: "unmapped_future_status" }, headers],
+    [{ status: "completed" }, headers],
+    [{ terminal: false }, headers],
+    [{ intent_id: "other" }, headers],
+    [{}, {}],
+    [{}, { "X-Xochi-Support-Code": code.toUpperCase() }],
+  ] as const)("ignores an ineligible status response %j (%j)", async (patch, responseHeaders) => {
+    const { c } = client(() => json({ ...failed, ...patch }, 200, responseHeaders));
+    const result = await c.getIntentStatus(execRequest.intentId, { supportCode: true });
+    expect(result).not.toBeNull();
+    expect(getIntentSupportCode(result)).toBeUndefined();
   });
 });
 
