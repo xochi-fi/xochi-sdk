@@ -181,11 +181,13 @@ jobs:
           # `latest`. npm's own refusal is not relied on: it reads registry
           # versions through a path that swallows errors and then sees none.
           # Publish a backport by hand under a maintenance tag.
-          case "$name@$version" in
-            '@xochi/widget@'*'-metatarz.'*) dist_tag='metatarz-testnet' ;;
-            *@*-*) dist_tag='next' ;;
+          case "$version" in
+            *-*) dist_tag='next' ;;
             *)   dist_tag='' ;;
           esac
+          if [[ "$name" == '@xochi/widget' && "$version" == *-metatarz.* ]]; then
+            dist_tag='metatarz-testnet'
+          fi
           if [ -z "$dist_tag" ]; then
             if latest="$(npm view "$name" dist-tags.latest 2>"$RUNNER_TEMP/npm-view.err")"; then
               :
