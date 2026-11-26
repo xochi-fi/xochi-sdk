@@ -1548,7 +1548,9 @@ function completePull(m: Model, fx: Effect[], flow: SignFlow): Model {
     m.intent.quotedFromAmount || (eip712.message?.fromAmount as string) || "0",
   );
   if (typeof expected !== "bigint") return signFlowFailed({ ...m, sign: flow }, fx, expected);
-  const pin = validateSolverPin(pull, pullPinFor(m), expected);
+  // Quote ingest already bound this origin chain to the quote request.
+  const quotedOrigin = Number(eip712.message?.fromChainId);
+  const pin = validateSolverPin(pull, pullPinFor(m), expected, quotedOrigin);
   if (!pin.ok) {
     log(fx, "error", `${LOG} Refusing to sign origin pull:`, pin);
     return transition({ ...m, sign: flow }, fx, "quoted", {

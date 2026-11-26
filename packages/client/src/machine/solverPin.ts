@@ -46,6 +46,8 @@ export interface SolverPinConfig {
    * other.
    */
   erc3009Allowlist: readonly string[];
+  /** Origin-chain overrides for ERC-3009. An override replaces the default list. */
+  erc3009AllowlistByChain?: Readonly<Partial<Record<number, readonly string[]>>>;
   /**
    * Lowercased addresses valid as a Permit2 `spender` (the verified
    * XochiPullPermit2 contract, PULL2). Distinct from the ERC-3009
@@ -106,15 +108,25 @@ export function validateSolverPin(
   pull: Eip712TypedData,
   config: SolverPinConfig,
   expectedAmount: bigint,
+  fromChainId?: number,
 ): SolverPinResult {
   // message values are `unknown` off the wire; checkRecipient guards the field.
   const message = pull.message;
 
   let recipient: SolverPinResult;
   switch (pull.primaryType) {
-    case ERC3009_TYPE:
-      recipient = checkRecipient("pull_to", message.to, "erc3009", config.erc3009Allowlist, config);
+    case ERC3009_TYPE: {
+      const override =
+        fromChainId === undefined ? undefined : config.erc3009AllowlistByChain?.[fromChainId];
+      recipient = checkRecipient(
+        "pull_to",
+        message.to,
+        "erc3009",
+        override ?? config.erc3009Allowlist,
+        override !== undefined || config.requirePin,
+      );
       break;
+    }
     case PERMIT2_TYPE:
       // Not a Permit2 authorization unless the domain names the canonical
       // Permit2 (SPEC §2.3: one universal address). Refused before the approval
@@ -131,7 +143,7 @@ export function validateSolverPin(
         message.spender,
         "permit2",
         config.permit2Allowlist,
-        config,
+        config.requirePin,
       );
       break;
     default:
@@ -282,7 +294,7 @@ function checkRecipient(
   recipient: unknown,
   method: "erc3009" | "permit2",
   allowlist: readonly string[],
-  config: SolverPinConfig,
+  requirePin: boolean,
 ): SolverPinResult {
   const addr = typeof recipient === "string" ? recipient.toLowerCase() : null;
 
@@ -290,7 +302,7 @@ function checkRecipient(
     // No pin configured for this method. ERC-3009 is bounded by the signed `to`
     // + on-chain msg.sender == to, so accept unless a hard pin is demanded.
     // Permit2 has no such guard, so it must always be pinned.
-    if (method === "erc3009" && !config.requirePin) return { ok: true };
+    if (method === "erc3009" && !requirePin) return { ok: true };
 
     return {
       ok: false,
