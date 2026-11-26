@@ -1,6 +1,6 @@
 {
   "name": "@xochi/client",
-  "version": "0.2.1-staging.1",
+  "version": "0.2.1-staging.2",
   "description": "Xochi trade API client: transport, trade state machine, pre-sign fund-safety checks.",
   "keywords": [
     "xochi",

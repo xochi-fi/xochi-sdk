@@ -4,6 +4,14 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+## [0.2.1-staging.2]
+
+### Added
+
+- Add `getIntentSupportCode(result)` for eligible failed execute results or errors and opted-in failed intent status results. Use the optional `supportCode` status request with an owner session. Support metadata stays out of serialized results and errors.
+
+## [0.2.1-staging.1]
+
 ### Added
 
 - `getQuoteSupportCode(result)` reads an optional support code from the original declined quote or thrown quote error. The metadata stays out of serialized responses and errors.
