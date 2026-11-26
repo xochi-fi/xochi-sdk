@@ -14,10 +14,17 @@ import {
 // under GNOSIS_ENABLED so the wallet network menu matches the trade selectors.
 import { mainnet, arbitrum, optimism, base, polygon, gnosis } from "wagmi/chains";
 // viem 2.48 has no Arc mainnet definition yet; we define it locally below.
-import { createConnector, http, type Config } from "wagmi";
+import { ChainNotConfiguredError, createConnector, http, type Config } from "wagmi";
 import { connect, getAccount, watchAccount, type GetAccountReturnType } from "wagmi/actions";
 import { injected } from "wagmi/connectors";
-import { fallback, defineChain, UserRejectedRequestError } from "viem";
+import {
+  fallback,
+  defineChain,
+  numberToHex,
+  SwitchChainError,
+  UserRejectedRequestError,
+  type Chain,
+} from "viem";
 import {
   ARC_BROWSER_ENABLED,
   ARC_BROWSER_RPC_URL,
@@ -184,6 +191,20 @@ const SITE_URL = (typeof window !== "undefined" && window.location.origin) || CO
  * `autoConnectHostWallet`.
  */
 export const HOST_WALLET_ID = "xochiHost";
+const HOST_CHAIN_CHECK_INTERVAL_MS = 250;
+const HOST_CHAIN_CHECK_TIMEOUT_MS = 3_000;
+
+export class WalletChainUnchangedError extends SwitchChainError {
+  constructor(chain: string) {
+    super(new Error(`The wallet did not switch to ${chain}`));
+  }
+}
+
+export class HostWalletDisconnectedError extends SwitchChainError {
+  constructor() {
+    super(new Error("The wallet disconnected"));
+  }
+}
 
 /** A relay can see the signature that derives the Stealth keys. */
 export function refusesStealth(connector: { readonly id: string } | undefined): boolean {
@@ -212,6 +233,227 @@ export function hostWallet(bridge: HostConnection): Wallet {
             provider: bridge.provider as never,
           }),
         })(wagmiConfig);
+        let currentSwitch:
+          | {
+              chainId: number;
+              add: (onAcknowledged?: () => void) => void;
+              recheck: () => void;
+              cancel: () => void;
+              result: Promise<Chain>;
+            }
+          | undefined;
+        async function changeChain(
+          {
+            chainId,
+            addEthereumChainParameter,
+          }: Parameters<NonNullable<typeof base.switchChain>>[0],
+          onAddAcknowledged?: () => void,
+        ) {
+          const chain = wagmiConfig.chains.find((candidate) => candidate.id === chainId);
+          if (!chain) throw new SwitchChainError(new ChainNotConfiguredError());
+          if (currentSwitch) {
+            if (onAddAcknowledged && currentSwitch.chainId === chainId) {
+              currentSwitch.add(onAddAcknowledged);
+              return currentSwitch.result;
+            }
+            throw new SwitchChainError(new Error("A network switch is in progress"));
+          }
+
+          const provider = bridge.provider;
+          const target = numberToHex(chainId);
+          let accepted = false;
+          let adding = false;
+          let recoverable = false;
+          let addAcknowledged = false;
+          let notifyAddAcknowledged: (() => void) | undefined;
+          let observed = false;
+          let chainEvent = 0;
+          let finished = false;
+          let activeRead: symbol | undefined;
+          let readStartedAt = 0;
+          let poll: ReturnType<typeof setInterval> | undefined;
+          let timeout: ReturnType<typeof setTimeout> | undefined;
+          let remaining = HOST_CHAIN_CHECK_TIMEOUT_MS;
+          let startedAt = 0;
+          let resolveSwitch!: () => void;
+          let rejectSwitch!: (error: Error) => void;
+          const result = new Promise<void>((resolve, reject) => {
+            resolveSwitch = resolve;
+            rejectSwitch = reject;
+          });
+          const finish = (error?: Error) => {
+            if (finished) return;
+            finished = true;
+            if (error) rejectSwitch(error);
+            else resolveSwitch();
+          };
+          const onChainChanged = (value: unknown) => {
+            chainEvent += 1;
+            observed = typeof value === "string" && Number(value) === chainId;
+            if ((accepted || recoverable) && observed) finish();
+          };
+          const checkChain = async () => {
+            if ((!accepted && !recoverable) || finished || activeRead) return;
+            const read = Symbol();
+            activeRead = read;
+            readStartedAt = Date.now();
+            const previousEvent = chainEvent;
+            try {
+              const current = await provider.request({ method: "eth_chainId" });
+              if (
+                !finished &&
+                activeRead === read &&
+                previousEvent === chainEvent &&
+                typeof current === "string" &&
+                Number(current) === chainId
+              ) {
+                wagmiConfig.emitter.emit("change", { chainId });
+                finish();
+              }
+            } catch {
+              // A resume can race the wallet transport. Retry within the same deadline.
+            } finally {
+              if (activeRead === read) activeRead = undefined;
+            }
+          };
+          const recheck = () => {
+            if (!recoverable || finished) return;
+            // A previous read can stall along with the interactive request.
+            // Only the latest read may publish a chain change.
+            activeRead = undefined;
+            void checkChain();
+          };
+          const stopChecks = () => {
+            clearInterval(poll);
+            clearTimeout(timeout);
+            if (timeout !== undefined) remaining -= Date.now() - startedAt;
+            timeout = undefined;
+          };
+          const onVisibility = () => {
+            if (finished) return;
+            if (document.visibilityState !== "visible") {
+              stopChecks();
+              return;
+            }
+            // The wallet can acknowledge while the browser is backgrounded.
+            // Spend the verification budget only while the user is back.
+            if (accepted && timeout === undefined) {
+              startedAt = Date.now();
+              poll = setInterval(() => void checkChain(), HOST_CHAIN_CHECK_INTERVAL_MS);
+              timeout = setTimeout(
+                () => finish(new WalletChainUnchangedError(chain.name)),
+                remaining,
+              );
+            }
+            if (
+              recoverable &&
+              (!activeRead || Date.now() - readStartedAt >= HOST_CHAIN_CHECK_INTERVAL_MS)
+            )
+              recheck();
+            else void checkChain();
+          };
+          const cancel = () => finish(new HostWalletDisconnectedError());
+          provider.on("chainChanged", onChainChanged);
+          wagmiConfig.emitter.on("disconnect", cancel);
+          const stopAvailability = bridge.onAvailability((available) => {
+            if (!available) cancel();
+          });
+          document.addEventListener("visibilitychange", onVisibility);
+          window.addEventListener("pageshow", onVisibility);
+
+          const accept = () => {
+            if (finished) return;
+            accepted = true;
+            if (observed) finish();
+            else onVisibility();
+          };
+          const reject = (error: Error & { code?: number }) =>
+            finish(
+              error?.code === UserRejectedRequestError.code
+                ? new UserRejectedRequestError(error)
+                : new SwitchChainError(error),
+            );
+          const requestAdd = async (onAcknowledged?: () => void) => {
+            if (finished) return;
+            if (onAcknowledged) {
+              recoverable = true;
+              notifyAddAcknowledged = onAcknowledged;
+              if (addAcknowledged) onAcknowledged();
+            }
+            if (adding) return;
+            adding = true;
+            chainEvent += 1;
+            if (accepted) {
+              stopChecks();
+              accepted = false;
+              activeRead = undefined;
+              remaining = HOST_CHAIN_CHECK_TIMEOUT_MS;
+            }
+            observed = false;
+            const options = onAcknowledged ? undefined : addEthereumChainParameter;
+            const metadata: Chain = onAcknowledged ? robinhood : chain;
+            const { default: explorer, ...otherExplorers } = metadata.blockExplorers ?? {};
+            await provider.request({
+              method: "wallet_addEthereumChain",
+              params: [
+                {
+                  chainId: target,
+                  chainName: options?.chainName ?? metadata.name,
+                  nativeCurrency: options?.nativeCurrency ?? metadata.nativeCurrency,
+                  rpcUrls: options?.rpcUrls?.length
+                    ? options.rpcUrls
+                    : [metadata.rpcUrls.default.http[0] ?? ""],
+                  blockExplorerUrls:
+                    options?.blockExplorerUrls ??
+                    (explorer
+                      ? [explorer.url, ...Object.values(otherExplorers).map(({ url }) => url)]
+                      : undefined),
+                  iconUrls: options?.iconUrls,
+                },
+              ],
+            });
+            if (finished) return;
+            addAcknowledged = true;
+            notifyAddAcknowledged?.();
+            accept();
+          };
+          const add = (onAcknowledged?: () => void) =>
+            void requestAdd(onAcknowledged).catch(reject);
+          const requestSwitch = async () => {
+            try {
+              await provider.request({
+                method: "wallet_switchEthereumChain",
+                params: [{ chainId: target }],
+              });
+              if (!adding) accept();
+            } catch (error) {
+              // The explicit add takes over even if the previous switch never
+              // answered. A late 4902 must not launch a second add request.
+              if (finished || adding) return;
+              const rpcError = error as {
+                code?: number;
+                data?: { originalError?: { code?: number } };
+              };
+              if (rpcError?.code === 4902 || rpcError?.data?.originalError?.code === 4902) add();
+              else reject(error as Error);
+            }
+          };
+          const completion = result.then(() => chain);
+          currentSwitch = { chainId, add, recheck, cancel, result: completion };
+          if (onAddAcknowledged) add(onAddAcknowledged);
+          else void requestSwitch();
+          try {
+            return await completion;
+          } finally {
+            stopChecks();
+            provider.removeListener("chainChanged", onChainChanged);
+            wagmiConfig.emitter.off("disconnect", cancel);
+            stopAvailability();
+            document.removeEventListener("visibilitychange", onVisibility);
+            window.removeEventListener("pageshow", onVisibility);
+            currentSwitch = undefined;
+          }
+        }
         return {
           ...base,
           ...walletDetails,
@@ -242,13 +484,21 @@ export function hostWallet(bridge: HostConnection): Wallet {
             if (result.accounts.length === 0 || !chainId || result.chainId === chainId)
               return result;
             try {
-              const chain = await base.switchChain!.call(this, { chainId });
+              const chain = await this.switchChain!({ chainId });
               return { ...result, chainId: chain.id };
             } catch (error) {
               if ((error as { code?: number }).code === UserRejectedRequestError.code) throw error;
               return result;
             }
           },
+          async disconnect() {
+            currentSwitch?.cancel();
+            await base.disconnect.call(this);
+          },
+          switchChain: (options: Parameters<typeof changeChain>[0]) => changeChain(options),
+          addRobinhoodNetwork: (onAcknowledged: () => void = () => {}) =>
+            changeChain({ chainId: robinhood.id }, onAcknowledged),
+          recheckRobinhoodNetwork: () => currentSwitch?.recheck(),
         };
       }),
   };

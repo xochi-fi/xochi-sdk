@@ -35,6 +35,16 @@ const quote = z.object({
     chainId: z.literal("8453"),
     orchestratorAddress: address.optional(),
     toAddress: address,
+    depositId: z
+      .union([uint, z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)])
+      .transform(String)
+      .optional(),
+    escrowAddress: address.transform((value) => value.toLowerCase()).optional(),
+    payeeDetails: z
+      .string()
+      .regex(/^0x[0-9a-fA-F]{64}$/)
+      .transform((value) => value.toLowerCase())
+      .optional(),
   }),
 });
 const envelope = z.object({
@@ -241,7 +251,8 @@ export function normalizePeerQuotes(
       const availability: RampAvailability = q.disputeProtectionRequiresStake
         ? { state: "setup_required", requirement_codes: ["peer_dispute_stake"] }
         : { state: "available", valid_until: validUntil };
-      const offer = makeOffer(intent, config, p.platform, now, availability, [q, b.quoteExpiresAt]);
+      // Peer renews the expiry on each read. Freshness is checked separately from quote terms.
+      const offer = makeOffer(intent, config, p.platform, now, availability, q);
       if (!parseRamp(offer).ok) continue;
       output.push({
         offer,

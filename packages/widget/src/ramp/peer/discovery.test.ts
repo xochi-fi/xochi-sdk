@@ -537,8 +537,9 @@ it("keeps identical live revisions stable across observation clocks", async () =
     now + 3_600_001,
   ).toISOString();
   expect(
-    (await fetchPeerCapabilities(intent(), opts(reads))).offers[0].capability_revision,
-  ).not.toBe(first.offers[0].capability_revision);
+    (await fetchPeerCapabilities(intent(), opts(reads))).offers.find((o) => o.rail.id === "wise")!
+      .capability_revision,
+  ).toBe(first.offers.find((o) => o.rail.id === "wise")!.capability_revision);
 });
 
 it("uses cancellable V3 wire requests for discovery and selected-rail preview", async () => {

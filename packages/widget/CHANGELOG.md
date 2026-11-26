@@ -6,6 +6,23 @@
 
 - Show the verified Canton Coin artwork for `CC` and prioritize the eligible Canton destination in the ordinary Receive network picker so it is visible without scrolling. Capability-derived eligibility, the route matrix, and production gating are unchanged.
 
+## [0.1.7] - 2026-11-25
+
+### Fixed
+
+- Distinguish a pending Robinhood network-add request from MetaMask acknowledging it while the site remains on another chain. The recovery action rechecks the active network without treating request acknowledgement as a successful network switch.
+- Hand embedded Peer Buy off to a fresh standalone staging-compatible review when the extension bridge is unavailable, and renew an exact quote whose terms are unchanged except for a fresh expiry. Review continues to reject changed economics, maker, payee, settlement, or already-expired offers before any order, payment, or signature.
+
+## [0.1.6] - 2026-11-25
+
+### Added
+
+- Offer an explicit **Add Robinhood to MetaMask** action when a hosted swap needs Robinhood mainnet. The shared wallet operation prevents repeated taps or late switch responses from opening duplicate add prompts.
+
+### Fixed
+
+- Reconcile hosted-wallet network switches after the user returns from the wallet, including providers that acknowledge a request before updating `eth_chainId` or never emit `chainChanged`. Robinhood setup can recover when the add request never replies, and a stalled read can be replaced with **Check network again** without allowing results from an older wallet session to advance the trade.
+
 ## [0.1.5] - 2026-11-25
 
 ### Changed

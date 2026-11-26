@@ -24,11 +24,11 @@ export async function previewPeerOffer(
     if (check.offer.offer_id !== digest([check.intent, check.offer.rail.id]))
       return { ok: false, code: "quote_changed" };
     const fresh = await readPeerQuotes(check.intent, options, check.offer.rail.id);
+    const assessedAt = (options.now ?? Date.now)();
+    const original = checkRampOffer(check.offer, check.intent, config.settlement, assessedAt);
+    if (!original.ok) return original;
     const quote = fresh.quotes.find((q) => q.offer.rail.id === check.offer.rail.id);
-    if (
-      !quote ||
-      !checkRampOffer(quote.offer, check.intent, config.settlement, (options.now ?? Date.now)()).ok
-    )
+    if (!quote || !checkRampOffer(quote.offer, check.intent, config.settlement, assessedAt).ok)
       return { ok: false, code: fresh.result.code ?? "capability_unavailable" };
     const availability = quote.offer.availability;
     if (availability.state !== "available") return { ok: false, code: "capability_unavailable" };

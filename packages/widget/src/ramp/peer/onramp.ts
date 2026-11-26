@@ -225,14 +225,16 @@ export function createPeerOnrampProvider(options: PeerBuyerOptions) {
     )
       code = "peer_desktop_extension_or_app";
     else {
+      let bridgeReady = false;
       try {
         const state = await extension.getState();
+        bridgeReady = state === "ready";
         if (state === "needs_install") code = "peer_extension_install";
         else if (state === "needs_connection") code = "peer_extension_connection";
         else if (state !== "ready" || !peerVersionSupported(await extension.getVersion(), platform))
           code = "peer_extension_update";
       } catch {
-        code = "peer_extension_install";
+        code = bridgeReady ? "peer_extension_update" : "peer_extension_install";
       }
     }
     readiness = { platform, at: now(), code };

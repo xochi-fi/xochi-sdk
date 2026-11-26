@@ -8,6 +8,7 @@ import type {
 } from "@xochi/client";
 import { formatUnits } from "viem";
 import type { PublicClient, WalletClient } from "viem";
+import { DEFAULT_WIDGET_ORIGIN, EMBED_PATH, embedUrl } from "@xochi/widget-lib";
 import { createRampEmitter, emitSnapshot } from "../../lib/rampLifecycle.js";
 import { RampFacts } from "../availability/RampDisclosure.js";
 import { formatRampTime, railName } from "../availability/model.js";
@@ -83,7 +84,14 @@ export function BuyOnramp({
   const [clock, setClock] = useState(Date.now());
   const emitter = useRef<ReturnType<typeof createRampEmitter> | undefined>(undefined);
   const generation = useRef(0);
-  const bound = JSON.stringify([intent, offer.offer_id, offer.capability_revision]);
+  const selectionExpiry =
+    offer.availability.state === "available" ? Date.parse(offer.availability.valid_until) : NaN;
+  const bound = JSON.stringify([
+    intent,
+    offer.offer_id,
+    offer.capability_revision,
+    selectionExpiry,
+  ]);
   const submitted = snapshot !== undefined && !["quoted", "failed"].includes(snapshot.peer.state);
   const summary = useRef<RampOperationSummary | undefined>(undefined);
   function remember(next: RampOperationSummary) {
@@ -162,14 +170,36 @@ export function BuyOnramp({
   });
   const expired =
     preview !== undefined && Date.parse(preview.expires_at) <= Math.max(clock, Date.now());
+  const standaloneBuy =
+    setup === "peer_extension_install" && window.parent !== window
+      ? embedUrl(
+          [EMBED_PATH, `${EMBED_PATH}/`].includes(window.location.pathname) &&
+            window.location.origin !== "null"
+            ? window.location.origin
+            : DEFAULT_WIDGET_ORIGIN,
+          { initialTab: "trade", initialMode: "onramp", fiatCurrency: "USD" },
+        )
+      : undefined;
   return (
     <section className="onramp-review" aria-label="Peer purchase review">
       {!runtime || !client ? (
         <p role="status">Connect your wallet on Base to review and approve a Peer purchase.</p>
       ) : (
         <>
-          {setup && <p role="status">Setup required: {setupCopy[setup]}</p>}
-          {setup === "peer_extension_install" && (
+          {standaloneBuy ? (
+            <>
+              <p role="status">
+                Peer Buy needs the Peer extension in its own tab. Connect your wallet there,
+                re-enter the amount, and select a fresh offer.
+              </p>
+              <a href={standaloneBuy} target="_blank" rel="noopener noreferrer">
+                Open Peer Buy in a new tab
+              </a>
+            </>
+          ) : (
+            setup && <p role="status">Setup required: {setupCopy[setup]}</p>
+          )}
+          {setup === "peer_extension_install" && !standaloneBuy && (
             <button type="button" onClick={() => runtime.installFromGesture()}>
               Install Peer extension
             </button>
@@ -199,12 +229,14 @@ export function BuyOnramp({
                   if (current !== generation.current) return;
                   setSetup(requirement);
                   if (requirement) return;
+                  if (!(selectionExpiry > Date.now())) throw new Error("quote_expired");
                   const quote = await client.preview(
                     intent,
                     offer.offer_id,
                     offer.capability_revision,
                   );
                   if (current !== generation.current) return;
+                  if (!(selectionExpiry > Date.now())) throw new Error("quote_expired");
                   const previous = summary.current;
                   if (previous && !previous.submitted) abandonRampSummary(previous.operation_id);
                   const now = new Date().toISOString();
