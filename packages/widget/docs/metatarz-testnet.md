@@ -55,42 +55,99 @@ the wallet's internal template ID determines the widget's active Canton network.
 [Riddler TestNet guide](https://github.com/axol-io/Riddler/blob/main/docs/operations/guides/canton-testnet-e2e.md) ·
 [TestNet explorer](https://testnet.ccview.io)
 
-## Direct transfer blocker
+## Standard CC transfer feasibility
 
-- **CIP-0103:** `prepareExecuteAndWait` is a real generic Daml submission surface.
-  It takes a caller-built `JsPrepareSubmissionRequest`, enforces the primary
-  party when supplied in `actAs`, opens the wallet's Canton transaction approval,
-  and returns the execution event. Metatarz's approval occurs before the
-  middleware prepare call and shows a command summary and raw Daml arguments.
-  The connection and generic submission interface provide no native CC
-  transfer builder or transfer-fee preview and approved-fee bound. A
-  token-standard integration would still need TestNet holdings, factory
-  context and disclosed contracts, direct-preapproval semantics, and a
-  fee review that binds what the wallet approves.
-  [CIP-0103](https://github.com/canton-foundation/cips/blob/main/cip-0103/cip-0103.md) ·
-  [Official transaction guide](https://github.com/canton-network/wallet/blob/main/docs/dapp-sdk/guides/parties-and-transactions.md) ·
-  [Metatarz CIP-0103 submission code](https://github.com/metatarzxyz/metatarz-wallet/blob/7c148001470e946e851d58d0b6c00ab634cb3611/src/extension/cip103.ts#L613-L724)
-- **Native send:** The source and Store bundle contain a Canton-specific
-  `eth_sendTransaction` branch for the vendor's `Amulet` instrument and a
-  wallet approval with its native fee. The handler overwrites the caller's
-  `from` with the selected account, then the native transfer code reads the
-  selected account again at execution. This does not bind the requested
-  Canton party to the approval. The result is a single string and can fall
-  back from the ledger update ID to the prepared transaction hash. Even
-  screening that string would not repair the sender binding or the lack of a
-  documented dApp receipt contract.
-  [Metatarz request handler](https://github.com/metatarzxyz/metatarz-wallet/blob/7c148001470e946e851d58d0b6c00ab634cb3611/src/extension/serviceWorker.ts#L825-L926) ·
-  [Metatarz transfer code](https://github.com/metatarzxyz/metatarz-wallet/blob/7c148001470e946e851d58d0b6c00ab634cb3611/src/utils/canton.ts#L113-L190)
+The Splice token-standard client constructs a CIP-0056 transfer from the
+sender’s unlocked Amulet holdings, selected at the participant’s ledger end.
+It pins the TestNet instrument admin, sender, receiver and decimal amount,
+requests the registry’s factory and choice context, and exercises
+`TransferFactory_Transfer` with the returned disclosed contracts. Require
+`transferKind: "direct"` for a one-step send. An offer requires a separate
+recipient action. The CIP-0103 `prepareExecuteAndWait` call carries the single
+sender in `actAs` and asks the wallet to approve and execute. An execution
+event with its matching command ID and ledger update ID can serve as the
+receipt once verified. [Splice TestNet token standard](https://docs.test.global.canton.network.sync.global/app_dev/token_standard/index.html) ·
+[Official SDK transfer service](https://github.com/canton-network/wallet/blob/16f0381710216a013ad1d707ef17aac7666cfb23/core/token-standard-service/src/v1/transfer-service.ts) ·
+[Metatarz CIP-0103 submission](https://github.com/metatarzxyz/metatarz-wallet/blob/7c148001470e946e851d58d0b6c00ab634cb3611/src/extension/cip103.ts#L613-L724)
 
-Metatarz can expose and document the existing wallet-native send approval as a
-Canton dApp contract. It must bind the requested TestNet network
-and sender party at approval and submission, include recipient, CC amount and
-the confirmed fee in wallet review, and return an explicit ledger-completed
-update ID (or a command ID with a status lookup) with no prepared-hash fallback.
-Use funded disposable TestNet parties to verify the wallet-approved transfer
-and its update at `https://testnet.ccview.io/updates/<update-id>`. Canton
-Foundation's faucet processes requests once daily on weekdays.
-[TestNet faucet](https://testnet-faucet.canton.foundation/)
+### Live TestNet checks with Store version 1.5.0
+
+- **Registry and preapproval worked.** TestNet SV2’s public registry at
+  `https://scan.sv-2.test.global.canton.network.digitalasset.com` returned
+  HTTP 200 for `GET /registry/metadata/v1/info` and
+  `GET /registry/metadata/v1/instruments/Amulet`. Its admin matched the
+  Riddler TestNet pin and metadata reported CC with 10 decimals. The browser
+  successfully called `POST /registry/transfer-instruction/v1/transfer-factory`
+  with two disposable activated parties, exact decimal `0.0000000001`,
+  `excludeDebugFields: true`, and an empty `inputHoldingCids` for a
+  read-only diagnostic. The registry returned `transferKind: "direct"`, a
+  factory ID, five disclosed contracts, and context keys
+  `transfer-preapproval`, `open-round`, `external-party-config-state` and
+  `amulet-rules`. An invalid recipient returned HTTP 400. A staging-origin
+  CORS preflight returned HTTP 200 and echoed the staging origin.
+  This establishes context availability and a recipient preapproval for the
+  tested pair. An unsigned factory response alone does not establish
+  spendable holdings. [Factory OpenAPI](https://docs.test.global.canton.network.sync.global/app_dev/token_standard/openapi/transfer_instruction.html)
+- **Wallet review worked.** The real extension rejected the other disposable
+  party as `actAs` with `4100`. With the verified primary party in
+  `actAs`, it displayed `canton:testnet`, the acting party, the factory
+  choice, disclosed contract count, and raw JSON matching the request
+  including the receiver and amount. The diagnostic had no input holdings.
+  I clicked **Reject** in the wallet, observed code `4001`, and made no
+  submission. The wallet review did not validate funds or perform prepare
+  before approval.
+- **Wallet Ledger API failed at the first participant read.** After actual
+  approval, `getActiveNetwork` returned `canton:testnet` and
+  `getPrimaryAccount` returned the allocated disposable sender. On unlocked
+  sessions, `ledgerApi({ requestMethod: "GET", resource:
+"/v2/state/ledger-end" })` repeatedly returned `-32002` and
+  “Canton request failed: participant unavailable”. The same error came back
+  from `POST /v2/state/active-contracts` for the sender’s Holding interface,
+  with and without created event blobs, and from a bounded
+  `POST /v2/updates/flats`. The latter read used offsets 0 to 1 only.
+  The ACS probes used offset 0 because ledger-end failed. This is a gateway
+  availability observation, not an empty balance or a schema validation result.
+  The public response explicitly lists those three routes as allowed.
+  `POST /v2/updates` and `GET /v2/version` were rejected as outside the allowlist.
+  A disconnected origin and a locked wallet each produced distinct `4100`
+  responses. The general SV Scan API returned HTTP 403 from this egress,
+  while the public token registry was reachable. No ledger execution or
+  independent update confirmation was obtained.
+  [Metatarz Ledger API proxy](https://github.com/metatarzxyz/metatarz-wallet/blob/7c148001470e946e851d58d0b6c00ab634cb3611/src/extension/cip103.ts#L969-L1042)
+
+### Fee scope
+
+Splice’s TestNet documentation describes the CC transfer fee as zero under
+CIP-0078 for a standard one-step transfer to a preapproved recipient.
+Synchronizer traffic is still a validator resource cost and depends in part on
+the number of inputs. Holding expiry and the cost of establishing a preapproval
+are separate. The Metatarz `/api/v2/transfer/fee` quote represents a vendor
+venue fee on its alternative native REST flow. The standard factory
+response contains no such quote. Verify the operator’s traffic or separate
+wallet charge policy before promising zero total cost. The native
+`eth_sendTransaction` variant also replaces the caller’s sender and can
+return a prepared hash in place of an update ID. This investigation uses
+the standard wallet approval method. [TestNet transfer fees](https://docs.test.global.canton.network.sync.global/background/tokenomics/cc_transfer_splice_wallet_tokenomics.html) ·
+[CIP-0078](https://github.com/canton-foundation/cips/blob/main/cip-0078/cip-0078.md) ·
+[Vendor venue fee code](https://github.com/metatarzxyz/metatarz-wallet/blob/7c148001470e946e851d58d0b6c00ab634cb3611/src/utils/canton.ts#L195-L227)
+
+### Request for the Metatarz TestNet operator
+
+> Please restore or identify the supported TestNet participant behind the
+> published extension’s CIP-0103 `ledgerApi`. For an ordinary origin approved
+> by a disposable wallet, `GET /v2/state/ledger-end` and party-scoped
+> `POST /v2/state/active-contracts` currently return “participant unavailable”.
+> Please give us a funded disposable TestNet sender and a preapproved test
+> receiver, and confirm the supported update lookup after
+> `prepareExecuteAndWait` and whether the standard Daml path passes on any
+> traffic or venue cost to the sender. The public Amulet factory and wallet
+> approval dialog already work.
+
+Once the participant works, read real holdings, request fresh context with
+those inputs, approve in the extension, and verify the returned Canton update
+on the participant or a TestNet Scan with authorized read access. Use
+`https://testnet.ccview.io/updates/<update-id>` for the user-facing receipt
+link. The widget currently has no transfer button.
 
 ## Local verification
 
