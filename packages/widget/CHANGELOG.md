@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Show a selectable support code and a **Copy support code** button when a failed quote includes one. Users can paste the code into a private report.
+
 ## [0.1.7] - 2026-11-25
 
 ### Fixed

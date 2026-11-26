@@ -165,6 +165,102 @@ afterEach(() => {
 });
 
 describe("frame URL parameters", () => {
+  it("offers the current quote failure code and clears it on retry or replacement", async () => {
+    const code = "0123456789abcdef0123456789abcdef";
+    const replacementCode = "ffeeddccbbaa00998877665544332211";
+    const retry = Promise.withResolvers<Response>();
+    const staleStarted = Promise.withResolvers<void>();
+    const stale = Promise.withResolvers<Response>();
+    const fallbackFetch = apiStub({ "/api/capabilities": { body: liveCapabilities([]) } });
+    let answer = Promise.resolve(
+      Response.json(
+        { error: "Quote failed" },
+        {
+          status: 500,
+          headers: { "X-Xochi-Support-Code": code },
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", (input: string, init?: RequestInit) => {
+      if (!input.includes("/api/intent/quote")) return fallbackFetch(input, init);
+      if (JSON.parse(String(init?.body)).from_amount === "28000000") {
+        staleStarted.resolve();
+        return stale.promise;
+      }
+      return answer;
+    });
+    window.history.replaceState({}, "", "/embed?toChain=42161&settlement=public&amount=25");
+    await renderTrade(<SwapPanel />, { automaticRoute: true });
+
+    const field = await screen.findByRole<HTMLInputElement>(
+      "textbox",
+      { name: "Support code" },
+      WAIT,
+    );
+    expect(field.value).toBe(code);
+    const copyButton = () => screen.getByRole("button", { name: "Copy support code" });
+    fireEvent.click(copyButton());
+    await screen.findByText("Support code selected. Copy it manually.", {}, WAIT);
+    expect(document.activeElement).toBe(field);
+    expect(field.selectionStart).toBe(0);
+    expect(field.selectionEnd).toBe(code.length);
+
+    answer = retry.promise;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(screen.queryByRole("textbox", { name: "Support code" })).toBeNull();
+    const decline = quoteWire({
+      can_solve: false,
+      error: "No fill",
+      error_category: "no_liquidity",
+    });
+    await act(async () => {
+      retry.resolve(
+        Response.json(decline, { headers: { "X-Xochi-Support-Code": replacementCode } }),
+      );
+    });
+    const replacement = await screen.findByRole<HTMLInputElement>(
+      "textbox",
+      { name: "Support code" },
+      WAIT,
+    );
+    expect(replacement.value).toBe(replacementCode);
+
+    const writeText = vi.fn(async (_text: string) => {});
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    try {
+      fireEvent.click(copyButton());
+      await screen.findByText("Support code copied.", {}, WAIT);
+      expect(writeText).toHaveBeenCalledExactlyOnceWith(replacementCode);
+    } finally {
+      Reflect.deleteProperty(navigator, "clipboard");
+    }
+
+    // Older servers omit the header; invalid headers also leave the decline usable.
+    const amount = document.getElementById("swap-pay-amount") as HTMLInputElement;
+    const headersByAmount: HeadersInit[] = [{ "X-Xochi-Support-Code": code.toUpperCase() }, {}];
+    for (const [index, headers] of headersByAmount.entries()) {
+      const response = Response.json(decline, { headers });
+      answer = Promise.resolve(response);
+      fireEvent.change(amount, { target: { value: String(26 + index) } });
+      expect(screen.queryByRole("button", { name: "Copy support code" })).toBeNull();
+      await waitFor(() => expect(response.bodyUsed).toBe(true), WAIT);
+      await screen.findByText("Couldn't fill this trade", {}, WAIT);
+      expect(screen.queryByRole("textbox", { name: "Support code" })).toBeNull();
+    }
+    fireEvent.change(amount, { target: { value: "28" } });
+    await staleStarted.promise;
+    const latest = Response.json(decline);
+    answer = Promise.resolve(latest);
+    fireEvent.change(amount, { target: { value: "29" } });
+    await waitFor(() => expect(latest.bodyUsed).toBe(true), WAIT);
+    await act(async () => {
+      stale.resolve(Response.json(decline, { headers: { "X-Xochi-Support-Code": code } }));
+    });
+    expect(screen.queryByRole("button", { name: "Copy support code" })).toBeNull();
+    expect(window.location.href).not.toContain(code);
+    expect(window.location.href).not.toContain(replacementCode);
+  });
+
   it("open the panel on the requested route, amount and settlement", async () => {
     await openFrame("?fromChain=10&toChain=1&sell=usdt&amount=250&settlement=stealth", [
       { from: "USDT", to: "USDC" },

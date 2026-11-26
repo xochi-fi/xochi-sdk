@@ -23,6 +23,7 @@ import {
   view,
   canSignQuote,
   canAllocateDepositQuote,
+  getQuoteSupportCode,
   LOADING_STATES,
   POLL_INFLIGHT_STATES,
   type Context,
@@ -120,6 +121,7 @@ export interface UseIntentReturn {
   // String for most failures; a StructuredError on 429/503 so ErrorDisplay can
   // categorize by code and run the retry countdown.
   error: string | StructuredError | null;
+  quoteSupportCode?: string;
   /** Plain-language refund explanation; non-null only on a `refunded` status. */
   refundReason: string | null;
   txHash: string | null;
@@ -252,6 +254,7 @@ interface Bindings {
   /** The panel and wallet as rendered; every dispatch syncs the machine to it first. */
   ctx: Context;
   ctxKey: string;
+  quoteKey: string;
   /** Current exact live-route settlement authority; read again when async wallet work returns. */
   settlementAuthorized: boolean;
   manualQuoteRefresh: boolean;
@@ -275,6 +278,7 @@ interface Runtime {
   executionIntentId: string | null;
   /** The SDK keeps a failed poll's safety verdict, but drops its raw substatus. */
   failureSubstatus: { intentId: string; substatus: string | null } | null;
+  quoteFailure: { intent: Model["intent"]; quoteKey: string; code: string } | null;
   bindings: Bindings | null;
   dispatch: (body: MsgBody) => void;
   /** A promise for one explicit allocation, settled when the machine reports it. */
@@ -283,7 +287,7 @@ interface Runtime {
 }
 
 function createRuntime(initial: Model): Runtime {
-  const queue: MsgBody[] = [];
+  const queue: { body: MsgBody; quoteSupportCode?: string }[] = [];
   let draining = false;
   const timers = new Map<TimerName, ArmedTimer>();
   const allocations = new Map<string, (ok: boolean) => void>();
@@ -303,22 +307,22 @@ function createRuntime(initial: Model): Runtime {
   // lifecycle events carry instead of the id.
   const attempted = new Map<string, string>();
 
-  const dispatch = (body: MsgBody): void => {
+  const dispatch = (body: MsgBody, quoteSupportCode?: string): void => {
     if (!rt.live) return;
-    queue.push(body);
+    queue.push({ body, quoteSupportCode });
     // An effect can answer synchronously (a skipped session check); queue it
     // behind the message being processed rather than re-enter `update`.
     if (draining) return;
     draining = true;
     try {
-      let next: MsgBody | undefined;
-      while ((next = queue.shift()) !== undefined) step(next);
+      let next: (typeof queue)[number] | undefined;
+      while ((next = queue.shift()) !== undefined) step(next.body, next.quoteSupportCode);
     } finally {
       draining = false;
     }
   };
 
-  const step = (body: MsgBody): void => {
+  const step = (body: MsgBody, quoteSupportCode?: string): void => {
     const io = rt.bindings;
     if (!io || !rt.live) return;
     const stamp = { now: Date.now(), hidden: document.hidden };
@@ -331,6 +335,31 @@ function createRuntime(initial: Model): Runtime {
     }
     const [after, fx] = update(model, { ...body, ...stamp });
     effects.push(...fx);
+    const fetchingQuote = effects.some(
+      (effect) => effect.type === "Api" && effect.call.op === "quote",
+    );
+    if (
+      after.intent !== rt.model.intent ||
+      rt.quoteFailure?.quoteKey !== io.quoteKey ||
+      body.type === "QuoteRequested" ||
+      body.type === "RefreshRequested" ||
+      body.type === "ResetRequested" ||
+      fetchingQuote
+    ) {
+      rt.quoteFailure = null;
+    }
+    // Only a reply the machine applied to the visible trade may supply a code.
+    // Keep it outside replayable messages, the model, and host event payloads.
+    if (
+      body.type === "QuoteReplied" &&
+      quoteSupportCode &&
+      !fetchingQuote &&
+      model.flights.some((flight) => flight.id === body.flight && flight.stage === "api") &&
+      after.intent !== model.intent &&
+      after.intent.error
+    ) {
+      rt.quoteFailure = { intent: after.intent, quoteKey: io.quoteKey, code: quoteSupportCode };
+    }
     const adoptedOrder =
       body.type === "ResumeRequested" &&
       after.intent !== model.intent &&
@@ -340,7 +369,7 @@ function createRuntime(initial: Model): Runtime {
       body.type === "ResetRequested" ||
       after.intent.intentId !== rt.model.intent.intentId ||
       after.intent.quotedAddress !== rt.model.intent.quotedAddress ||
-      effects.some((effect) => effect.type === "Api" && effect.call.op === "quote")
+      fetchingQuote
     ) {
       rt.executionIntentId = null;
       rt.failureSubstatus = null;
@@ -435,9 +464,11 @@ function createRuntime(initial: Model): Runtime {
         const call = effect.call;
         if (call.op === "quote") {
           const reply = { type: "QuoteReplied" as const, flight: call.flight };
+          const supportCode = (result: unknown) =>
+            rt.bindings?.quoteKey === io.quoteKey ? getQuoteSupportCode(result) : undefined;
           intentAPI.getQuote(call.request, { forceRefresh: call.forceRefresh }).then(
-            (quote) => dispatch({ ...reply, result: { ok: true, quote } }),
-            (err: unknown) => dispatch({ ...reply, result: fail(err) }),
+            (quote) => dispatch({ ...reply, result: { ok: true, quote } }, supportCode(quote)),
+            (err: unknown) => dispatch({ ...reply, result: fail(err) }, supportCode(err)),
           );
         } else if (call.op === "execute") {
           const reply = { type: "ExecuteReplied" as const, flow: call.flow };
@@ -531,6 +562,7 @@ function createRuntime(initial: Model): Runtime {
     live: true,
     executionIntentId: null,
     failureSubstatus: null,
+    quoteFailure: null,
     bindings: null,
     dispatch,
     allocate: () =>
@@ -674,6 +706,7 @@ export function useIntent(params: UseIntentParams): UseIntentReturn {
   rt.bindings = {
     ctx,
     ctxKey,
+    quoteKey,
     settlementAuthorized,
     manualQuoteRefresh: params.manualQuoteRefresh === true,
     render: setModel,
@@ -827,6 +860,12 @@ export function useIntent(params: UseIntentParams): UseIntentReturn {
     status: state.status,
     quote: state.quote,
     error: state.error,
+    quoteSupportCode:
+      settlementAuthorized &&
+      rt.quoteFailure?.intent === state &&
+      rt.quoteFailure.quoteKey === quoteKey
+        ? rt.quoteFailure.code
+        : undefined,
     refundReason: state.refundReason,
     txHash: state.txHash,
     receivingTxHash: state.receivingTxHash,
