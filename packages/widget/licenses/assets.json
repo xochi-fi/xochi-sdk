@@ -20,6 +20,16 @@
       "details": "Unmodified Paxos PYUSD token image linked from https://docs.paxos.com/guides/stablecoin/pyusd. Rights-holder redistribution permission remains unverified."
     },
     {
+      "path": "src/assets/tokens/canton-coin.png",
+      "status": "project-exception",
+      "evidence": "https://s2.coinmarketcap.com/static/img/coins/128x128/37263.png",
+      "profile": "https://www.cantonscan.com/tokens/CC",
+      "crossCheck": "https://www.coingecko.com/en/coins/canton",
+      "sha256": "1a450d3e99ace650b3f89e13eda8ee5904a307f6a134584ae98a68ee068914e3",
+      "ownerDecision": "Item 85: owner explicitly required the actual Canton Coin logo in the widget and staging landing after rejecting the CC letter fallback.",
+      "details": "Unmodified Canton Coin profile image for CoinMarketCap asset 37263. The same mark appears on the Cantonscan CC token profile and CoinGecko Canton profile, both of which identify CC and link the official Canton Network. Rights-holder redistribution permission remains unverified."
+    },
+    {
       "path": "src/assets/fonts/*.woff2",
       "status": "cleared",
       "license": "OFL-1.1",
