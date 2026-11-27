@@ -26,8 +26,8 @@
 }
 
 .send-metatarz {
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-control);
+  border-bottom: 1px solid var(--line-subtle);
+  padding-bottom: 0.375rem;
 }
 
 .send-metatarz .send-metatarz__toggle {

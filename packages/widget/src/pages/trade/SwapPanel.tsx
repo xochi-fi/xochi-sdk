@@ -1114,7 +1114,7 @@ export function SwapPanel({
                         {cantonFill.note}
                       </span>
                     )}
-                    {cantonFill.embedded && (cantonFill.isolated || cantonFill.note) && (
+                    {cantonFill.showStandalone && (
                       <a
                         className="recipient-field__hint"
                         href={metatarzStandaloneUrl({ chainId: toChainId, symbol: toToken.symbol })}

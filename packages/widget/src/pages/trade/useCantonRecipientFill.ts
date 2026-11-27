@@ -10,10 +10,12 @@ export function useCantonRecipientFill(chainId: number, scope: string, locked: b
   const isolated = embedded && window.origin === "null";
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
+  const [needsStandalone, setNeedsStandalone] = useState(false);
   const pending = useRef<AbortController | null>(null);
 
   useLayoutEffect(() => {
     setNote("");
+    setNeedsStandalone(false);
     setBusy(false);
     return () => {
       pending.current?.abort();
@@ -26,13 +28,19 @@ export function useCantonRecipientFill(chainId: number, scope: string, locked: b
     pending.current = null;
     setBusy(false);
     setNote("");
+    setNeedsStandalone(false);
+  }
+
+  function unavailable() {
+    setNote("Metatarz Wallet unavailable. Paste a party ID.");
+    setNeedsStandalone(embedded);
   }
 
   async function fill(apply: (party: string) => void) {
     if (!network || isolated || locked || pending.current) return;
     const wallet = metatarzProvider();
     if (!wallet) {
-      setNote("Metatarz Wallet unavailable. Paste a party ID.");
+      unavailable();
       return;
     }
 
@@ -40,10 +48,14 @@ export function useCantonRecipientFill(chainId: number, scope: string, locked: b
     pending.current = request;
     setBusy(true);
     setNote("");
+    setNeedsStandalone(false);
     try {
       const session = await readMetatarzSession(wallet, true, network, request.signal);
       if (request.signal.aborted) return;
-      if (session.kind === "changed" || wallet !== metatarzProvider()) {
+      const activeWallet = metatarzProvider();
+      if (!activeWallet) {
+        unavailable();
+      } else if (session.kind === "changed" || wallet !== activeWallet) {
         setNote("Wallet changed. Try again.");
       } else if (session.kind === "connected") {
         apply(session.primaryParty);
@@ -56,9 +68,18 @@ export function useCantonRecipientFill(chainId: number, scope: string, locked: b
       }
     } catch (error) {
       if (!request.signal.aborted) {
-        const code = (error as { code?: unknown } | null)?.code;
+        const activeWallet = metatarzProvider();
+        if (!activeWallet) return unavailable();
+        if (wallet !== activeWallet) return setNote("Wallet changed. Try again.");
+        const { code, message } = (error as { code?: unknown; message?: unknown } | null) ?? {};
+        const blocked = embedded && code === 4100 && message === "Unauthorized: unknown origin";
+        setNeedsStandalone(blocked);
         setNote(
-          code === 4001 ? "Connection declined." : "Check your Metatarz connection and retry.",
+          blocked
+            ? "Wallet access is blocked in this embed."
+            : code === 4001
+              ? "Connection declined."
+              : "Check your Metatarz connection and retry.",
         );
       }
     } finally {
@@ -69,5 +90,5 @@ export function useCantonRecipientFill(chainId: number, scope: string, locked: b
     }
   }
 
-  return { fill, cancel, busy, note, embedded, isolated };
+  return { fill, cancel, busy, note, isolated, showStandalone: isolated || needsStandalone };
 }

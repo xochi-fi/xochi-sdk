@@ -206,10 +206,12 @@ it.each(["standalone", "embed"])(
 );
 
 it("refuses a TestNet wallet and still quotes a case-sensitive manual paste", async () => {
+  vi.stubGlobal("parent", {});
   const wallet = installWallet(TEST);
   const { recipient } = await openTrade();
   fill();
   await screen.findByText("Select Canton MainNet in Metatarz.", {}, WAIT);
+  expect(screen.queryByRole("link", { name: "Open Trade in a new tab" })).toBeNull();
   expect(recipient.value).toBe("");
   expect(quote).not.toHaveBeenCalled();
   expect(wallet.request).not.toHaveBeenCalledWith({ method: "listAccounts" });
@@ -283,6 +285,7 @@ it("shares the open wallet approval after cancellation and retry", async () => {
 it.each(["accountsChanged", "statusChanged"] as const)(
   "discards a party read interrupted by %s",
   async (event) => {
+    vi.stubGlobal("parent", {});
     const wallet = installWallet();
     const reply = Promise.withResolvers<void>();
     wallet.beforeList = () => reply.promise;
@@ -295,6 +298,7 @@ it.each(["accountsChanged", "statusChanged"] as const)(
     wallet.emit(event);
     await act(async () => reply.resolve());
     await screen.findByText("Wallet changed. Try again.", {}, WAIT);
+    expect(screen.queryByRole("link", { name: "Open Trade in a new tab" })).toBeNull();
     expect(recipient.value).toBe("");
     expect(quote).not.toHaveBeenCalled();
   },
@@ -354,4 +358,42 @@ it("offers a same-origin standalone Trade handoff from an opaque embed", async (
   expect(wallet.request).not.toHaveBeenCalled();
   paste(recipient);
   await expectQuote(MANUAL);
+});
+
+it.each([
+  {
+    code: 4100,
+    message: "Unauthorized: unknown origin",
+    note: "Wallet access is blocked in this embed.",
+    handoff: true,
+  },
+  { code: 4001, message: "Declined", note: "Connection declined.", handoff: false },
+  {
+    code: 4100,
+    message: "Wallet is locked",
+    note: "Check your Metatarz connection and retry.",
+    handoff: false,
+  },
+])(
+  "shows the relevant recovery in an embed for $message",
+  async ({ code, message, note, handoff }) => {
+    vi.stubGlobal("parent", {});
+    const wallet = installWallet();
+    wallet.beforeConnect = async () => {
+      throw { code, message };
+    };
+    const { recipient } = await openTrade();
+    paste(recipient);
+    fill();
+    await screen.findByText(note, {}, WAIT);
+    expect(Boolean(screen.queryByRole("link", { name: "Open Trade in a new tab" }))).toBe(handoff);
+    expect(recipient.value).toBe(MANUAL);
+  },
+);
+
+it("offers the Trade handoff when the provider is missing in a regular embed", async () => {
+  vi.stubGlobal("parent", {});
+  await openTrade();
+  fill();
+  expect(screen.getByRole("link", { name: "Open Trade in a new tab" })).toBeTruthy();
 });

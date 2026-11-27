@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { SendPanel } from "./SendPanel.js";
 import { metatarzStandaloneUrl } from "./metatarz.js";
@@ -32,8 +32,7 @@ function openSend(enabled = true) {
   if (enabled) fireEvent.click(screen.getByRole("button", { name: "Metatarz TestNet" }));
 }
 
-function mockWallet() {
-  let approved = false;
+function mockWallet(approved = false) {
   const provider = { id: "metatarz-wallet", providerType: "browser" };
   const wallet = {
     networkId,
@@ -76,16 +75,54 @@ it("leaves the ordinary Send surface in place when the deploy gate is off", () =
   expect(screen.getByText("Existing Send form")).toBeTruthy();
 });
 
-it("opens and collapses the compact row without replacing Send", () => {
+it("opens and collapses the compact row without replacing Send", async () => {
   mockWallet();
   openSend();
   const toggle = screen.getByRole("button", { name: "Metatarz TestNet" });
   expect(toggle.getAttribute("aria-expanded")).toBe("true");
-  expect(screen.getByRole("button", { name: "Connect" })).toBeTruthy();
+  await waitFor(() =>
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Connect" }).disabled).toBe(false),
+  );
   expect(screen.getByText("Existing Send form")).toBeTruthy();
   fireEvent.click(toggle);
   expect(toggle.getAttribute("aria-expanded")).toBe("false");
   expect(screen.queryByRole("button", { name: "Connect" })).toBeNull();
+});
+
+it("reads an approved wallet on open and reopen without requesting permission", async () => {
+  const wallet = mockWallet(true);
+  openSend();
+  await screen.findByText(partyPreview);
+  const toggle = screen.getByRole("button", { name: "Metatarz TestNet" });
+  fireEvent.click(toggle);
+  wallet.accounts[0].partyId = partyId.replace("Disposable_", "New_Payee_");
+  fireEvent.click(toggle);
+  await screen.findByText("New_Payee_C…b0c1d2");
+  expect(wallet.request).not.toHaveBeenCalledWith({ method: "connect" });
+});
+
+it("ignores an older passive read after an account change or collapse", async () => {
+  const wallet = mockWallet(true);
+  const old = Promise.withResolvers<typeof wallet.accounts>();
+  const request = wallet.request.getMockImplementation()!;
+  wallet.request.mockImplementation(async (args) => {
+    if (args.method === "listAccounts") {
+      wallet.request.mockImplementation(request);
+      return old.promise;
+    }
+    return request(args);
+  });
+  openSend();
+  await waitFor(() => expect(wallet.request).toHaveBeenCalledWith({ method: "listAccounts" }));
+  const stale = wallet.accounts.map((account) => ({ ...account }));
+  wallet.accounts[0].partyId = partyId.replace("Disposable_", "New_Payee_");
+  const [, changed] = wallet.on.mock.calls.find(([event]) => event === "accountsChanged")!;
+  act(changed);
+  await screen.findByText("New_Payee_C…b0c1d2");
+  fireEvent.click(screen.getByRole("button", { name: "Metatarz TestNet" }));
+  await act(async () => old.resolve(stale));
+  expect(screen.queryByText(partyPreview)).toBeNull();
+  expect(wallet.request).not.toHaveBeenCalledWith({ method: "connect" });
 });
 
 it("offers the public store and ignores a different injected Canton wallet", () => {
@@ -102,6 +139,9 @@ it("offers the public store and ignores a different injected Canton wallet", () 
 it("verifies the approved TestNet party and clears it when the active network changes", async () => {
   const wallet = mockWallet();
   openSend();
+  await waitFor(() =>
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Connect" }).disabled).toBe(false),
+  );
   const connect = screen.getByRole("button", { name: "Connect" });
   fireEvent.click(connect);
   fireEvent.click(connect);
@@ -128,6 +168,9 @@ it("rejects accounts returned for a different network", async () => {
   const wallet = mockWallet();
   wallet.accounts[0].networkId = "canton:mainnet";
   openSend();
+  await waitFor(() =>
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Connect" }).disabled).toBe(false),
+  );
   fireEvent.click(screen.getByRole("button", { name: "Connect" }));
   await screen.findByText(/Select an active TestNet party/);
   expect(screen.queryByText(partyPreview)).toBeNull();
@@ -135,13 +178,16 @@ it("rejects accounts returned for a different network", async () => {
 
 it("shows a rejected connection and allows retry", async () => {
   const wallet = mockWallet();
+  openSend();
+  await waitFor(() =>
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Connect" }).disabled).toBe(false),
+  );
   wallet.request
     .mockResolvedValueOnce({
       provider: { id: "metatarz-wallet", providerType: "browser" },
       connection: { isConnected: false, isNetworkConnected: true },
     })
     .mockRejectedValueOnce({ code: 4001 });
-  openSend();
   fireEvent.click(screen.getByRole("button", { name: "Connect" }));
   await screen.findByText("Connection declined.");
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));

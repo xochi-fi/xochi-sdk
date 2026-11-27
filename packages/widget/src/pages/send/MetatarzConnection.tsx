@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   METATARZ_INSTALL,
+  METATARZ_TESTNET,
   metatarzProvider,
   metatarzStandaloneUrl,
   readMetatarzSession,
@@ -26,7 +27,7 @@ function connectionMessage(view: View): string {
     case "disconnected":
       return view.reason?.startsWith("No Canton account")
         ? "Activate a TestNet party in your wallet."
-        : "Unlock your wallet and reconnect.";
+        : "";
     case "unreachable":
       return "TestNet connection unavailable.";
     case "wrong-network":
@@ -50,40 +51,68 @@ export function MetatarzConnection() {
     kind: isolated ? "isolated" : metatarzProvider() ? "ready" : "missing",
   }));
   const [provider, setProvider] = useState(() => (isolated ? undefined : metatarzProvider()));
-  const revision = useRef(0);
-  const approving = useRef(false);
+  const pendingRead = useRef<AbortController | null>(null);
+  const approving = useRef<typeof provider>(undefined);
+  const walletChanged = useRef(false);
 
   useEffect(
     () => () => {
-      revision.current++;
+      pendingRead.current?.abort();
     },
     [],
   );
 
-  async function refresh(wallet: NonNullable<typeof provider>, connect = false) {
-    const request = ++revision.current;
+  const refresh = useCallback(async (wallet: NonNullable<typeof provider>, connect = false) => {
+    pendingRead.current?.abort();
+    const request = new AbortController();
+    pendingRead.current = request;
     setView({ kind: connect ? "pending" : "checking" });
+    function current() {
+      if (request.signal.aborted) return false;
+      const active = metatarzProvider();
+      if (active === wallet) return true;
+      setProvider(active);
+      if (!active) setView({ kind: "missing" });
+      return false;
+    }
     try {
-      const next = await readMetatarzSession(wallet, connect);
-      if (request === revision.current) setView(next);
+      let next = await readMetatarzSession(wallet, connect, METATARZ_TESTNET, request.signal);
+      // An approval can itself emit statusChanged. Re-read after it settles
+      // if the wallet also reported a change while the request was in flight.
+      while (connect && walletChanged.current && current()) {
+        walletChanged.current = false;
+        next = await readMetatarzSession(wallet, false, METATARZ_TESTNET, request.signal);
+      }
+      if (current()) setView(next);
     } catch (error) {
-      if (request !== revision.current) return;
+      if (!current()) return;
       const code = (error as { code?: unknown } | null)?.code;
       setView({ kind: code === 4001 ? "rejected" : code === 4100 ? "disconnected" : "failed" });
     }
-  }
+  }, []);
 
   useEffect(() => {
+    if (!provider) return;
     function changed() {
-      if (provider && !approving.current) void refresh(provider);
+      const wallet = metatarzProvider();
+      if (wallet !== provider) {
+        pendingRead.current?.abort();
+        setProvider(wallet);
+        if (!wallet) setView({ kind: "missing" });
+      } else if (approving.current === provider) {
+        walletChanged.current = true;
+      } else if (wallet) {
+        void refresh(wallet);
+      }
     }
-    provider?.on("statusChanged", changed);
-    provider?.on("accountsChanged", changed);
+    provider.on("statusChanged", changed);
+    provider.on("accountsChanged", changed);
+    if (approving.current !== provider) void refresh(provider);
     return () => {
-      provider?.removeListener("statusChanged", changed);
-      provider?.removeListener("accountsChanged", changed);
+      provider.removeListener("statusChanged", changed);
+      provider.removeListener("accountsChanged", changed);
     };
-  }, [provider]);
+  }, [provider, refresh]);
 
   async function connect() {
     if (approving.current) return;
@@ -93,11 +122,12 @@ export function MetatarzConnection() {
       return;
     }
     if (wallet !== provider) setProvider(wallet);
-    approving.current = true;
+    approving.current = wallet;
+    walletChanged.current = false;
     try {
       await refresh(wallet, true);
     } finally {
-      approving.current = false;
+      approving.current = undefined;
     }
   }
 
@@ -143,7 +173,7 @@ export function MetatarzConnection() {
         >
           {view.kind === "connected"
             ? "Refresh"
-            : view.kind === "ready" || pending
+            : view.kind === "ready" || pending || view.kind === "disconnected"
               ? "Connect"
               : "Retry"}
         </button>
