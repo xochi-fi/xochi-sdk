@@ -70,7 +70,7 @@
   color: var(--text-secondary);
 }
 
-.send-metatarz__connection [role="status"]:not(:empty) {
+.send-metatarz__status:has([role="status"]:not(:empty)) {
   flex: 1 1 12rem;
   min-width: 0;
 }
@@ -79,9 +79,13 @@
   color: inherit;
 }
 
-.send-metatarz__party {
-  display: block;
-  overflow-wrap: anywhere;
+.send-metatarz__party summary {
+  min-height: 28px;
+  cursor: pointer;
+}
+
+.send-metatarz__party code {
+  white-space: nowrap;
 }
 
 .send-card__title {

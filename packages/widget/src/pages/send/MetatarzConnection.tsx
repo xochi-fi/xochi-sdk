@@ -103,14 +103,27 @@ export function MetatarzConnection() {
 
   const pending = view.kind === "pending" || view.kind === "checking";
   const openStandalone = isolated || (embedded && view.kind === "missing");
+  const party = view.kind === "connected" ? view.primaryParty : undefined;
+  const preview = party && `${party.slice(0, 11)}…${party.slice(-6)}`;
   return (
     <div className="send-metatarz__connection">
-      <div role="status">
-        {connectionMessage(view)}
-        {view.kind === "connected" && (
-          <code className="send-metatarz__party" aria-label="Active party">
-            {view.primaryParty}
-          </code>
+      <div className="send-metatarz__status">
+        <div role="status">{connectionMessage(view)}</div>
+        {party && (
+          <details className="send-metatarz__party" key={party}>
+            <summary aria-label={`Full active party ID, ${preview}`}>
+              <code>{preview}</code>
+            </summary>
+            <div className="send-input">
+              <input
+                className="send-field__control"
+                aria-label="Active party ID"
+                readOnly
+                value={party}
+                onFocus={(event) => event.currentTarget.select()}
+              />
+            </div>
+          </details>
         )}
       </div>
       {openStandalone ? (

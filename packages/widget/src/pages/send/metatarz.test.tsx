@@ -15,7 +15,8 @@ vi.mock("./SendForm.js", () => ({
 }));
 
 const networkId = "canton:testnet";
-const partyId = `disposable::1220${"a".repeat(64)}`;
+const partyId = `Disposable_CaseSensitive::1220${"a".repeat(58)}b0c1d2`;
+const partyPreview = "Disposable_…b0c1d2";
 
 function openSend(enabled = true) {
   flag.enabled = enabled;
@@ -104,13 +105,23 @@ it("verifies the approved TestNet party and clears it when the active network ch
   const connect = screen.getByRole("button", { name: "Connect" });
   fireEvent.click(connect);
   fireEvent.click(connect);
-  await screen.findByText(partyId);
+  const shortParty = await screen.findByText(partyPreview);
+  const details = shortParty.closest("details")!;
+  expect(details.open).toBe(false);
+  fireEvent.click(shortParty);
+  expect(details.open).toBe(true);
+  const fullParty = screen.getByRole<HTMLInputElement>("textbox", { name: "Active party ID" });
+  expect(fullParty.value).toBe(partyId);
+  fullParty.focus();
+  expect(fullParty.selectionStart).toBe(0);
+  expect(fullParty.selectionEnd).toBe(partyId.length);
   expect(wallet.request.mock.calls.filter(([args]) => args.method === "connect")).toHaveLength(1);
   wallet.networkId = "canton:mainnet";
   const [, accountsChanged] = wallet.on.mock.calls.find(([event]) => event === "accountsChanged")!;
   accountsChanged();
   await screen.findByText(/Switch to Canton TestNet/);
-  expect(screen.queryByText(partyId)).toBeNull();
+  expect(screen.queryByText(partyPreview)).toBeNull();
+  expect(screen.queryByDisplayValue(partyId)).toBeNull();
 });
 
 it("rejects accounts returned for a different network", async () => {
@@ -119,7 +130,7 @@ it("rejects accounts returned for a different network", async () => {
   openSend();
   fireEvent.click(screen.getByRole("button", { name: "Connect" }));
   await screen.findByText(/Select an active TestNet party/);
-  expect(screen.queryByText(partyId)).toBeNull();
+  expect(screen.queryByText(partyPreview)).toBeNull();
 });
 
 it("shows a rejected connection and allows retry", async () => {
@@ -134,7 +145,7 @@ it("shows a rejected connection and allows retry", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Connect" }));
   await screen.findByText("Connection declined.");
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-  await screen.findByText(partyId);
+  await screen.findByText(partyPreview);
 });
 
 it("keeps the embed's origin and path in the standalone link without forwarding embed parameters", () => {
