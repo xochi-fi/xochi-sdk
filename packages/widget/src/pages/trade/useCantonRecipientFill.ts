@@ -14,11 +14,17 @@ export function useCantonRecipientFill(chainId: number, scope: string, locked: b
 
   useLayoutEffect(() => {
     setNote("");
-    return () => pending.current?.abort();
+    setBusy(false);
+    return () => {
+      pending.current?.abort();
+      pending.current = null;
+    };
   }, [chainId, scope, locked]);
 
   function cancel() {
     pending.current?.abort();
+    pending.current = null;
+    setBusy(false);
     setNote("");
   }
 
@@ -35,7 +41,7 @@ export function useCantonRecipientFill(chainId: number, scope: string, locked: b
     setBusy(true);
     setNote("");
     try {
-      const session = await readMetatarzSession(wallet, true, network);
+      const session = await readMetatarzSession(wallet, true, network, request.signal);
       if (request.signal.aborted) return;
       if (session.kind === "changed" || wallet !== metatarzProvider()) {
         setNote("Wallet changed. Try again.");
@@ -56,8 +62,10 @@ export function useCantonRecipientFill(chainId: number, scope: string, locked: b
         );
       }
     } finally {
-      pending.current = null;
-      setBusy(false);
+      if (pending.current === request) {
+        pending.current = null;
+        setBusy(false);
+      }
     }
   }
 

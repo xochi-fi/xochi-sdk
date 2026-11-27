@@ -93,6 +93,7 @@ function installWallet(networkId = MAIN) {
     approved: false,
     reject: false,
     primary: { partyId: PARTY, networkId, primary: true, status: "allocated" },
+    beforeConnect: async () => {},
     beforeList: async () => {},
     emit: (event: string, payload?: unknown) => listeners.get(event)?.(payload),
     on: (event: string, listener: (payload: unknown) => void) => listeners.set(event, listener),
@@ -106,6 +107,7 @@ function installWallet(networkId = MAIN) {
             ...(wallet.approved ? { network: { networkId } } : {}),
           };
         case "connect":
+          await wallet.beforeConnect();
           if (wallet.reject) throw { code: 4001 };
           wallet.approved = true;
           wallet.emit("statusChanged");
@@ -230,6 +232,52 @@ it("ignores an in-flight wallet reply after a manual edit", async () => {
   expect(recipient.value).toBe(MANUAL);
   await expectQuote(MANUAL);
   expect(quote).toHaveBeenCalledTimes(1);
+});
+
+it("releases a cancelled read while a newer read owns the control", async () => {
+  const wallet = installWallet();
+  const first = Promise.withResolvers<void>();
+  const second = Promise.withResolvers<void>();
+  const beforeList = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+  wallet.beforeList = beforeList;
+  const { recipient } = await openTrade();
+  fill();
+  await waitFor(() => expect(beforeList).toHaveBeenCalledTimes(1), WAIT);
+  paste(recipient);
+  expect(recipient.value).toBe(MANUAL);
+  fill();
+  await waitFor(() => expect(beforeList).toHaveBeenCalledTimes(2), WAIT);
+  await act(async () => first.resolve());
+  expect(recipient.value).toBe(MANUAL);
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "Checking wallet…" }).disabled).toBe(
+    true,
+  );
+  await act(async () => second.resolve());
+  expect(recipient.value).toBe(PARTY);
+  await expectQuote(PARTY);
+});
+
+it("shares the open wallet approval after cancellation and retry", async () => {
+  const wallet = installWallet();
+  const approval = Promise.withResolvers<void>();
+  const beforeConnect = vi.fn(() => approval.promise);
+  wallet.beforeConnect = beforeConnect;
+  const { recipient } = await openTrade();
+  fill();
+  await waitFor(() => expect(beforeConnect).toHaveBeenCalledTimes(1), WAIT);
+  paste(recipient);
+  await act(async () => fill());
+  expect(wallet.request.mock.calls.map(([request]) => request.method)).toEqual([
+    "status",
+    "connect",
+    "status",
+  ]);
+  expect(beforeConnect).toHaveBeenCalledTimes(1);
+  expect(recipient.value).toBe(MANUAL);
+  await act(async () => approval.resolve());
+  expect(beforeConnect).toHaveBeenCalledTimes(1);
+  expect(recipient.value).toBe(PARTY);
+  await expectQuote(PARTY);
 });
 
 it.each(["accountsChanged", "statusChanged"] as const)(

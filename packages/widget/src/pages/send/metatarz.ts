@@ -35,6 +35,20 @@ interface MetatarzProvider {
   removeListener(event: Event, listener: Listener): void;
 }
 
+// The extension owns the approval dialog. Keep it available for the next read
+// even when the form cancels the request that opened it.
+const approvals = new WeakMap<MetatarzProvider, Promise<unknown>>();
+
+function requestApproval(provider: MetatarzProvider): Promise<unknown> {
+  const pending = approvals.get(provider);
+  if (pending) return pending;
+  const approval = provider
+    .request({ method: "connect" })
+    .finally(() => approvals.delete(provider));
+  approvals.set(provider, approval);
+  return approval;
+}
+
 export function metatarzProvider(): MetatarzProvider | undefined {
   const provider = (window as Window & { canton?: Partial<MetatarzProvider> }).canton;
   if (
@@ -59,17 +73,26 @@ export async function readMetatarzSession(
   provider: MetatarzProvider,
   connect: boolean,
   expectedNetwork: typeof METATARZ_TESTNET | typeof METATARZ_MAINNET = METATARZ_TESTNET,
+  signal?: AbortSignal,
 ): Promise<MetatarzSession> {
-  const current = status.parse(await provider.request({ method: "status" }));
+  async function request(method: Method): Promise<unknown> {
+    signal?.throwIfAborted();
+    const result =
+      method === "connect" ? await requestApproval(provider) : await provider.request({ method });
+    signal?.throwIfAborted();
+    return result;
+  }
+
+  const current = status.parse(await request("status"));
   let state = current.connection;
   const approving = connect && !state.isConnected;
   if (approving) {
-    state = connection.parse(await provider.request({ method: "connect" }));
+    state = connection.parse(await request("connect"));
   }
   if (!state.isNetworkConnected) return { kind: "unreachable" };
   if (!state.isConnected) return { kind: "disconnected", reason: state.reason };
 
-  if (expectedNetwork === METATARZ_TESTNET) return readAllocatedParty(provider, expectedNetwork);
+  if (expectedNetwork === METATARZ_TESTNET) return readAllocatedParty(request, expectedNetwork);
 
   let changed = false;
   const accountsChanged = () => {
@@ -88,27 +111,33 @@ export async function readMetatarzSession(
       return;
     changed = true;
   };
-  provider.on("statusChanged", statusChanged);
-  provider.on("accountsChanged", accountsChanged);
-  try {
-    const session = await readAllocatedParty(provider, expectedNetwork);
-    return changed && session.kind === "connected" ? { kind: "changed" } : session;
-  } finally {
+  function removeListeners() {
     provider.removeListener("statusChanged", statusChanged);
     provider.removeListener("accountsChanged", accountsChanged);
+  }
+  signal?.throwIfAborted();
+  provider.on("statusChanged", statusChanged);
+  provider.on("accountsChanged", accountsChanged);
+  signal?.addEventListener("abort", removeListeners, { once: true });
+  try {
+    const session = await readAllocatedParty(request, expectedNetwork);
+    return changed && session.kind === "connected" ? { kind: "changed" } : session;
+  } finally {
+    signal?.removeEventListener("abort", removeListeners);
+    if (!signal?.aborted) removeListeners();
   }
 }
 
 async function readAllocatedParty(
-  provider: MetatarzProvider,
+  request: (method: Method) => Promise<unknown>,
   expectedNetwork: typeof METATARZ_TESTNET | typeof METATARZ_MAINNET,
 ): Promise<MetatarzSession> {
-  const first = network.parse(await provider.request({ method: "getActiveNetwork" }));
+  const first = network.parse(await request("getActiveNetwork"));
   if (first.networkId !== expectedNetwork) {
     return { kind: "wrong-network", networkId: first.networkId };
   }
-  const accounts = z.array(account).parse(await provider.request({ method: "listAccounts" }));
-  const latest = status.parse(await provider.request({ method: "status" }));
+  const accounts = z.array(account).parse(await request("listAccounts"));
+  const latest = status.parse(await request("status"));
   if (!latest.connection.isNetworkConnected) return { kind: "unreachable" };
   if (!latest.connection.isConnected) return { kind: "disconnected" };
   if (latest.network?.networkId !== expectedNetwork) {
@@ -121,7 +150,7 @@ async function readAllocatedParty(
   }
   if (expectedNetwork === METATARZ_MAINNET) {
     // Check the current selection again even if the change event is still in transit.
-    const active = account.parse(await provider.request({ method: "getPrimaryAccount" }));
+    const active = account.parse(await request("getPrimaryAccount"));
     if (
       !active.primary ||
       active.networkId !== expectedNetwork ||
