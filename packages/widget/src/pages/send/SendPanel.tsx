@@ -1,5 +1,5 @@
 import type { ResolvedRecipient } from "../../lib/recipient/index.js";
-import { useState, type Ref } from "react";
+import { useId, useState, type Ref } from "react";
 import { METATARZ_TESTNET_CONNECTION } from "../../config.js";
 import type { SwapPrefill } from "../trade/SwapPanel.js";
 import { SEND_DESTINATION_KINDS, type SendDestinationKind } from "../trade/WidgetTabs.js";
@@ -29,38 +29,33 @@ export function SendPanel({
   ...props
 }: SendPanelProps) {
   const [metatarzOpen, setMetatarzOpen] = useState(false);
+  const metatarzPanelId = useId();
   const offerMetatarz = METATARZ_TESTNET_CONNECTION && !props.retry;
-  const showMetatarz = offerMetatarz && metatarzOpen;
-  const sendForm = (
-    <SendForm
-      key={props.retry?.nonce}
-      destinations={destinations}
-      {...props}
-      active={active && !showQuote && !showMetatarz}
-    />
-  );
   return (
     <>
       <div className="send-card" hidden={showQuote}>
-        {offerMetatarz ? (
-          <>
-            {!showMetatarz && (
-              <button
-                type="button"
-                className="send-secondary"
-                onClick={() => setMetatarzOpen(true)}
-              >
-                Canton TestNet via Metatarz
-              </button>
-            )}
-            <div hidden={showMetatarz}>{sendForm}</div>
-          </>
-        ) : (
-          sendForm
+        {offerMetatarz && (
+          <div className="send-metatarz">
+            <button
+              type="button"
+              className="send-secondary send-metatarz__toggle"
+              aria-expanded={metatarzOpen}
+              aria-controls={metatarzPanelId}
+              onClick={() => setMetatarzOpen(!metatarzOpen)}
+            >
+              Metatarz <span>TestNet</span>
+            </button>
+            <div id={metatarzPanelId} hidden={!metatarzOpen}>
+              {metatarzOpen && active && !showQuote && <MetatarzConnection />}
+            </div>
+          </div>
         )}
-        {showMetatarz && active && !showQuote && (
-          <MetatarzConnection onBack={() => setMetatarzOpen(false)} />
-        )}
+        <SendForm
+          key={props.retry?.nonce}
+          destinations={destinations}
+          {...props}
+          active={active && !showQuote}
+        />
       </div>
       <section className="send-quote" hidden={!showQuote} aria-label="Send quote">
         <button type="button" className="send-secondary" onClick={onCloseQuote}>
