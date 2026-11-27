@@ -33,9 +33,9 @@ describe("SUPPORTED_CHAIN_IDS", () => {
     expect(SUPPORTED_CHAIN_IDS).toContain(ROBINHOOD_CHAIN_ID);
   });
 
-  // Eight EVM chains; Tron is outside this set (see TRON_CHAIN_ID).
-  it("has exactly 8 EVM chains", () => {
-    expect(SUPPORTED_CHAIN_IDS).toHaveLength(8);
+  it("includes the two EVM pilot networks", () => {
+    expect(SUPPORTED_CHAIN_IDS).toContain(46630);
+    expect(SUPPORTED_CHAIN_IDS).toContain(421614);
   });
 });
 

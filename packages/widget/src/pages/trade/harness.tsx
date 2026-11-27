@@ -211,9 +211,13 @@ const receiptFor = (chain: Chain, params: unknown) => {
   };
 };
 
-const testTransport = (chain: Chain, tokenBalance: bigint) =>
+type ChainRead = (method: string, params: unknown) => string | undefined;
+
+const testTransport = (chain: Chain, tokenBalance: bigint, read?: ChainRead) =>
   custom({
     request: async ({ method, params }: { method: string; params?: unknown }) => {
+      const response = read?.(method, params);
+      if (response !== undefined) return response;
       if (method === "personal_sign" || method === "eth_sign")
         return walletSignature(method, params);
       if (method === "eth_getTransactionReceipt") return receiptFor(chain, params);
@@ -260,6 +264,7 @@ export function makeTestConfig(
   hostWallet = false,
   chains: readonly [Chain, ...Chain[]] = CHAINS,
   connector?: CreateConnectorFn,
+  read?: ChainRead,
 ): Config {
   return createConfig({
     chains: [onHarnessRpc(chains[0]), ...chains.slice(1).map(onHarnessRpc)],
@@ -277,12 +282,12 @@ export function makeTestConfig(
           : mock({ accounts: [TEST_ACCOUNT], features: { reconnect: true } })),
     ],
     transports: {
-      [mainnet.id]: testTransport(mainnet, tokenBalance),
-      [base.id]: testTransport(base, tokenBalance),
-      [arbitrum.id]: testTransport(arbitrum, tokenBalance),
-      [optimism.id]: testTransport(optimism, tokenBalance),
-      [polygon.id]: testTransport(polygon, tokenBalance),
-      [robinhood.id]: testTransport(robinhood, tokenBalance),
+      [mainnet.id]: testTransport(mainnet, tokenBalance, read),
+      [base.id]: testTransport(base, tokenBalance, read),
+      [arbitrum.id]: testTransport(arbitrum, tokenBalance, read),
+      [optimism.id]: testTransport(optimism, tokenBalance, read),
+      [polygon.id]: testTransport(polygon, tokenBalance, read),
+      [robinhood.id]: testTransport(robinhood, tokenBalance, read),
     },
     // Disable automatic batching of individual reads. `readContracts` still
     // invokes explicit aggregate3 on chains that register multicall3, so the

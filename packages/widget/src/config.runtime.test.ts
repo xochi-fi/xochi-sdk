@@ -228,3 +228,52 @@ describe("Canton destination is a per-deploy setting", () => {
     },
   );
 });
+
+it.each([
+  { development: false, pilot: true, adapter: true, enabled: false },
+  { development: true, pilot: false, adapter: true, enabled: false },
+  { development: true, pilot: true, adapter: false, enabled: false },
+  { development: true, pilot: true, adapter: true, enabled: true },
+])("gates the Robinhood sponsorship pilot %o", async ({ development, pilot, adapter, enabled }) => {
+  vi.resetModules();
+  const config = await import("./config.js");
+  config.configureWidget({
+    apiUrl: "http://127.0.0.1:8789",
+    development,
+    originSponsorshipTestnet: pilot,
+    ...(adapter && { originSponsorship: { resolve: () => null } }),
+    solverPin: { erc3009Allowlist: [], permit2Allowlist: [], requirePin: true },
+    depositAttestationSigner: "",
+  });
+  const { chainEnabledForRole } = await import("./pages/trade/config.js");
+  const { FALLBACK_CAPABILITIES } = await import("./lib/capabilities.js");
+  const { embedOffer } = await import("./configurator-model.js");
+  const matrix = parseCapabilities({
+    chains: [46630, 421614].map((chain_id) => ({ chain_id, vm_type: "evm" })),
+    tokens: [
+      {
+        symbol: "USDG",
+        decimals: 6,
+        roles: ["origin", "destination"],
+        addresses: { 46630: TOKENS[46630][0].address, 421614: TOKENS[421614][0].address },
+      },
+    ],
+    routes: [
+      {
+        origin: { chain_id: 46630, token: "USDG" },
+        destination: { kind: "chain", chain_id: 421614, token: "USDG" },
+        privacy_modes: ["public"],
+      },
+    ],
+  });
+  if (!matrix) throw new Error("Pilot capabilities are invalid");
+  expect(embedOffer(matrix, "live").sourceChainIds.includes(46630)).toBe(enabled);
+  expect(embedOffer(matrix, "live").destinationChainIds.includes(421614)).toBe(enabled);
+  expect(chainEnabledForRole(46630, "origin")).toBe(enabled);
+  expect(chainEnabledForRole(421614, "destination")).toBe(enabled);
+  expect(chainEnabledForRole(421614, "origin")).toBe(false);
+  expect(chainEnabledForRole(46630, "destination")).toBe(false);
+  expect(
+    FALLBACK_CAPABILITIES.chains.some(({ chainId }) => chainId === 46630 || chainId === 421614),
+  ).toBe(false);
+});

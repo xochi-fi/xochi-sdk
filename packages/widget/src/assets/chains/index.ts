@@ -21,6 +21,8 @@ export const CHAIN_ICONS: Record<ExtendedChainId, string> = {
   42161: arbitrumSvg,
   8453: baseSvg,
   4663: robinhoodSvg,
+  46630: robinhoodSvg,
+  421614: arbitrumSvg,
   5042: arcSvg,
   100: gnosisPng,
   0: xochiSvg,

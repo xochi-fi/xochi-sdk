@@ -98,8 +98,24 @@ export const ensureWalletSession = async (
     }
   };
 
+  const result = await requestWalletSession(wallet, signMessage, assertCurrent);
+  const session: WalletSession = { token: result.token, wallet: result.wallet.toLowerCase() };
+  sessionStorage.setItem(WALLET_SESSION_KEY, JSON.stringify(session));
+  notifySessionChanged();
+  return session.token;
+};
+
+/** Obtain a SIWE proof without changing the widget's connected-wallet session. */
+export async function requestWalletSession(
+  wallet: string,
+  signMessage: SignMessage,
+  assertCurrent: () => void,
+): Promise<WalletSession> {
+  const lower = wallet.toLowerCase();
+  assertCurrent();
   const challengeRes = await fetch(`${AUTH_API_URL}/api/auth/wallet/challenge`, {
     method: "POST",
+    redirect: "error",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ wallet: lower }),
   });
@@ -115,6 +131,7 @@ export const ensureWalletSession = async (
 
   const verifyRes = await fetch(`${AUTH_API_URL}/api/auth/wallet/verify`, {
     method: "POST",
+    redirect: "error",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ nonce, signature }),
   });
@@ -124,8 +141,8 @@ export const ensureWalletSession = async (
   }
   const result = (await verifyRes.json()) as { token: string; wallet: string };
   assertCurrent();
-  const session: WalletSession = { token: result.token, wallet: result.wallet.toLowerCase() };
-  sessionStorage.setItem(WALLET_SESSION_KEY, JSON.stringify(session));
-  notifySessionChanged();
-  return session.token;
-};
+  if (typeof result.token !== "string" || !result.token || result.wallet?.toLowerCase() !== lower) {
+    throw new Error("Wallet verification returned a different identity");
+  }
+  return result;
+}

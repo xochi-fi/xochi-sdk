@@ -23,7 +23,12 @@ import {
   type PublicBalance,
   type PublicBalanceToken,
 } from "../lib/balances.js";
-import { ARC_CHAIN_ID, CHAIN_NATIVE_CURRENCY, GNOSIS_CHAIN_ID } from "@xochi/client";
+import {
+  ARC_CHAIN_ID,
+  CHAIN_NATIVE_CURRENCY,
+  GNOSIS_CHAIN_ID,
+  isOriginSponsorshipPilotChain,
+} from "@xochi/client";
 
 const REFRESH = TIMEOUTS.balanceRefresh;
 
@@ -35,6 +40,8 @@ export function usePublicBalances() {
   const discovery = useMemo(() => {
     const tokens = publicBalanceTokens(capabilities).filter(
       ({ chainId }) =>
+        (!isOriginSponsorshipPilotChain(chainId) ||
+          config.chains.some((chain) => chain.id === chainId)) &&
         (ARC_BROWSER_ENABLED || chainId !== ARC_CHAIN_ID) &&
         (GNOSIS_ENABLED || chainId !== GNOSIS_CHAIN_ID),
     );
