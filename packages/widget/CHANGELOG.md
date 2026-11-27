@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-## [0.1.8] - 2026-11-26
+## [0.1.8] - 2026-11-27
 
 ### Added
 
@@ -38,7 +38,7 @@
 
 ### Changed
 
-- Use the approved official Canton Network artwork in network UI and the Paxos PYUSD artwork in token UI. Canton Coin retains the `CC` letter fallback in this release; route behavior and Pay/Receive guidance are unchanged.
+- Use the approved official Canton Network artwork in network UI and the Paxos PYUSD artwork in token UI. Canton Coin keeps the `CC` letter fallback pending a first-party coin mark; route behavior and Pay/Receive guidance are unchanged.
 
 ## [0.1.4] - 2026-11-25
 

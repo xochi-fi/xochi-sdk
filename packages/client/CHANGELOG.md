@@ -4,7 +4,7 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
-## [0.2.1] - 2026-11-26
+## [0.2.1] - 2026-11-27
 
 ### Added
 
