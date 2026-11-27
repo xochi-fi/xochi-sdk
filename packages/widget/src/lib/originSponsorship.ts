@@ -1,4 +1,4 @@
-import type { Config, Connector } from "wagmi";
+import type { Config } from "wagmi";
 import { getCode, readContract } from "viem/actions";
 import { getAccount } from "wagmi/actions";
 import {
@@ -21,6 +21,10 @@ import {
   type UserOperationV08,
 } from "@xochi/signer";
 import { ORIGIN_SPONSORSHIP } from "../config.js";
+import type {
+  OriginSponsorshipAdapter,
+  OriginSponsorshipAction,
+} from "../types/originSponsorship.js";
 import { apiFetch } from "./api.js";
 import { requestWalletSession } from "./walletSession.js";
 
@@ -32,33 +36,6 @@ const factoryAbi = parseAbi([
   "function getAddress(address owner, uint256 salt) view returns (address)",
 ]);
 const accountAbi = parseAbi(["function execute(address dest, uint256 value, bytes func)"]);
-
-export type OriginSponsorshipAction =
-  | { action: "send"; token: Address; amount: bigint; recipient: Address }
-  | { action: "approve_permit2"; token: Address; amount: bigint; quoteId: string };
-
-export interface SponsoredOriginAccount {
-  profile: "simple_account" | "simple_7702";
-  owner: Address;
-  /** Use zero for the predelegated account profile. */
-  salt: bigint;
-  /** The trusted verifying paymaster on this chain, configured independently of the venue. */
-  paymaster: Address;
-  /** Prompt the owner for the venue's SIWE challenge. */
-  signMessage(message: string): Promise<Hex>;
-  /** Prompt the owner to authorize the verified operation and sign its raw v0.8 hash. */
-  signOperation(action: OriginSponsorshipAction, hash: Hex): Promise<Hex>;
-}
-
-export interface OriginSponsorshipAdapter {
-  /** Return an account only for the connector, sender, chain and action this integration owns. */
-  resolve(context: {
-    connector: Connector;
-    sender: Address;
-    chainId: number;
-    action: OriginSponsorshipAction["action"];
-  }): SponsoredOriginAccount | null;
-}
 
 function sameHex(value: unknown, expected: string): boolean {
   return typeof value === "string" && value.toLowerCase() === expected.toLowerCase();

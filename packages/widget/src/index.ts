@@ -21,7 +21,7 @@ export type {
   OriginSponsorshipAction,
   OriginSponsorshipAdapter,
   SponsoredOriginAccount,
-} from "./lib/originSponsorship.js";
+} from "./types/originSponsorship.js";
 
 // Static imports would initialize wallet providers before deployment settings and browser shims.
 /** Complete trading widget. Configure once and render inside React Suspense. */

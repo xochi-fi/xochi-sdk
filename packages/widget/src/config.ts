@@ -1,4 +1,4 @@
-import type { OriginSponsorshipAdapter } from "./lib/originSponsorship.js";
+import type { OriginSponsorshipAdapter } from "./types/originSponsorship.js";
 import { firstPartyOrigins } from "./lib/hostOrigin.js";
 import { parseEmbedParams, type EmbedParams } from "@xochi/widget-lib";
 import { isAddress, zeroAddress } from "viem";
