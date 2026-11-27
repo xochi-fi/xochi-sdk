@@ -38,6 +38,7 @@ function connectionMessage(view: View): string {
     case "rejected":
       return "Connection declined in Metatarz Wallet.";
     case "failed":
+    case "changed":
       return "Could not verify the wallet connection. Open Metatarz Wallet and try again.";
   }
 }

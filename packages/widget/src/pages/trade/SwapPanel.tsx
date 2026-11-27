@@ -55,6 +55,8 @@ import { useCapabilities } from "../../hooks/useCapabilities.js";
 import { RecipientSheet, recipientLabel } from "./RecipientSheet.js";
 import { useSwapPanel } from "./useSwapPanel.js";
 import { useTronLinkFill } from "./useTronLinkFill.js";
+import { metatarzStandaloneUrl } from "../send/metatarz.js";
+import { useCantonRecipientFill } from "./useCantonRecipientFill.js";
 
 export type { SwapPrefill } from "./useSwapPanel.js";
 import type { SwapPrefill } from "./useSwapPanel.js";
@@ -374,6 +376,12 @@ export function SwapPanel({
   // signer -- see src/lib/tronlink.ts for why that is true in both directions.
   const recipientFill = useTronLinkFill();
   const refundFill = useTronLinkFill();
+  const cantonFillLocked = flowOpen || flowReopenable;
+  const cantonFill = useCantonRecipientFill(
+    toChainId,
+    JSON.stringify([fromChainId, fromToken.address, toToken.address, address, prefill?.nonce]),
+    cantonFillLocked,
+  );
 
   // When a quote is on screen the receipt is the tall element. On wide viewports
   // it moves into a second column beside the form (CSS gates the grid on width),
@@ -1008,9 +1016,7 @@ export function SwapPanel({
               {guestStealth && "Connect a wallet to price Stealth"}
             </div>
 
-            {/* Recipient address: a non-EVM destination (Tron, Canton) settles to
-            an address the user types, not the connected wallet. A Canton party is
-            sent byte for byte as typed, so the field never autocapitalizes. */}
+            {/* Canton party IDs are case-sensitive, including when pasted. */}
             {isNonEvmDest && (
               <div className="recipient-field">
                 <div className="recipient-field__head">
@@ -1018,8 +1024,6 @@ export function SwapPanel({
                     {EXTENDED_CHAIN_NAMES[toChainId]} recipient{" "}
                     {cantonDestination ? "party" : "address"}
                   </label>
-                  {/* Tron only: TronLink is the one extension that can hand us a
-                  base58 address, so the offer is not made on other non-EVM VMs. */}
                   {isTronChainId(toChainId) && (
                     <button
                       type="button"
@@ -1028,6 +1032,16 @@ export function SwapPanel({
                       disabled={recipientFill.busy}
                     >
                       {recipientFill.busy ? "Asking..." : "Use TronLink"}
+                    </button>
+                  )}
+                  {cantonDestination && !cantonFill.isolated && (
+                    <button
+                      type="button"
+                      className="recipient-field__pick"
+                      onClick={() => void cantonFill.fill(setRecipientAddress)}
+                      disabled={cantonFill.busy || cantonFillLocked}
+                    >
+                      {cantonFill.busy ? "Checking wallet…" : "Use Metatarz"}
                     </button>
                   )}
                 </div>
@@ -1049,8 +1063,8 @@ export function SwapPanel({
                   value={recipientAddress}
                   onChange={(e) => {
                     setRecipientAddress(e.target.value);
-                    // Typing supersedes whatever TronLink said, so the note goes.
                     recipientFill.clearNote();
+                    cantonFill.cancel();
                   }}
                   autoComplete="off"
                   autoCorrect="off"
@@ -1094,9 +1108,26 @@ export function SwapPanel({
                 {/* Readiness before the quote: an unready party is refused before
                 anything locks, and a transfer to one is only a pending offer. */}
                 {cantonDestination && (
-                  <span id="swap-recipient-readiness" className="recipient-field__hint">
-                    {CANTON_READINESS_NOTE}
-                  </span>
+                  <>
+                    {cantonFill.note && (
+                      <span className="recipient-field__hint" role="status">
+                        {cantonFill.note}
+                      </span>
+                    )}
+                    {cantonFill.embedded && (cantonFill.isolated || cantonFill.note) && (
+                      <a
+                        className="recipient-field__hint"
+                        href={metatarzStandaloneUrl({ chainId: toChainId, symbol: toToken.symbol })}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Open Trade in a new tab
+                      </a>
+                    )}
+                    <span id="swap-recipient-readiness" className="recipient-field__hint">
+                      {CANTON_READINESS_NOTE}
+                    </span>
+                  </>
                 )}
               </div>
             )}
