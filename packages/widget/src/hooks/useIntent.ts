@@ -750,6 +750,7 @@ export function useIntent(params: UseIntentParams): UseIntentReturn {
       (model.intent.quote?.eip712Data?.message?.fromAmount as string | undefined) ||
       null,
     enabled: !isDepositOrigin,
+    quoteId: model.intent.quoteId,
     approvalContext: JSON.stringify([
       approvalQuote.current.revision,
       model.intent.quoteId,

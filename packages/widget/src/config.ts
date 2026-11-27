@@ -1,3 +1,4 @@
+import type { OriginSponsorshipAdapter } from "./lib/originSponsorship.js";
 import { firstPartyOrigins } from "./lib/hostOrigin.js";
 import { parseEmbedParams, type EmbedParams } from "@xochi/widget-lib";
 import { isAddress, zeroAddress } from "viem";
@@ -6,6 +7,8 @@ import { SUPPORTED_CHAIN_IDS, type PinnedEscrows, type PinnedPullRecipients } fr
 /** Deployment settings only. Trading policy and security checks remain in the public packages. */
 export interface WidgetSettings {
   apiUrl: string;
+  /** Trusted integration for the connected ERC-4337 v0.8 SimpleAccount. */
+  originSponsorship?: OriginSponsorshipAdapter;
   /** Non-production Peer deployments require explicit host configuration. */
   peerEnvironment?: "production" | "preproduction" | "staging";
   /**
@@ -78,6 +81,7 @@ export let PEER_ENVIRONMENT: NonNullable<WidgetSettings["peerEnvironment"]> = "p
 export let PEER_REFERRAL_CODE: string | undefined;
 export let OFFRAMP_CANARY_CAP_ATOMIC: string | undefined;
 export let ONRAMP_CANARY_CAP_ATOMIC: string | undefined;
+export let ORIGIN_SPONSORSHIP: OriginSponsorshipAdapter | undefined;
 export let API_URL = "https://api.xochi.fi";
 export let AUTH_API_URL = API_URL;
 export let isDevelopment = false;
@@ -149,6 +153,7 @@ export function configureWidget(settings: WidgetSettings): void {
   OFFRAMP_CANARY_CAP_ATOMIC = settings.offrampCanaryCapAtomic;
   ONRAMP_CANARY_CAP_ATOMIC = settings.onrampCanaryCapAtomic;
   API_URL = settings.apiUrl;
+  ORIGIN_SPONSORSHIP = settings.originSponsorship;
   AUTH_API_URL = settings.authApiUrl || API_URL;
   isDevelopment = settings.development ?? false;
   APP_VERSION = settings.appVersion ?? "dev";

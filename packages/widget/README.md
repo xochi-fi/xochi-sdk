@@ -161,6 +161,15 @@ The published `@xochi/widget-lib@0.5.0` host's `updateTheme` changes the visual 
 
 The host supplies settings, never alternate trading algorithms. Exact route authorization, stale/fallback refusal, privacy preferences, signing checks and recovery live in public code. No Vite environment reads or import-time bridge handshake exist in this package. Mounting the widget owns the bridge; unmounting destroys it and rejects pending requests. Wallet signatures still require the existing explicit user actions.
 
+### Origin sponsorship
+
+`WidgetSettings.originSponsorship` is an opt-in adapter for an audited ERC-4337 v0.8 account. Return a profile from `resolve` for each connected account the integration recognizes on the action's chain. The adapter supplies the EOA owner, salt, independently configured verifying paymaster, and user-confirmed owner signatures for SIWE and the raw UserOperation digest. The wallet prompt must show the action passed to `signOperation`. Stock injected, WalletConnect and host-bridge providers require an integration that can supply these signatures.
+
+- `simple_account` supports public ERC-20 Send. The factory must derive the connected sender from the owner and salt.
+- `simple_7702` supports public ERC-20 Send and exact first Permit2 approval for a live quote. The sender must be the owner and already delegate to the canonical Simple7702Account. Set the salt to zero. The normal connector must support the owner's typed signatures for the intent and Permit2 pull.
+
+The widget uses `/api/origin-sponsorship/{capabilities,prepare,submit,status}` on its configured API and the existing wallet challenge and verification endpoints on its auth API. The venue's `chain_ids` applies to the factory profile and `approve_permit2_chain_ids` to the predelegated profile. The widget verifies the pinned paymaster, chain-specific digest, and exact calldata before requesting the operation signature. The EOA owner authenticates independently of the connected account used in the quote. A sponsored attempt never falls back to an ordinary transaction. After a submit with unknown outcome the widget checks the saved UserOperation hash and holds the action until the venue returns a definite receipt.
+
 The shell supplies Peer settings to `configureWidget` before mounting. Keep
 them in deployment configuration and out of embed URLs and snippet defaults.
 

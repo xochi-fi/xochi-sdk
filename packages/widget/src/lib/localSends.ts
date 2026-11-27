@@ -153,6 +153,7 @@ export interface SendAttempt {
   data: Omit<SendActivityItem["data"], "txHash">;
   hash?: string;
   candidateHash?: string;
+  userOpHash?: `0x${string}`;
 }
 const attemptKey = (wallet: string) => `${keyFor(wallet)}:attempt`;
 
@@ -170,6 +171,7 @@ export function readSendAttempt(wallet: string): SendAttempt | null {
   });
   if (
     !row ||
+    (value.userOpHash !== undefined && !isHash(value.userOpHash)) ||
     (value.candidateHash !== undefined &&
       (typeof value.candidateHash !== "string" || !isHash(value.candidateHash))) ||
     !Number.isSafeInteger(row.timestamp) ||
@@ -184,6 +186,7 @@ export function readSendAttempt(wallet: string): SendAttempt | null {
     timestamp: row.timestamp,
     data,
     ...(value.hash ? { hash: value.hash } : {}),
+    ...(value.userOpHash ? { userOpHash: value.userOpHash } : {}),
     ...(value.candidateHash ? { candidateHash: value.candidateHash } : {}),
   };
 }
@@ -196,6 +199,7 @@ export function saveSendAttempt(attempt: SendAttempt): void {
     timestamp: attempt.timestamp,
     data: { chainId, token, symbol, decimals, amount, recipient },
     ...(attempt.hash ? { hash: attempt.hash } : {}),
+    ...(attempt.userOpHash ? { userOpHash: attempt.userOpHash } : {}),
     ...(attempt.candidateHash ? { candidateHash: attempt.candidateHash } : {}),
   };
   window.localStorage.setItem(attemptKey(attempt.wallet), JSON.stringify(projected));

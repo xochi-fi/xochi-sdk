@@ -26,6 +26,7 @@ import {
 } from "wagmi/actions";
 import { waitForTransactionReceipt } from "viem/actions";
 import { encodeFunctionData, erc20Abi, isHash, type Hex } from "viem";
+import { resolveOriginSponsorship } from "../../lib/originSponsorship.js";
 import { isUserRejection } from "../../lib/eip712.js";
 import {
   clearSendAttempt,
@@ -73,6 +74,7 @@ export interface UseAddressSendReturn {
 const DECLINED = "You declined in your wallet. Nothing was sent.";
 const UNKNOWN_SUBMISSION =
   "Submission status is unknown. Do not send again. Attach the transaction hash to check this transfer.";
+const SPONSORED_UNKNOWN = "Submission status is unknown. Do not send again.";
 const NOT_SWITCHED = "The wallet did not switch networks.";
 
 function restore(wallet: string): AddressSendPhase | null {
@@ -93,7 +95,7 @@ function restore(wallet: string): AddressSendPhase | null {
         amount: BigInt(data.amount),
         recipient: data.recipient as Hex,
       },
-      notice: UNKNOWN_SUBMISSION,
+      notice: attempt.userOpHash ? SPONSORED_UNKNOWN : UNKNOWN_SUBMISSION,
     };
   } catch {
     return { step: "blocked" };
@@ -169,7 +171,7 @@ export function useAddressSend(): UseAddressSendReturn {
   }, [config, phase]);
 
   const approve = async (): Promise<void> => {
-    if (phase.step !== "review" || needsSwitch || busy.current || !address) return;
+    if (phase.step !== "review" || needsSwitch || busy.current || !address || !connector) return;
     const order = phase.order;
     const from = sender.current;
     if (!from || reviewedBinding.current !== binding) {
@@ -196,8 +198,50 @@ export function useAddressSend(): UseAddressSendReturn {
             recipient: order.recipient,
           },
         };
-        saveSendAttempt(attempt);
+        const sponsored = resolveOriginSponsorship(
+          config,
+          { action: "send", connector, sender: address, chainId: order.chainId },
+          () => reviewedBinding.current === binding,
+        );
+        if (!sponsored) saveSendAttempt(attempt);
         setPhase({ step: "approving", order });
+
+        if (sponsored) {
+          try {
+            const opHash = await sponsored.submit(
+              {
+                action: "send",
+                token: attempt.data.token as Hex,
+                recipient: order.recipient,
+                amount: order.amount,
+              },
+              (hash) => {
+                if (readSendAttempt(attempt.wallet)) throw new Error("Transfer already pending");
+                saveSendAttempt({ ...attempt, userOpHash: hash });
+                attempt.userOpHash = hash;
+              },
+            );
+            const receipt = await sponsored.wait(opHash);
+            if (!receipt) throw new Error("Sponsored transfer pending");
+            finish(attempt, order, receipt.hash, receipt.success);
+          } catch (error) {
+            if (!attempt.userOpHash) {
+              const saved = restore(attempt.wallet);
+              if (saved) {
+                setPhase(saved);
+                return;
+              }
+              setPhase({
+                step: "review",
+                order,
+                notice: isUserRejection(error) ? DECLINED : undefined,
+              });
+              return;
+            }
+            setPhase({ step: "in_doubt", order, attempt, notice: SPONSORED_UNKNOWN });
+          }
+          return;
+        }
 
         let hash: Hex;
         try {
@@ -267,7 +311,7 @@ export function useAddressSend(): UseAddressSendReturn {
       return;
     const { order } = phase;
     const hash = phase.attempt.hash ?? supplied.trim();
-    if (!isHash(hash)) {
+    if (!phase.attempt.userOpHash && !isHash(hash)) {
       setPhase({ ...phase, notice: "Enter a valid transaction hash. Do not send again." });
       return;
     }
@@ -280,10 +324,24 @@ export function useAddressSend(): UseAddressSendReturn {
           setPhase(restore(attempt.wallet) ?? { step: "edit" });
           return;
         }
+        if (saved.userOpHash) {
+          const sponsored =
+            connector &&
+            address &&
+            resolveOriginSponsorship(
+              config,
+              { action: "send", connector, sender: address, chainId: order.chainId },
+              () => true,
+            );
+          const receipt = await sponsored?.status(saved.userOpHash);
+          if (receipt) finish(saved, order, receipt.hash, receipt.success);
+          return;
+        }
         if (saved.hash && saved.hash.toLowerCase() !== hash.toLowerCase()) {
           setPhase(restore(attempt.wallet) ?? { step: "blocked" });
           return;
         }
+        if (!isHash(hash)) throw new Error("Invalid transaction hash");
         const chainId = order.chainId;
         const tx = await getTransaction(config, { hash, chainId });
         const expected = encodeFunctionData({
@@ -320,8 +378,9 @@ export function useAddressSend(): UseAddressSendReturn {
       setPhase({
         ...phase,
         attempt,
-        notice:
-          "Unable to verify this transfer. Do not send again. Check the hash and try checking status later.",
+        notice: attempt.userOpHash
+          ? SPONSORED_UNKNOWN
+          : "Unable to verify this transfer. Do not send again. Check the hash and try checking status later.",
       });
     } finally {
       busy.current = false;

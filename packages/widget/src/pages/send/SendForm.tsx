@@ -597,15 +597,17 @@ function WalletSendForm({
         <h3>Transfer status unknown</h3>
         {summary}
         <p role="alert">{phase.notice}</p>
-        <label className="send-field">
-          <span className="send-field__label">Transaction hash</span>
-          <input
-            className="send-field__control send-field__control--mono"
-            value={hash}
-            readOnly={!!phase.attempt.hash}
-            onChange={(e) => setRecoveryHash(e.target.value)}
-          />
-        </label>
+        {!phase.attempt.userOpHash && (
+          <label className="send-field">
+            <span className="send-field__label">Transaction hash</span>
+            <input
+              className="send-field__control send-field__control--mono"
+              value={hash}
+              readOnly={!!phase.attempt.hash}
+              onChange={(e) => setRecoveryHash(e.target.value)}
+            />
+          </label>
+        )}
         <button type="button" className="send-secondary" onClick={() => void send.reconcile(hash)}>
           Check existing transfer
         </button>

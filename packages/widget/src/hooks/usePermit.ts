@@ -19,8 +19,15 @@
  */
 
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { useAccount, usePublicClient, useWriteContract, useBytecode, useReadContract } from "wagmi";
-import { erc20Abi, isAddress, maxUint256 } from "viem";
+import {
+  useAccount,
+  useConfig,
+  usePublicClient,
+  useWriteContract,
+  useBytecode,
+  useReadContract,
+} from "wagmi";
+import { erc20Abi, isAddress, isHash, maxUint256 } from "viem";
 import type {
   PermitType,
   PaymentMethod,
@@ -28,6 +35,8 @@ import type {
   Eip712TypedData,
   OriginApproval,
 } from "../types/intent.js";
+import { resolveOriginSponsorship } from "../lib/originSponsorship.js";
+import { withSendAttemptLock } from "../lib/localSends.js";
 import { isUserRejection } from "../lib/eip712.js";
 import { pullMethodFromAuthorization, permit2SpenderFromAuthorization } from "../lib/permits.js";
 import { SUPPORTED_CHAIN_IDS } from "@xochi/client";
@@ -78,6 +87,8 @@ export interface UsePermitParams {
   amount: string | null;
   /** Quote/trade identity. Changing it invalidates any unlimited consent. */
   approvalContext?: string | null;
+  /** Riddler quote binding for sponsorship of an exact first allowance. */
+  quoteId?: string | null;
   /**
    * Whether the origin leg uses an EVM gasless pull. False for a non-EVM (Tron)
    * deposit-route origin, which has no permit/approval at all -- the hook goes
@@ -153,9 +164,11 @@ export function usePermit({
   servedMethod,
   amount,
   approvalContext = null,
+  quoteId,
   enabled = true,
 }: UsePermitParams): UsePermitReturn {
-  const { address } = useAccount();
+  const { address, connector } = useAccount();
+  const config = useConfig();
   const publicClient = usePublicClient({ chainId });
   const { writeContractAsync } = useWriteContract();
 
@@ -256,6 +269,8 @@ export function usePermit({
     amount,
     permitType,
     approvalContext,
+    quoteId,
+    connector?.uid,
     servedSpender,
   ]);
   const scopeRef = useRef(consentScope);
@@ -319,6 +334,65 @@ export function usePermit({
         const { data: current } = await refetchAllowance({ throwOnError: true });
         if (current === undefined) throw new Error("Permit2 allowance read returned nothing");
         if (!isCurrent()) return false;
+        const key = `xochi_origin_approval:${chainId}:${address.toLowerCase()}:${token.toLowerCase()}`;
+        const pending = localStorage.getItem(key);
+        const approvalWallet =
+          connector &&
+          resolveOriginSponsorship(
+            config,
+            { action: "approve_permit2", connector, sender: address, chainId },
+            isCurrent,
+          );
+        const originWallet =
+          approvalWallet ||
+          (connector &&
+            resolveOriginSponsorship(
+              config,
+              { action: "send", connector, sender: address, chainId },
+              isCurrent,
+            ));
+        // A factory SimpleAccount cannot produce the ERC-1271 signature Permit2
+        // needs. Refuse even the ordinary approval path for this known profile.
+        if (originWallet && !originWallet.supportsApproval) return false;
+        const sponsored =
+          approvalWallet && (pending !== null || (quoteId && !unlimited && current === 0n))
+            ? approvalWallet
+            : null;
+        if (pending !== null || sponsored) {
+          if (!sponsored) return false;
+          let approved = false;
+          await withSendAttemptLock(address, async () => {
+            if (!isCurrent()) return;
+            let hash = localStorage.getItem(key);
+            const recovering = hash !== null;
+            if (hash === null) {
+              // Another tab may have confirmed an approval while we acquired the lock.
+              const { data: allowanceNow } = await refetchAllowance({ throwOnError: true });
+              if (!isCurrent() || allowanceNow === undefined) return;
+              if (allowanceNow >= amount) {
+                approved = true;
+                return;
+              }
+              if (!quoteId || allowanceNow !== 0n || required !== amount) return;
+              hash = await sponsored.submit(
+                { action: "approve_permit2", token: token as `0x${string}`, amount, quoteId },
+                (hash) => {
+                  if (localStorage.getItem(key) !== null)
+                    throw new Error("Approval already pending");
+                  localStorage.setItem(key, hash);
+                },
+              );
+            }
+            if (!isHash(hash)) return;
+            const receipt = await (recovering ? sponsored.status(hash) : sponsored.wait(hash));
+            if (!receipt || localStorage.getItem(key) !== hash) return;
+            localStorage.removeItem(key);
+            if (!receipt.success || !isCurrent()) return;
+            const { data } = await refetchAllowance({ throwOnError: true });
+            approved = isCurrent() && data !== undefined && data >= amount;
+          });
+          return approved;
+        }
         if (current >= amount) return true;
 
         if (zeroFirstApproval && current > 0n) {
@@ -370,6 +444,9 @@ export function usePermit({
       permitType,
       address,
       publicClient,
+      config,
+      connector,
+      quoteId,
       token,
       chainId,
       foreignSpender,
