@@ -166,6 +166,7 @@ interface SwapFlowModalProps {
   open: boolean;
   /** Everything the flow renders about the intent itself. */
   intent: IntentView;
+  failureSupport?: React.ReactNode;
   // display data
   fromAmount: string;
   fromSymbol: string;
@@ -805,6 +806,7 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
                 onGoToClaims={props.onGoToClaims}
                 payoutAmount={quote?.toAmount}
               />
+              {(phase === "failed" || phase === "may-have-moved") && props.failureSupport}
             </div>
           )}
       </div>

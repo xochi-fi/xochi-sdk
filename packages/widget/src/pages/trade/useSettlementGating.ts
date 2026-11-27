@@ -339,6 +339,7 @@ export function useSettlementGating({
         : shieldedRouteAuthorized;
 
   const intent = useIntent({
+    showFailureSupport: true,
     fromChainId,
     toChainId,
     fromToken: fromTokenAddress,

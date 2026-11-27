@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.1.8-staging.2]
+
+### Added
+
+- Show a selectable and copyable support code and a private report link for eligible failures in the active Swap panel. Status requests opt in only for the connected order owner with a wallet-bound session. Retry or replacement clears the code, and stale replies cannot restore it.
+
+## [0.1.8-staging.1]
+
 ### Added
 
 - Show a selectable support code and a **Copy support code** button when a failed quote includes one. Users can paste the code into a private report.

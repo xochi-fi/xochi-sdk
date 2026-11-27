@@ -1505,6 +1505,16 @@ export function SwapPanel({
         // longer be handed an intent fact that disagrees with the intent
         // (see IntentView's note on attestedDeposit).
         intent={intent}
+        failureSupport={
+          intent.intentSupportCode && (
+            <div>
+              <QuoteSupportCode key={intent.intentSupportCode} code={intent.intentSupportCode} />
+              <a href="https://xochi.fi/report" target="_blank" rel="noopener noreferrer">
+                Report a problem
+              </a>
+            </div>
+          )
+        }
         fromAmount={amountBigInt.toString()}
         fromSymbol={fromToken.symbol}
         fromDecimals={fromToken.decimals}

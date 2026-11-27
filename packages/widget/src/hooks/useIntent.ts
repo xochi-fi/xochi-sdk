@@ -23,6 +23,8 @@ import {
   view,
   canSignQuote,
   canAllocateDepositQuote,
+  isTerminalIntentStatus,
+  getIntentSupportCode,
   getQuoteSupportCode,
   LOADING_STATES,
   POLL_INFLIGHT_STATES,
@@ -37,7 +39,7 @@ import {
   type TimerName,
 } from "@xochi/client";
 import { intentAPI } from "../lib/intentAPI.js";
-import { hasWalletSession } from "../lib/walletSession.js";
+import { getWalletSessionGeneration, hasWalletSession } from "../lib/walletSession.js";
 import { debugLog } from "../lib/debug.js";
 import { reportError } from "../lib/errorReport.js";
 import { prepareTypedDataForSigning } from "../lib/eip712.js";
@@ -105,6 +107,8 @@ export interface UseIntentParams {
     viewingPubKey: string;
     chainId: ChainId;
   };
+  /** Enable failed-intent support codes in the swap panel. */
+  showFailureSupport?: boolean;
   /** Pause the pre-expiry quote auto-refresh (e.g. while a confirm modal is open). */
   paused?: boolean;
   /** Independently reviewed legs keep their held quote until expiry; refresh only on a user action. */
@@ -122,6 +126,7 @@ export interface UseIntentReturn {
   // categorize by code and run the retry countdown.
   error: string | StructuredError | null;
   quoteSupportCode?: string;
+  intentSupportCode?: string;
   /** Plain-language refund explanation; non-null only on a `refunded` status. */
   refundReason: string | null;
   txHash: string | null;
@@ -258,7 +263,8 @@ interface Bindings {
   /** Current exact live-route settlement authority; read again when async wallet work returns. */
   settlementAuthorized: boolean;
   manualQuoteRefresh: boolean;
-  render: (model: Model) => void;
+  showFailureSupport: boolean;
+  render: (model: Model, failure: Runtime["intentFailure"]) => void;
   signTypedDataAsync: SignTypedDataAsync;
   ensureSession: () => Promise<string | null>;
   ensureApproval: (amount: bigint) => Promise<boolean>;
@@ -278,6 +284,8 @@ interface Runtime {
   executionIntentId: string | null;
   /** The SDK keeps a failed poll's safety verdict, but drops its raw substatus. */
   failureSubstatus: { intentId: string; substatus: string | null } | null;
+  /** A terminal execute answer can arrive before the machine reconciles its failure. */
+  intentFailure: { intentId: string; owner: string; code: string } | null;
   quoteFailure: { intent: Model["intent"]; quoteKey: string; code: string } | null;
   bindings: Bindings | null;
   dispatch: (body: MsgBody) => void;
@@ -287,7 +295,7 @@ interface Runtime {
 }
 
 function createRuntime(initial: Model): Runtime {
-  const queue: { body: MsgBody; quoteSupportCode?: string }[] = [];
+  const queue: { body: MsgBody; supportCode?: string }[] = [];
   let draining = false;
   const timers = new Map<TimerName, ArmedTimer>();
   const allocations = new Map<string, (ok: boolean) => void>();
@@ -307,22 +315,22 @@ function createRuntime(initial: Model): Runtime {
   // lifecycle events carry instead of the id.
   const attempted = new Map<string, string>();
 
-  const dispatch = (body: MsgBody, quoteSupportCode?: string): void => {
+  const dispatch = (body: MsgBody, supportCode?: string): void => {
     if (!rt.live) return;
-    queue.push({ body, quoteSupportCode });
+    queue.push({ body, supportCode });
     // An effect can answer synchronously (a skipped session check); queue it
     // behind the message being processed rather than re-enter `update`.
     if (draining) return;
     draining = true;
     try {
       let next: (typeof queue)[number] | undefined;
-      while ((next = queue.shift()) !== undefined) step(next.body, next.quoteSupportCode);
+      while ((next = queue.shift()) !== undefined) step(next.body, next.supportCode);
     } finally {
       draining = false;
     }
   };
 
-  const step = (body: MsgBody, quoteSupportCode?: string): void => {
+  const step = (body: MsgBody, supportCode?: string): void => {
     const io = rt.bindings;
     if (!io || !rt.live) return;
     const stamp = { now: Date.now(), hidden: document.hidden };
@@ -352,13 +360,13 @@ function createRuntime(initial: Model): Runtime {
     // Keep it outside replayable messages, the model, and host event payloads.
     if (
       body.type === "QuoteReplied" &&
-      quoteSupportCode &&
+      supportCode &&
       !fetchingQuote &&
       model.flights.some((flight) => flight.id === body.flight && flight.stage === "api") &&
       after.intent !== model.intent &&
       after.intent.error
     ) {
-      rt.quoteFailure = { intent: after.intent, quoteKey: io.quoteKey, code: quoteSupportCode };
+      rt.quoteFailure = { intent: after.intent, quoteKey: io.quoteKey, code: supportCode };
     }
     const adoptedOrder =
       body.type === "ResumeRequested" &&
@@ -373,6 +381,44 @@ function createRuntime(initial: Model): Runtime {
     ) {
       rt.executionIntentId = null;
       rt.failureSubstatus = null;
+    }
+    const owner = after.intent.quotedAddress;
+    if (
+      adoptedOrder ||
+      rt.intentFailure?.intentId !== after.intent.intentId ||
+      rt.intentFailure?.owner !== io.ctx.wallet.address?.toLowerCase() ||
+      body.type === "ResetRequested" ||
+      body.type === "RefreshRequested" ||
+      body.type === "QuoteRequested" ||
+      body.type === "SignRequested" ||
+      fetchingQuote ||
+      (after.intent.status !== "failed" &&
+        (model.intent.status === "failed" || isTerminalIntentStatus(after.intent.status)))
+    ) {
+      rt.intentFailure = null;
+    }
+    if (
+      io.showFailureSupport &&
+      supportCode &&
+      owner &&
+      owner.toLowerCase() === io.ctx.wallet.address?.toLowerCase() &&
+      after.intent.intentId &&
+      after.intent.intentId === model.intent.intentId &&
+      ((body.type === "ExecuteReplied" &&
+        model.sign?.id === body.flow &&
+        model.sign.stage === "execute" &&
+        !isTerminalIntentStatus(model.intent.status) &&
+        (after.intent.status === "failed" || !isTerminalIntentStatus(after.intent.status)) &&
+        after.sign !== model.sign) ||
+        (body.type === "StatusReplied" &&
+          model.intent.status !== "failed" &&
+          after.intent.status === "failed"))
+    ) {
+      rt.intentFailure = {
+        intentId: after.intent.intentId,
+        owner: owner.toLowerCase(),
+        code: supportCode,
+      };
     }
     if (
       effects.some(
@@ -415,7 +461,7 @@ function createRuntime(initial: Model): Runtime {
       }
     }
     rt.model = after;
-    io.render(after);
+    io.render(after, rt.intentFailure);
     for (const effect of effects) perform(effect, io);
   };
 
@@ -476,16 +522,39 @@ function createRuntime(initial: Model): Runtime {
           // reveals nothing past the status-only view, and it must never enter
           // the machine (its msgs are a replayable log).
           intentAPI.execute(call.request).then(
-            ({ readToken: _readToken, ...response }) =>
-              dispatch({ ...reply, result: { ok: true, response } }),
-            (err: unknown) => dispatch({ ...reply, result: fail(err) }),
+            (result) => {
+              const { readToken: _readToken, ...response } = result;
+              dispatch({ ...reply, result: { ok: true, response } }, getIntentSupportCode(result));
+            },
+            (err: unknown) => dispatch({ ...reply, result: fail(err) }, getIntentSupportCode(err)),
           );
         } else {
           const reply = { type: "StatusReplied" as const, gen: call.gen, attempt: call.attempt };
-          intentAPI.getIntentStatus(call.intentId).then(
-            (status) => dispatch({ ...reply, result: { ok: true, status } }),
-            (err: unknown) => dispatch({ ...reply, result: fail(err) }),
-          );
+          const owner = rt.model.intent.quotedAddress;
+          const wantsSupportCode =
+            io.showFailureSupport &&
+            owner !== null &&
+            owner.toLowerCase() === io.ctx.wallet.address?.toLowerCase() &&
+            hasWalletSession(owner);
+          const generation = getWalletSessionGeneration();
+          intentAPI
+            .getIntentStatus(call.intentId, wantsSupportCode ? { supportCode: true } : undefined)
+            .then(
+              (status) => {
+                const code =
+                  wantsSupportCode && generation === getWalletSessionGeneration()
+                    ? getIntentSupportCode(status)
+                    : undefined;
+                dispatch(
+                  {
+                    ...reply,
+                    result: { ok: true, status: code && status ? { ...status } : status },
+                  },
+                  code,
+                );
+              },
+              (err: unknown) => dispatch({ ...reply, result: fail(err) }),
+            );
         }
         return;
       }
@@ -563,6 +632,7 @@ function createRuntime(initial: Model): Runtime {
     executionIntentId: null,
     failureSubstatus: null,
     quoteFailure: null,
+    intentFailure: null,
     bindings: null,
     dispatch,
     allocate: () =>
@@ -654,6 +724,7 @@ export function useIntent(params: UseIntentParams): UseIntentReturn {
     );
   });
   const [model, setModel] = useState<Model>(rt.model);
+  const [intentFailure, setIntentFailure] = useState<Runtime["intentFailure"]>(null);
   const approvalQuote = useRef({ quote: model.intent.quote, revision: 0 });
   if (approvalQuote.current.quote !== model.intent.quote) {
     approvalQuote.current = {
@@ -709,7 +780,11 @@ export function useIntent(params: UseIntentParams): UseIntentReturn {
     quoteKey,
     settlementAuthorized,
     manualQuoteRefresh: params.manualQuoteRefresh === true,
-    render: setModel,
+    showFailureSupport: params.showFailureSupport === true,
+    render: (next, failure) => {
+      setModel(next);
+      setIntentFailure(failure);
+    },
     signTypedDataAsync,
     ensureSession,
     ensureApproval: permit.ensureApproval,
@@ -806,9 +881,11 @@ export function useIntent(params: UseIntentParams): UseIntentReturn {
   const refreshQuote = useCallback(
     (forceRefresh = false): void => {
       permit.setUnlimitedApproval(false);
+      rt.intentFailure = null;
+      setIntentFailure(null);
       if (settlementAuthorized) dispatch({ type: "RefreshRequested", forceRefresh });
     },
-    [dispatch, settlementAuthorized, permit.setUnlimitedApproval],
+    [dispatch, settlementAuthorized, permit.setUnlimitedApproval, rt],
   );
 
   useEffect(() => {
@@ -865,6 +942,12 @@ export function useIntent(params: UseIntentParams): UseIntentReturn {
       rt.quoteFailure?.intent === state &&
       rt.quoteFailure.quoteKey === quoteKey
         ? rt.quoteFailure.code
+        : undefined,
+    intentSupportCode:
+      state.status === "failed" &&
+      intentFailure?.intentId === state.intentId &&
+      intentFailure.owner === address?.toLowerCase()
+        ? intentFailure.code
         : undefined,
     refundReason: state.refundReason,
     txHash: state.txHash,
