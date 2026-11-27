@@ -37,6 +37,7 @@ import { renderTrade, apiStub, TEST_ACCOUNT } from "./harness.js";
 import { quoteWire, statusWire } from "../../test/intentHarness.js";
 import { SwapPanel } from "./SwapPanel.js";
 import { ActivityFeed } from "../../components/ActivityFeed.js";
+import { clearWalletSession } from "../../lib/walletSession.js";
 import { STORAGE_KEYS } from "../../constants.js";
 import type { SwapActivityItem } from "../../types/activity.js";
 import type { IntentStatus } from "../../types/intent.js";
@@ -124,6 +125,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   window.localStorage.clear();
+  clearWalletSession();
   Object.assign(DEPOSIT_ATTESTATION_PIN, { signer: originalDepositSigner });
 });
 
@@ -292,6 +294,61 @@ describe("after an execute, Retry only on the Worker's not_executed", () => {
     await renderTrade(<SwapPanel />, { connected: true });
     return { quotes: () => quotes };
   };
+
+  it.each(["owner", "anonymous", "expired request"])(
+    "limits the failed swap code to the current owner request (%s)",
+    async (session) => {
+      const code = "0123456789abcdef0123456789abcdef";
+      if (session !== "anonymous") {
+        window.sessionStorage.setItem(
+          STORAGE_KEYS.walletSession,
+          JSON.stringify({ token: "synthetic-owner", wallet: TEST_ACCOUNT.toLowerCase() }),
+        );
+      }
+      const stub = apiStub({ "/api/report": { body: { success: true } } });
+      const started = Promise.withResolvers<{ url: URL; authorization: string | null }>();
+      const status = Promise.withResolvers<Response>();
+      vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(String(input));
+        if (!url.pathname.endsWith("/status")) {
+          return stub(input, init);
+        }
+        if (session !== "anonymous" && url.search === "") return stub(input, init);
+        started.resolve({ url, authorization: new Headers(init?.headers).get("Authorization") });
+        return status.promise;
+      });
+      seed(record());
+      await renderTrade(<SwapPanel />, { connected: true });
+      const request = await started.promise;
+      expect(request.url.search).toBe(session === "anonymous" ? "" : "?support_code=1");
+      expect(request.authorization).toBe(session === "anonymous" ? null : "Bearer synthetic-owner");
+      if (session === "expired request") clearWalletSession();
+      const response = Response.json(
+        statusWire({
+          intent_id: RESUMED_ID,
+          status: "failed",
+          terminal: true,
+          substatus: "not_executed",
+        }),
+        { headers: { "X-Xochi-Support-Code": code } },
+      );
+      Object.defineProperty(response, "url", { value: request.url.href });
+      status.resolve(response);
+
+      await screen.findByRole("heading", { name: "Swap failed" }, WAIT);
+      const field = screen.queryByRole<HTMLInputElement>("textbox", { name: "Support code" });
+      if (session === "owner") {
+        expect(field?.value).toBe(code);
+        expect(screen.getByRole("link", { name: "Report a problem" }).getAttribute("href")).toBe(
+          "https://xochi.fi/report",
+        );
+        fireEvent.click(screen.getByRole("button", { name: "New quote" }));
+        expect(screen.queryByRole("textbox", { name: "Support code" })).toBeNull();
+      } else {
+        expect(field).toBeNull();
+      }
+    },
+  );
 
   it("ends an unmarked failure on may-have-moved, and Close frees the panel", async () => {
     const api = await resumeTo("settling", { status: "failed", terminal: true });

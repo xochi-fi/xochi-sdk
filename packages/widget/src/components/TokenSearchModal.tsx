@@ -140,18 +140,26 @@ export function TokenSearchModal({
   }, [open, initialChainId, chainIds, mode]);
 
   const normalizedChainSearch = chainSearch.trim().toLowerCase();
-  const filteredChains = useMemo(
-    () =>
-      chainIds.filter((chainId) => {
-        const name = EXTENDED_CHAIN_NAMES[chainId] ?? "";
-        const shortName = CHAIN_SHORT_NAMES[chainId] ?? "";
-        return (
-          normalizedChainSearch === "" ||
-          `${name} ${shortName}`.toLowerCase().includes(normalizedChainSearch)
-        );
-      }),
-    [chainIds, normalizedChainSearch],
-  );
+  const filteredChains = useMemo(() => {
+    const matchingChains = chainIds.filter((chainId) => {
+      const name = EXTENDED_CHAIN_NAMES[chainId] ?? "";
+      const shortName = CHAIN_SHORT_NAMES[chainId] ?? "";
+      return (
+        normalizedChainSearch === "" ||
+        `${name} ${shortName}`.toLowerCase().includes(normalizedChainSearch)
+      );
+    });
+
+    // Canton is a Receive-only destination. Keep it at the top of the ordinary
+    // Receive network list so it is discoverable without scrolling, while
+    // preserving the capability-derived order everywhere else. This changes
+    // presentation only; route eligibility still comes from `chainIds`.
+    if (mode !== "chain" || networkLeg !== "Receive") return matchingChains;
+    return [
+      ...matchingChains.filter(isCantonDestinationChainId),
+      ...matchingChains.filter((chainId) => !isCantonDestinationChainId(chainId)),
+    ];
+  }, [chainIds, mode, networkLeg, normalizedChainSearch]);
   const showAllNetwork =
     mode === "token" && (normalizedChainSearch === "" || "all".includes(normalizedChainSearch));
   const showZkMoneyNetwork =
