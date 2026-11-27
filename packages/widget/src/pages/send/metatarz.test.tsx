@@ -28,7 +28,7 @@ function openSend(enabled = true) {
       onQuote={vi.fn()}
     />,
   );
-  if (enabled) fireEvent.click(screen.getByRole("button", { name: "Canton TestNet via Metatarz" }));
+  if (enabled) fireEvent.click(screen.getByRole("button", { name: "Metatarz TestNet" }));
 }
 
 function mockWallet() {
@@ -75,6 +75,18 @@ it("leaves the ordinary Send surface in place when the deploy gate is off", () =
   expect(screen.getByText("Existing Send form")).toBeTruthy();
 });
 
+it("opens and collapses the compact row without replacing Send", () => {
+  mockWallet();
+  openSend();
+  const toggle = screen.getByRole("button", { name: "Metatarz TestNet" });
+  expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  expect(screen.getByRole("button", { name: "Connect" })).toBeTruthy();
+  expect(screen.getByText("Existing Send form")).toBeTruthy();
+  fireEvent.click(toggle);
+  expect(toggle.getAttribute("aria-expanded")).toBe("false");
+  expect(screen.queryByRole("button", { name: "Connect" })).toBeNull();
+});
+
 it("offers the public store and ignores a different injected Canton wallet", () => {
   const request = vi.fn();
   vi.stubGlobal("canton", { request });
@@ -89,7 +101,7 @@ it("offers the public store and ignores a different injected Canton wallet", () 
 it("verifies the approved TestNet party and clears it when the active network changes", async () => {
   const wallet = mockWallet();
   openSend();
-  const connect = screen.getByRole("button", { name: "Connect Metatarz Wallet" });
+  const connect = screen.getByRole("button", { name: "Connect" });
   fireEvent.click(connect);
   fireEvent.click(connect);
   await screen.findByText(partyId);
@@ -97,7 +109,7 @@ it("verifies the approved TestNet party and clears it when the active network ch
   wallet.networkId = "canton:mainnet";
   const [, accountsChanged] = wallet.on.mock.calls.find(([event]) => event === "accountsChanged")!;
   accountsChanged();
-  await screen.findByText(/Active network: canton:mainnet/);
+  await screen.findByText(/Switch to Canton TestNet/);
   expect(screen.queryByText(partyId)).toBeNull();
 });
 
@@ -105,8 +117,8 @@ it("rejects accounts returned for a different network", async () => {
   const wallet = mockWallet();
   wallet.accounts[0].networkId = "canton:mainnet";
   openSend();
-  fireEvent.click(screen.getByRole("button", { name: "Connect Metatarz Wallet" }));
-  await screen.findByText(/select an active Canton TestNet party/);
+  fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+  await screen.findByText(/Select an active TestNet party/);
   expect(screen.queryByText(partyId)).toBeNull();
 });
 
@@ -119,9 +131,9 @@ it("shows a rejected connection and allows retry", async () => {
     })
     .mockRejectedValueOnce({ code: 4001 });
   openSend();
-  fireEvent.click(screen.getByRole("button", { name: "Connect Metatarz Wallet" }));
-  await screen.findByText("Connection declined in Metatarz Wallet.");
-  fireEvent.click(screen.getByRole("button", { name: "Connect Metatarz Wallet" }));
+  fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+  await screen.findByText("Connection declined.");
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
   await screen.findByText(partyId);
 });
 

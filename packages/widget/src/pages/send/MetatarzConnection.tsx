@@ -14,36 +14,36 @@ type View =
 function connectionMessage(view: View): string {
   switch (view.kind) {
     case "ready":
-      return "Select Canton TestNet in Metatarz Wallet, activate a Canton party, then connect.";
+      return "";
     case "missing":
-      return "Metatarz Wallet’s Canton provider is unavailable here. Install or update the extension and reload.";
+      return "Wallet unavailable here.";
     case "isolated":
-      return "This embed cannot connect to Metatarz Wallet. Open Send in a new tab to connect.";
+      return "Wallet access is blocked in this embed.";
     case "pending":
-      return "Check Metatarz Wallet for a connection request.";
+      return "Check your wallet.";
     case "checking":
-      return "Checking the active Metatarz network and party.";
+      return "Checking connection…";
     case "disconnected":
       return view.reason?.startsWith("No Canton account")
-        ? "Activate a Canton TestNet party in Metatarz Wallet, then reconnect."
-        : "This site is disconnected. Unlock Metatarz Wallet and connect.";
+        ? "Activate a TestNet party in your wallet."
+        : "Unlock your wallet and reconnect.";
     case "unreachable":
-      return "Metatarz Wallet could not reach Canton. Check the selected network and retry.";
+      return "TestNet connection unavailable.";
     case "wrong-network":
-      return `Active network: ${view.networkId}. Select Canton TestNet in Metatarz Wallet, then refresh.`;
+      return "Switch to Canton TestNet in your wallet.";
     case "no-primary":
-      return "Unlock Metatarz Wallet and select an active Canton TestNet party, then refresh.";
+      return "Select an active TestNet party.";
     case "connected":
-      return "Connected to Canton TestNet. To change the active party, select it in Metatarz Wallet.";
+      return "Connected";
     case "rejected":
-      return "Connection declined in Metatarz Wallet.";
+      return "Connection declined.";
     case "failed":
     case "changed":
-      return "Could not verify the wallet connection. Open Metatarz Wallet and try again.";
+      return "Couldn’t verify the connection.";
   }
 }
 
-export function MetatarzConnection({ onBack }: { onBack: () => void }) {
+export function MetatarzConnection() {
   const embedded = window.parent !== window;
   const isolated = embedded && window.origin === "null";
   const [view, setView] = useState<View>(() => ({
@@ -101,45 +101,40 @@ export function MetatarzConnection({ onBack }: { onBack: () => void }) {
     }
   }
 
+  const pending = view.kind === "pending" || view.kind === "checking";
+  const openStandalone = isolated || (embedded && view.kind === "missing");
   return (
-    <section aria-label="Metatarz Wallet">
-      <button type="button" className="send-secondary" onClick={onBack}>
-        Back to Send
-      </button>
-      <h2 className="send-card__title">Metatarz Wallet</h2>
-      <p role="status">{connectionMessage(view)}</p>
-      {view.kind === "connected" && (
-        <p>
-          Active party <code className="send-metatarz__party">{view.primaryParty}</code>
-        </p>
-      )}
-      <p>Use Send Tokens in Metatarz Wallet for direct Canton Coin transfers.</p>
-      {!isolated && (
+    <div className="send-metatarz__connection">
+      <div role="status">
+        {connectionMessage(view)}
+        {view.kind === "connected" && (
+          <code className="send-metatarz__party" aria-label="Active party">
+            {view.primaryParty}
+          </code>
+        )}
+      </div>
+      {openStandalone ? (
+        <a href={metatarzStandaloneUrl()} target="_blank" rel="noopener noreferrer">
+          Open Send in a new tab
+        </a>
+      ) : view.kind === "missing" ? (
+        <a href={METATARZ_INSTALL} target="_blank" rel="noopener noreferrer">
+          Get Metatarz Wallet
+        </a>
+      ) : (
         <button
           type="button"
           className="send-secondary"
-          disabled={view.kind === "pending" || view.kind === "checking"}
+          disabled={pending}
           onClick={() => void connect()}
         >
-          {view.kind === "connected" || view.kind === "wrong-network"
-            ? "Refresh Metatarz connection"
-            : "Connect Metatarz Wallet"}
+          {view.kind === "connected"
+            ? "Refresh"
+            : view.kind === "ready" || pending
+              ? "Connect"
+              : "Retry"}
         </button>
       )}
-      {view.kind === "missing" && (
-        <p>
-          <a href={METATARZ_INSTALL} target="_blank" rel="noopener noreferrer">
-            Get Metatarz Wallet
-          </a>
-        </p>
-      )}
-      {embedded && (
-        <p>
-          <a href={metatarzStandaloneUrl()} target="_blank" rel="noopener noreferrer">
-            Open Send in a new tab
-          </a>
-        </p>
-      )}
-    </section>
+    </div>
   );
 }
