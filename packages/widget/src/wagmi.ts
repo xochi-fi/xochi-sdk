@@ -12,7 +12,7 @@ import {
 } from "@rainbow-me/rainbowkit/wallets";
 // Gnosis (id 100, native xDAI) ships in viem/wagmi chains; registered only
 // under GNOSIS_ENABLED so the wallet network menu matches the trade selectors.
-import { mainnet, arbitrum, optimism, base, polygon, gnosis } from "wagmi/chains";
+import { mainnet, arbitrum, arbitrumSepolia, optimism, base, polygon, gnosis } from "wagmi/chains";
 // viem 2.48 has no Arc mainnet definition yet; we define it locally below.
 import { ChainNotConfiguredError, createConnector, http, type Config } from "wagmi";
 import { connect, getAccount, watchAccount, type GetAccountReturnType } from "wagmi/actions";
@@ -29,6 +29,7 @@ import {
   ARC_BROWSER_ENABLED,
   ARC_BROWSER_RPC_URL,
   GNOSIS_ENABLED,
+  ORIGIN_SPONSORSHIP_TESTNET,
   RPC_URLS,
   SITE_URL as CONFIGURED_SITE_URL,
   WALLETCONNECT_PROJECT_ID,
@@ -49,6 +50,17 @@ export const robinhood = defineChain({
   blockExplorers: {
     default: { name: "Blockscout", url: "https://robinhoodchain.blockscout.com" },
   },
+});
+
+export const robinhoodTestnet = defineChain({
+  id: 46630,
+  name: "Robinhood Testnet",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: { default: { http: ["https://rpc.testnet.chain.robinhood.com"] } },
+  blockExplorers: {
+    default: { name: "Blockscout", url: "https://explorer.testnet.chain.robinhood.com" },
+  },
+  testnet: true,
 });
 
 // Arc mainnet (Circle L1, id 5042). USDC is the native gas token (18 dec
@@ -106,6 +118,8 @@ const transports = {
   [base.id]: toTransport(rpcs.base),
   [polygon.id]: toTransport(rpcs.polygon),
   [robinhood.id]: toTransport(rpcs.robinhood),
+  [robinhoodTestnet.id]: http(undefined, transportOpts),
+  [arbitrumSepolia.id]: http(undefined, transportOpts),
   [arc.id]: toTransport(rpcs.arc),
   [gnosis.id]: toTransport(rpcs.gnosis),
 };
@@ -592,6 +606,7 @@ export function createWagmiConfig(bridge: HostConnection | null = null): Config 
       base,
       polygon,
       robinhood,
+      ...(ORIGIN_SPONSORSHIP_TESTNET ? [robinhoodTestnet, arbitrumSepolia] : []),
       ...(ARC_BROWSER_ENABLED ? [arc] : []),
       ...(GNOSIS_ENABLED ? [gnosis] : []),
     ] as const,

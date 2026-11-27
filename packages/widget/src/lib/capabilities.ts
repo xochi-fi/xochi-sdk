@@ -1,6 +1,7 @@
 import {
   CHAIN_NAMES,
   SUPPORTED_CHAIN_IDS,
+  isOriginSponsorshipPilotChain,
   TOKENS,
   parseCapabilities,
   type SolverCapabilities,
@@ -11,10 +12,11 @@ import { FALLBACK_DESTINATION_TOKENS, FALLBACK_ORIGIN_TOKENS } from "./displayFa
 export const FALLBACK_CAPABILITIES: SolverCapabilities = (() => {
   const symbols = [...new Set([...FALLBACK_ORIGIN_TOKENS, ...FALLBACK_DESTINATION_TOKENS])];
   const tokens = symbols.flatMap((symbol) => {
-    const entries = SUPPORTED_CHAIN_IDS.flatMap((chainId) =>
-      TOKENS[chainId]
-        .filter((token) => token.symbol === symbol)
-        .map((token) => ({ chainId, token })),
+    const entries = SUPPORTED_CHAIN_IDS.filter((id) => !isOriginSponsorshipPilotChain(id)).flatMap(
+      (chainId) =>
+        TOKENS[chainId]
+          .filter((token) => token.symbol === symbol)
+          .map((token) => ({ chainId, token })),
     );
     const decimals = new Set(entries.map(({ token }) => token.decimals));
     if (entries.length === 0 || decimals.size !== 1) return [];
@@ -35,11 +37,13 @@ export const FALLBACK_CAPABILITIES: SolverCapabilities = (() => {
   });
   const caps = parseCapabilities({
     cross_chain_only: true,
-    chains: SUPPORTED_CHAIN_IDS.map((chain_id) => ({
-      chain_id,
-      chain_name: CHAIN_NAMES[chain_id],
-      vm_type: "evm",
-    })),
+    chains: SUPPORTED_CHAIN_IDS.filter((id) => !isOriginSponsorshipPilotChain(id)).map(
+      (chain_id) => ({
+        chain_id,
+        chain_name: CHAIN_NAMES[chain_id],
+        vm_type: "evm",
+      }),
+    ),
     tokens,
   });
   if (caps === null) throw new Error("fallback capabilities failed to parse");

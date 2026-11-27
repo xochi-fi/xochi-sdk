@@ -12,7 +12,12 @@
  */
 
 import { getAddress, type Address } from "viem";
-import { CHAIN_NAMES, TOKENS as CLIENT_TOKENS, validateAddressForVm } from "@xochi/client";
+import {
+  CHAIN_NAMES,
+  ARBITRUM_SEPOLIA_CHAIN_ID,
+  TOKENS as CLIENT_TOKENS,
+  validateAddressForVm,
+} from "@xochi/client";
 import { parseTokenAmount } from "../../utils/format.js";
 import type { Token } from "../../types/intent.js";
 
@@ -37,7 +42,7 @@ export function defaultSendToken(chainId: number): Token | undefined {
 
 /** Of the wallet's configured chains, those a send can execute on, in that order. */
 export function sendChainIds(configured: readonly number[]): number[] {
-  return configured.filter((id) => sendTokens(id).length > 0);
+  return configured.filter((id) => id !== ARBITRUM_SEPOLIA_CHAIN_ID && sendTokens(id).length > 0);
 }
 
 export function chainName(chainId: number): string {

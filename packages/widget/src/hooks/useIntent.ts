@@ -18,6 +18,10 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useAccount, useSignTypedData } from "wagmi";
 import {
+  ARBITRUM_SEPOLIA_CHAIN_ID,
+  ROBINHOOD_TESTNET_CHAIN_ID,
+  USDG_ADDRESSES,
+  isOriginSponsorshipPilotChain,
   init,
   update,
   view,
@@ -46,6 +50,7 @@ import { prepareTypedDataForSigning } from "../lib/eip712.js";
 import { hostBridge } from "../lib/hostBridge.js";
 import { tradeEvents } from "../lib/tradeLifecycle.js";
 import {
+  ORIGIN_SPONSORSHIP_TESTNET,
   SOLVER_PIN,
   PULL_RECIPIENTS,
   DEPOSIT_ATTESTATION_PIN,
@@ -682,7 +687,17 @@ export function useIntent(params: UseIntentParams): UseIntentReturn {
   } = params;
   const trustScore = params.trustScore ?? 0;
   const slippageBps = params.slippageBps ?? 50; // Default 0.5%
-  const settlementAuthorized = params.settlementAuthorized;
+  const pilot =
+    isOriginSponsorshipPilotChain(fromChainId) || isOriginSponsorshipPilotChain(toChainId);
+  const settlementAuthorized =
+    params.settlementAuthorized &&
+    (!pilot ||
+      (ORIGIN_SPONSORSHIP_TESTNET &&
+        fromChainId === ROBINHOOD_TESTNET_CHAIN_ID &&
+        toChainId === ARBITRUM_SEPOLIA_CHAIN_ID &&
+        fromToken.toLowerCase() === USDG_ADDRESSES[ROBINHOOD_TESTNET_CHAIN_ID]?.toLowerCase() &&
+        toToken.toLowerCase() === USDG_ADDRESSES[ARBITRUM_SEPOLIA_CHAIN_ID]?.toLowerCase() &&
+        settlementPreference === "public"));
   const isDepositOrigin = !isChainId(fromChainId);
 
   const ctx: Context = {

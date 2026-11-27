@@ -39,7 +39,7 @@ import { resolveOriginSponsorship } from "../lib/originSponsorship.js";
 import { withSendAttemptLock } from "../lib/localSends.js";
 import { isUserRejection } from "../lib/eip712.js";
 import { pullMethodFromAuthorization, permit2SpenderFromAuthorization } from "../lib/permits.js";
-import { SUPPORTED_CHAIN_IDS } from "@xochi/client";
+import { isOriginSponsorshipPilotChain, SUPPORTED_CHAIN_IDS } from "@xochi/client";
 import { PERMIT2_ADDRESS } from "@xochi/signer";
 import { USDC_ADDRESSES } from "@xochi/client";
 
@@ -394,6 +394,7 @@ export function usePermit({
           return approved;
         }
         if (current >= amount) return true;
+        if (isOriginSponsorshipPilotChain(chainId)) return false;
 
         if (zeroFirstApproval && current > 0n) {
           const resetHash = await writeContractAsync({

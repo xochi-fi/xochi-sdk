@@ -13,14 +13,14 @@ import {
   type Address,
   type Hex,
 } from "viem";
-import { SIMPLE_ACCOUNT_FACTORY } from "@xochi/client";
+import { isOriginSponsorshipPilotChain, SIMPLE_ACCOUNT_FACTORY } from "@xochi/client";
 import {
   computeUserOpHash,
   ENTRYPOINT_V08_ADDRESS,
   PERMIT2_ADDRESS,
   type UserOperationV08,
 } from "@xochi/signer";
-import { ORIGIN_SPONSORSHIP } from "../config.js";
+import { ORIGIN_SPONSORSHIP, ORIGIN_SPONSORSHIP_TESTNET } from "../config.js";
 import type {
   OriginSponsorshipAdapter,
   OriginSponsorshipAction,
@@ -46,6 +46,7 @@ export function resolveOriginSponsorship(
   context: Parameters<OriginSponsorshipAdapter["resolve"]>[0],
   isCurrent: () => boolean,
 ) {
+  if (isOriginSponsorshipPilotChain(context.chainId) && !ORIGIN_SPONSORSHIP_TESTNET) return null;
   const account = ORIGIN_SPONSORSHIP?.resolve(context);
   if (!account) return null;
   const { profile, owner, salt, paymaster } = account;

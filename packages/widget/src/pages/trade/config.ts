@@ -8,6 +8,8 @@
 import type { ChainId, Token } from "../../types/intent.js";
 import {
   CANTON_COIN,
+  ROBINHOOD_TESTNET_CHAIN_ID,
+  ARBITRUM_SEPOLIA_CHAIN_ID,
   CANTON_MAINNET_CHAIN_ID,
   DEFAULT_SLIPPAGE_BPS,
   TOKENS as CLIENT_TOKENS,
@@ -17,7 +19,11 @@ import {
   type SelectableChainId,
   type TokenInfo,
 } from "@xochi/client";
-import { ARC_BROWSER_ENABLED as ARC_LIVE, CANTON_DESTINATION_LIVE } from "../../config.js";
+import {
+  ARC_BROWSER_ENABLED as ARC_LIVE,
+  CANTON_DESTINATION_LIVE,
+  ORIGIN_SPONSORSHIP_TESTNET,
+} from "../../config.js";
 
 // The configurator preview imports it from here.
 export { DEFAULT_SLIPPAGE_BPS };
@@ -168,6 +174,10 @@ export function chainEnabledForRole(
   role: "origin" | "destination",
   cantonLive: boolean = CANTON_DESTINATION_LIVE,
 ): boolean {
+  if (chainId === ROBINHOOD_TESTNET_CHAIN_ID)
+    return ORIGIN_SPONSORSHIP_TESTNET && role === "origin";
+  if (chainId === ARBITRUM_SEPOLIA_CHAIN_ID)
+    return ORIGIN_SPONSORSHIP_TESTNET && role === "destination";
   if (chainId === TRON_CHAIN_ID) {
     return role === "origin" ? TRON_ORIGIN_LIVE : TRON_DESTINATION_LIVE;
   }
@@ -202,6 +212,8 @@ export const TOKENS: Record<SelectableChainId, Token[]> = {
   42161: CLIENT_TOKENS[42161].map((token) => toFrontendToken(token, 42161)),
   8453: CLIENT_TOKENS[8453].map((token) => toFrontendToken(token, 8453)),
   4663: CLIENT_TOKENS[4663].map((token) => toFrontendToken(token, 4663)),
+  46630: CLIENT_TOKENS[46630].map((token) => toFrontendToken(token, 46630)),
+  421614: CLIENT_TOKENS[421614].map((token) => toFrontendToken(token, 421614)),
   5042: CLIENT_TOKENS[5042].map((token) => toFrontendToken(token, 5042)),
   100: CLIENT_TOKENS[100].map((token) => toFrontendToken(token, 100)),
   [TRON_CHAIN_ID]: TRON_TOKENS,

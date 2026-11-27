@@ -30,6 +30,8 @@ export interface WidgetSettings {
   onrampCanaryCapAtomic?: string;
   authApiUrl?: string;
   development?: boolean;
+  /** Development-only Robinhood Testnet to Arbitrum Sepolia pilot. */
+  originSponsorshipTestnet?: boolean;
   appVersion?: string;
   siteUrl?: string;
   /** Require this exact parent origin for iframe bridge messages when configured. */
@@ -84,6 +86,7 @@ export let ONRAMP_CANARY_CAP_ATOMIC: string | undefined;
 export let ORIGIN_SPONSORSHIP: OriginSponsorshipAdapter | undefined;
 export let API_URL = "https://api.xochi.fi";
 export let AUTH_API_URL = API_URL;
+export let ORIGIN_SPONSORSHIP_TESTNET = false;
 export let isDevelopment = false;
 export let APP_VERSION = "dev";
 export let FIRST_PARTY_HOST_ORIGINS: readonly string[] = [];
@@ -156,6 +159,8 @@ export function configureWidget(settings: WidgetSettings): void {
   ORIGIN_SPONSORSHIP = settings.originSponsorship;
   AUTH_API_URL = settings.authApiUrl || API_URL;
   isDevelopment = settings.development ?? false;
+  ORIGIN_SPONSORSHIP_TESTNET =
+    isDevelopment && settings.originSponsorshipTestnet === true && !!settings.originSponsorship;
   APP_VERSION = settings.appVersion ?? "dev";
   HOST_ORIGIN = settings.hostOrigin;
   FIRST_PARTY_HOST_ORIGINS = firstPartyOrigins(settings.firstPartyHosts ?? "");

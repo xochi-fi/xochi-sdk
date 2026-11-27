@@ -252,6 +252,22 @@ export const TOKENS: Readonly<Record<ChainId, readonly TokenInfo[]>> = {
       decimals: 18,
     },
   ],
+  46630: [
+    {
+      address: "0x7E955252E15c84f5768B83c41a71F9eba181802F",
+      symbol: "USDG",
+      name: "Global Dollar",
+      decimals: 6,
+    },
+  ],
+  421614: [
+    {
+      address: "0xFFC95faa3d63Cde504a05B567C600B78C0b41892",
+      symbol: "USDG",
+      name: "Global Dollar",
+      decimals: 6,
+    },
+  ],
   5042: [
     {
       address: "0x3600000000000000000000000000000000000000",

@@ -1,3 +1,4 @@
+import { ROBINHOOD_TESTNET_CHAIN_ID } from "@xochi/client";
 /**
  * useAddressSend
  *
@@ -203,6 +204,7 @@ export function useAddressSend(): UseAddressSendReturn {
           { action: "send", connector, sender: address, chainId: order.chainId },
           () => reviewedBinding.current === binding,
         );
+        if (!sponsored && order.chainId === ROBINHOOD_TESTNET_CHAIN_ID) return;
         if (!sponsored) saveSendAttempt(attempt);
         setPhase({ step: "approving", order });
 

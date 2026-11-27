@@ -65,6 +65,18 @@ export const CHAIN_REGISTRY = {
     shortName: "HOOD",
     explorer: "https://robinhoodchain.blockscout.com",
   },
+  robinhoodTestnet: {
+    id: 46630,
+    name: "Robinhood Testnet",
+    shortName: "HOOD Testnet",
+    explorer: "https://explorer.testnet.chain.robinhood.com",
+  },
+  arbitrumSepolia: {
+    id: 421614,
+    name: "Arbitrum Sepolia",
+    shortName: "ARB Sepolia",
+    explorer: "https://sepolia.arbiscan.io",
+  },
   arc: {
     id: 5042,
     name: "Arc",
@@ -184,6 +196,13 @@ export function isSelectableChainId(value: unknown): value is SelectableChainId 
  * guards below.
  */
 export const ROBINHOOD_CHAIN_ID = 4663;
+export const ROBINHOOD_TESTNET_CHAIN_ID = 46630;
+export const ARBITRUM_SEPOLIA_CHAIN_ID = 421614;
+
+export function isOriginSponsorshipPilotChain(chainId: number): boolean {
+  return chainId === ROBINHOOD_TESTNET_CHAIN_ID || chainId === ARBITRUM_SEPOLIA_CHAIN_ID;
+}
+
 export type RobinhoodChainId = typeof ROBINHOOD_CHAIN_ID;
 
 /** Type guard for the Robinhood Chain id. */
