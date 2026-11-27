@@ -5,6 +5,8 @@ import {
   encodeFunctionData,
   erc20Abi,
   isHash,
+  isAddress,
+  maxUint256,
   parseAbi,
   parseSignature,
   recoverAddress,
@@ -25,6 +27,7 @@ import type {
   OriginSponsorshipAdapter,
   OriginSponsorshipAction,
 } from "../types/originSponsorship.js";
+import { publicSendCall } from "./sendCall.js";
 import { apiFetch } from "./api.js";
 import { requestWalletSession } from "./walletSession.js";
 
@@ -119,16 +122,46 @@ export function resolveOriginSponsorship(
     },
     async submit(action: OriginSponsorshipAction, checkpoint: (hash: Hex) => void) {
       assertCurrent();
+      if (
+        action.action !== context.action ||
+        !isAddress(action.token, { strict: false }) ||
+        action.amount <= 0n ||
+        action.amount > maxUint256
+      )
+        throw new Error("Invalid sponsored action");
+      const native = sameHex(action.token, zeroAddress);
+      if (native && action.action !== "send")
+        throw new Error("Permit2 approval requires an ERC-20");
+      const expected =
+        action.action === "send"
+          ? publicSendCall(action)
+          : {
+              to: action.token,
+              value: 0n,
+              data: encodeFunctionData({
+                abi: erc20Abi,
+                functionName: "approve",
+                args: [PERMIT2_ADDRESS, action.amount],
+              }),
+            };
       const delegated = profile === "simple_7702";
       if (!delegated && action.action !== "send") throw new Error("Account cannot sign Permit2");
       const capability = await apiFetch<{
         chain_ids: number[];
         approve_permit2_chain_ids: number[];
+        native_send_chain_ids?: number[];
       }>(`${endpoint}/capabilities`, { cache: "no-store", redirect: "error" });
       const chains =
         capability.success &&
         (delegated ? capability.data.approve_permit2_chain_ids : capability.data.chain_ids);
-      if (!Array.isArray(chains) || !chains.includes(chainId)) {
+      if (
+        !Array.isArray(chains) ||
+        !chains.includes(chainId) ||
+        (native &&
+          (!capability.success ||
+            !Array.isArray(capability.data.native_send_chain_ids) ||
+            !capability.data.native_send_chain_ids.includes(chainId)))
+      ) {
         throw new Error("Origin sponsorship unavailable on this chain");
       }
 
@@ -175,22 +208,10 @@ export function resolveOriginSponsorship(
         authorization,
       );
       const op = prepared.user_operation;
-      const inner =
-        action.action === "send"
-          ? encodeFunctionData({
-              abi: erc20Abi,
-              functionName: "transfer",
-              args: [action.recipient, action.amount],
-            })
-          : encodeFunctionData({
-              abi: erc20Abi,
-              functionName: "approve",
-              args: [PERMIT2_ADDRESS, action.amount],
-            });
       const call = encodeFunctionData({
         abi: accountAbi,
         functionName: "execute",
-        args: [action.token, 0n, inner],
+        args: [expected.to, expected.value, expected.data],
       });
       const deployment = encodeFunctionData({
         abi: factoryAbi,

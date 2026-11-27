@@ -12,6 +12,7 @@ import {
   parseAbi,
   recoverAddress,
   toHex,
+  zeroAddress,
   type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -88,6 +89,8 @@ function fixture({
   wrongCall = false,
   supported = true,
   delegated = false,
+  nativeCapability = false,
+  nativeBalance = 0n,
 } = {}) {
   const sender = delegated ? owner.address : TEST_ACCOUNT;
   let allowance = 0n;
@@ -177,6 +180,7 @@ function fixture({
       return Response.json({
         chain_ids: supported ? [ROBINHOOD_CHAIN_ID, base.id] : [],
         approve_permit2_chain_ids: supported ? [base.id] : [],
+        ...(nativeCapability && { native_send_chain_ids: [base.id] }),
       });
     expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer owner-session");
     if (url.pathname.endsWith("/prepare")) {
@@ -202,7 +206,10 @@ function fixture({
         callData: encodeFunctionData({
           abi: accountAbi,
           functionName: "execute",
-          args: [body.token, 0n, inner],
+          args:
+            body.token === zeroAddress
+              ? [body.recipient, BigInt(body.amount), wrongCall ? "0x1234" : "0x"]
+              : [body.token, 0n, inner],
         }),
         callGasLimit: "0x10000",
         verificationGasLimit: "0x10000",
@@ -243,6 +250,7 @@ function fixture({
     type: "walletConnect",
   }));
   const config = makeTestConfig(10_000_000n, false, undefined, connector, (method, params) => {
+    if (method === "eth_getBalance") return toHex(nativeBalance);
     if (method === "eth_getCode" && delegated) return `0xef0100${SIMPLE_7702_DELEGATE.slice(2)}`;
     if (method !== "eth_call" || !Array.isArray(params)) return;
     const calldata: string | undefined = params[0]?.data;
@@ -268,7 +276,7 @@ async function confirmSend(
   const form = within(screen.getByRole("form", { name: "Send" }));
   fireEvent.change(form.getByLabelText("Pay from"), { target: { value: String(chainId) } });
   fireEvent.change(form.getByLabelText("Asset"), {
-    target: { value: findTokenBySymbol(chainId, symbol)!.address },
+    target: { value: symbol === "ETH" ? zeroAddress : findTokenBySymbol(chainId, symbol)!.address },
   });
   await form.findByText(`Balance 10 ${symbol}`, {}, WAIT);
   fireEvent.change(form.getByLabelText("Amount"), { target: { value: "1" } });
@@ -417,6 +425,50 @@ it.each([{ wrongCall: true }, { supported: false }])(
     const { config, submits, walletCalls } = fixture(options);
     await confirmSend(base.id, "USDC", config);
     await screen.findByRole("button", { name: "Confirm in wallet" }, WAIT);
+    expect(signOperation).not.toHaveBeenCalled();
+    expect(submits).toHaveLength(0);
+    expect(walletCalls).not.toContain("eth_sendTransaction");
+  },
+);
+
+it("sponsors native ETH with exact wei and recovers the single submit after a lost response", async () => {
+  const { config, prepares, submits, statuses, walletCalls } = fixture({
+    loseSubmit: true,
+    nativeCapability: true,
+    nativeBalance: 10n ** 19n,
+  });
+  await confirmSend(base.id, "ETH", config);
+  await screen.findByRole("heading", { name: "Transfer status unknown" }, WAIT);
+  fireEvent.click(screen.getByRole("button", { name: "Check existing transfer" }));
+  await screen.findByRole("heading", { name: "Sent" }, WAIT);
+  expect(prepares).toEqual([
+    expect.objectContaining({
+      action: "send",
+      chain_id: base.id,
+      token: zeroAddress,
+      recipient,
+      amount: "1000000000000000000",
+    }),
+  ]);
+  expect(submits).toHaveLength(1);
+  expect(statuses).toEqual([{ chain_id: base.id, user_op_hash: submits[0].user_op_hash }]);
+  expect(walletCalls).not.toContain("eth_sendTransaction");
+  expect(listLocalSends(TEST_ACCOUNT)[0]).toMatchObject({
+    data: { token: zeroAddress, symbol: "ETH" },
+  });
+});
+
+it.each([false, true])(
+  "does not sign or fall back when native sponsorship cannot proceed (advertised=%s)",
+  async (nativeCapability) => {
+    const { config, prepares, submits, walletCalls } = fixture({
+      wrongCall: true,
+      nativeCapability,
+      nativeBalance: 10n ** 19n,
+    });
+    await confirmSend(base.id, "ETH", config);
+    await screen.findByRole("button", { name: "Confirm in wallet" }, WAIT);
+    expect(prepares).toHaveLength(nativeCapability ? 1 : 0);
     expect(signOperation).not.toHaveBeenCalled();
     expect(submits).toHaveLength(0);
     expect(walletCalls).not.toContain("eth_sendTransaction");

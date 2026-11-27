@@ -23,10 +23,12 @@ import {
   getTransaction,
   getTransactionReceipt,
   switchChain,
+  sendTransaction,
   writeContract,
 } from "wagmi/actions";
 import { waitForTransactionReceipt } from "viem/actions";
-import { encodeFunctionData, erc20Abi, isHash, type Hex } from "viem";
+import { erc20Abi, isHash, zeroAddress, type Hex } from "viem";
+import { publicSendCall } from "../../lib/sendCall.js";
 import { resolveOriginSponsorship } from "../../lib/originSponsorship.js";
 import { isUserRejection } from "../../lib/eip712.js";
 import {
@@ -39,7 +41,7 @@ import {
   type SendAttempt,
   type SendActivityItem,
 } from "../../lib/localSends.js";
-import { sendTokens, type AddressSendOrder } from "./addressSend.js";
+import { sendAssets, type AddressSendOrder } from "./addressSend.js";
 
 export type AddressSendPhase =
   | { step: "edit" }
@@ -83,7 +85,7 @@ function restore(wallet: string): AddressSendPhase | null {
     const attempt = readSendAttempt(wallet);
     if (!attempt) return null;
     const { data } = attempt;
-    const token = sendTokens(data.chainId).find(
+    const token = sendAssets(data.chainId).find(
       (token) => token.address.toLowerCase() === data.token.toLowerCase(),
     );
     if (!token || token.decimals !== data.decimals) return { step: "blocked" };
@@ -247,14 +249,22 @@ export function useAddressSend(): UseAddressSendReturn {
 
         let hash: Hex;
         try {
-          hash = await writeContract(config, {
-            address: order.token.address as Hex,
-            abi: erc20Abi,
-            functionName: "transfer",
-            args: [order.recipient, order.amount],
-            chainId: order.chainId,
-            account: from.address as Hex,
-          });
+          hash =
+            order.token.address === zeroAddress
+              ? await sendTransaction(config, {
+                  to: order.recipient,
+                  value: order.amount,
+                  chainId: order.chainId,
+                  account: from.address as Hex,
+                })
+              : await writeContract(config, {
+                  address: order.token.address as Hex,
+                  abi: erc20Abi,
+                  functionName: "transfer",
+                  args: [order.recipient, order.amount],
+                  chainId: order.chainId,
+                  account: from.address as Hex,
+                });
         } catch (error) {
           if (explicitWalletRefusal(error)) {
             try {
@@ -346,16 +356,17 @@ export function useAddressSend(): UseAddressSendReturn {
         if (!isHash(hash)) throw new Error("Invalid transaction hash");
         const chainId = order.chainId;
         const tx = await getTransaction(config, { hash, chainId });
-        const expected = encodeFunctionData({
-          abi: erc20Abi,
-          functionName: "transfer",
-          args: [order.recipient, order.amount],
+        const expected = publicSendCall({
+          action: "send",
+          token: order.token.address as Hex,
+          recipient: order.recipient,
+          amount: order.amount,
         });
         if (
           tx.from.toLowerCase() !== saved.wallet.toLowerCase() ||
-          tx.to?.toLowerCase() !== order.token.address.toLowerCase() ||
-          tx.input.toLowerCase() !== expected.toLowerCase() ||
-          tx.value !== 0n
+          tx.to?.toLowerCase() !== expected.to.toLowerCase() ||
+          tx.input.toLowerCase() !== expected.data.toLowerCase() ||
+          tx.value !== expected.value
         )
           throw new Error("Transaction does not match");
 

@@ -1,6 +1,7 @@
 import type { Address, Hex } from "viem";
 
 export type OriginSponsorshipAction =
+  // Send uses the zero-address token sentinel for the chain native currency.
   | { action: "send"; token: Address; amount: bigint; recipient: Address }
   | { action: "approve_permit2"; token: Address; amount: bigint; quoteId: string };
 

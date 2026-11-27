@@ -1,5 +1,5 @@
 /**
- * The Send tab's `address` destination: a public ERC-20 transfer from the
+ * The Send tab's `address` destination: a public native or ERC-20 transfer from the
  * connected wallet to a wallet address on the same chain.
  *
  * Pure checks, so the panel and its tests share one definition of "this send
@@ -11,9 +11,11 @@
  * chain the transfer executes on (checksum included, zero address refused).
  */
 
-import { getAddress, type Address } from "viem";
+import { getAddress, maxUint256, zeroAddress, type Address } from "viem";
 import {
   CHAIN_NAMES,
+  CHAIN_NATIVE_CURRENCY,
+  isChainId,
   ARBITRUM_SEPOLIA_CHAIN_ID,
   TOKENS as CLIENT_TOKENS,
   validateAddressForVm,
@@ -32,6 +34,14 @@ const SEND_TOKENS: Readonly<Record<number, readonly Token[]>> = Object.fromEntri
 /** The ERC-20s a send on `chainId` can move. */
 export function sendTokens(chainId: number): readonly Token[] {
   return SEND_TOKENS[chainId] ?? [];
+}
+
+/** Native assets are public Send assets, separate from the swap token registry. */
+export function sendAssets(chainId: number): readonly Token[] {
+  const tokens = sendTokens(chainId);
+  if (!isChainId(chainId)) return tokens;
+  const symbol = CHAIN_NATIVE_CURRENCY[chainId];
+  return [...tokens, { address: zeroAddress, symbol, name: symbol, decimals: 18, chainId }];
 }
 
 /** The asset a new send starts on: USDC where the chain has it, else its first token. */
@@ -98,6 +108,7 @@ export function checkSendAmount(
     } as const;
   }
   if (amount <= 0n) return { error: "Enter an amount above zero" } as const;
+  if (amount > maxUint256) return { error: `More than your ${token.symbol} balance` } as const;
   if (balance !== null && amount > balance) {
     return { error: `More than your ${token.symbol} balance` } as const;
   }
@@ -127,7 +138,7 @@ export function checkAddressSend(
   context: AddressSendContext,
 ): AddressSendCheck {
   const token = context.chainIds.includes(draft.chainId)
-    ? sendTokens(draft.chainId).find(
+    ? sendAssets(draft.chainId).find(
         (t) => t.address.toLowerCase() === draft.tokenAddress.toLowerCase(),
       )
     : undefined;

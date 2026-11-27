@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useState, type FormEvent } from "react";
-import { useAccount, useConfig } from "wagmi";
+import { useAccount, useBalance, useConfig } from "wagmi";
+import { zeroAddress } from "viem";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { getExplorerTxUrl, type SelectableChainId } from "@xochi/client";
 import { usePublicBalances } from "../../hooks/usePublicBalances.js";
@@ -10,6 +11,7 @@ import {
   checkSendAmount,
   defaultSendChain,
   defaultSendToken,
+  sendAssets,
   sendChainIds,
   sendTokens,
   type AddressSendDraft,
@@ -44,7 +46,7 @@ function lastAsset(chainId: number) {
   try {
     const address = localStorage.getItem(LAST_ASSET_KEY);
     return (
-      sendTokens(chainId).find((token) => token.address === address) ?? defaultSendToken(chainId)
+      sendAssets(chainId).find((token) => token.address === address) ?? defaultSendToken(chainId)
     );
   } catch {
     return defaultSendToken(chainId);
@@ -128,9 +130,19 @@ function WalletSendForm({
   const history = useLocalSends();
   const { capabilities, state: capabilityState } = useCapabilities();
 
-  const tokens = sendTokens(draft.chainId);
+  const tokens = sendAssets(draft.chainId);
   const token = tokens.find((t) => t.address.toLowerCase() === draft.tokenAddress.toLowerCase());
-  const balance = token ? readBalanceOf(draft.chainId, token.address) : null;
+  const native = token?.address === zeroAddress;
+  const nativeBalance = useBalance({
+    address,
+    chainId: draft.chainId,
+    query: { enabled: native && !!address },
+  });
+  const balance = native
+    ? (nativeBalance.data?.value ?? null)
+    : token
+      ? readBalanceOf(draft.chainId, token.address)
+      : null;
   const [lookupAttempt, setLookupAttempt] = useState(0);
   const lookup = useSendRecipient(input, draft.chainId, lookupAttempt);
   const recipient = lookup.status === "resolved" ? lookup.recipient : undefined;
@@ -167,17 +179,18 @@ function WalletSendForm({
             : stealthChains[0];
   const canRoute =
     privacy === "Public" ||
-    (privacy === "Stealth"
-      ? destination !== undefined
-      : capabilityState === "live" &&
-        capabilities.routes?.some(
-          (route) =>
-            route.origin.chainId === draft.chainId &&
-            route.origin.token === token?.symbol &&
-            route.destination.kind === "zk_money" &&
-            route.destination.token === "DAI" &&
-            route.privacyModes.includes("public"),
-        ) === true);
+    (!native &&
+      (privacy === "Stealth"
+        ? destination !== undefined
+        : capabilityState === "live" &&
+          capabilities.routes?.some(
+            (route) =>
+              route.origin.chainId === draft.chainId &&
+              route.origin.token === token?.symbol &&
+              route.destination.kind === "zk_money" &&
+              route.destination.token === "DAI" &&
+              route.privacyModes.includes("public"),
+          ) === true));
   const check = checkAddressSend(
     { ...draft, recipient: recipient?.address ?? "" },
     { chainIds, balance },
@@ -195,7 +208,12 @@ function WalletSendForm({
   }, [dispatchedHash, reviewedRecipient]);
 
   const onChain = (next: number): void => {
-    const same = sendTokens(next).find((t) => t.symbol === token?.symbol) ?? defaultSendToken(next);
+    const same =
+      sendAssets(next).find((asset) =>
+        native
+          ? asset.address === zeroAddress
+          : asset.address !== zeroAddress && asset.symbol === token?.symbol,
+      ) ?? defaultSendToken(next);
     update({ chainId: next, tokenAddress: same?.address ?? "" });
   };
   const onInput = useCallback(
@@ -230,6 +248,7 @@ function WalletSendForm({
       !permitted ||
       !canRoute ||
       !token ||
+      (native && balance === null) ||
       !amountCheck ||
       "error" in amountCheck
     )
@@ -512,8 +531,17 @@ function WalletSendForm({
               onChange={(e) => update({ tokenAddress: e.target.value })}
             >
               {tokens.map((asset) => (
-                <option key={asset.address} value={asset.address}>
-                  {asset.symbol}
+                <option
+                  key={asset.address}
+                  value={asset.address}
+                  disabled={asset.address === zeroAddress && privacy !== "Public"}
+                >
+                  {asset.address === zeroAddress &&
+                  tokens.some(
+                    (item) => item.address !== zeroAddress && item.symbol === asset.symbol,
+                  )
+                    ? `${asset.symbol} (native)`
+                    : asset.symbol}
                 </option>
               ))}
             </select>

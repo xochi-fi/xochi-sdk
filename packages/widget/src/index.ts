@@ -23,6 +23,8 @@ export type {
   SponsoredOriginAccount,
 } from "./types/originSponsorship.js";
 
+export { publicSendCall } from "./lib/sendCall.js";
+
 // Static imports would initialize wallet providers before deployment settings and browser shims.
 /** Complete trading widget. Configure once and render inside React Suspense. */
 export const Widget = lazy(async () => {

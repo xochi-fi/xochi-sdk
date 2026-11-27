@@ -29,7 +29,7 @@ export interface SendActivityItem {
   status: SendStatus;
   data: {
     chainId: number;
-    /** ERC-20 contract address. */
+    /** ERC-20 contract address or zero address for native currency. */
     token: string;
     symbol: string;
     decimals: number;

@@ -27,7 +27,7 @@ import {
   useBytecode,
   useReadContract,
 } from "wagmi";
-import { erc20Abi, isAddress, isHash, maxUint256 } from "viem";
+import { erc20Abi, isAddress, isHash, maxUint256, zeroAddress } from "viem";
 import type {
   PermitType,
   PaymentMethod,
@@ -226,7 +226,12 @@ export function usePermit({
   // the ONE allowance read: the copy derives from it and ensureApproval
   // refetches it, so the value the panel shows is the value the prompt decides on.
   const readsAllowance =
-    enabled && permitType === "permit2" && !foreignSpender && !!address && isAddress(token);
+    enabled &&
+    permitType === "permit2" &&
+    !foreignSpender &&
+    !!address &&
+    isAddress(token) &&
+    token.toLowerCase() !== zeroAddress;
   const {
     data: allowance,
     error: allowanceError,
@@ -310,6 +315,7 @@ export function usePermit({
       const generation = lifetime.current.generation;
       if (!enabled) return true;
       if (permitType !== "permit2") return true;
+      if (token.toLowerCase() === zeroAddress) return false;
       if (foreignSpender) {
         console.error(
           `[usePermit] Refusing to approve ${servedSpender}: the served Permit2 domain does not name the canonical Permit2 contract`,

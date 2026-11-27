@@ -2,12 +2,14 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { useAddressSend } from "./useAddressSend.js";
-import { encodeFunctionData, erc20Abi } from "viem";
+import { encodeFunctionData, erc20Abi, zeroAddress } from "viem";
 import { readSendAttempt } from "../../lib/localSends.js";
-import { sendTokens } from "./addressSend.js";
+import { sendAssets, sendTokens } from "./addressSend.js";
 
 const wallet = vi.hoisted(() => ({
   calls: 0,
+  native: false,
+  nativeArgs: [] as unknown[],
   refused: false,
   readable: false,
   mismatch: false,
@@ -26,6 +28,11 @@ vi.mock("wagmi", () => ({
 }));
 vi.mock("wagmi/actions", () => ({
   switchChain: async () => {},
+  sendTransaction: async (...args: unknown[]) => {
+    wallet.calls++;
+    wallet.nativeArgs = args;
+    throw new Error("Response lost");
+  },
   writeContract: async () => {
     wallet.calls++;
     wallet.reserved = readSendAttempt("0x1111111111111111111111111111111111111111") !== null;
@@ -44,13 +51,15 @@ vi.mock("wagmi/actions", () => ({
     if (wallet.readable)
       return {
         from: "0x1111111111111111111111111111111111111111",
-        to: sendTokens(1)[0].address,
-        value: 0n,
-        input: encodeFunctionData({
-          abi: erc20Abi,
-          functionName: "transfer",
-          args: ["0x2222222222222222222222222222222222222222", wallet.mismatch ? 200n : 100n],
-        }),
+        to: wallet.native ? "0x2222222222222222222222222222222222222222" : sendTokens(1)[0].address,
+        value: wallet.native ? (wallet.mismatch ? 200n : 100n) : 0n,
+        input: wallet.native
+          ? "0x"
+          : encodeFunctionData({
+              abi: erc20Abi,
+              functionName: "transfer",
+              args: ["0x2222222222222222222222222222222222222222", wallet.mismatch ? 200n : 100n],
+            }),
       };
     throw new Error("Unavailable");
   },
@@ -66,6 +75,8 @@ afterEach(() => {
   cleanup();
   localStorage.clear();
   wallet.calls = 0;
+  wallet.native = false;
+  wallet.nativeArgs = [];
   wallet.refused = false;
   wallet.readable = false;
   wallet.mismatch = false;
@@ -205,5 +216,27 @@ it("recovers the wallet-returned hash after a receipt read fails", async () => {
     outcome: "confirmed",
     hash: HASH,
   });
+  expect(wallet.calls).toBe(1);
+});
+
+it("uses the ordinary wallet for native transfers and restores the exact native value", async () => {
+  wallet.native = true;
+  const first = renderHook(() => useAddressSend());
+  const transfer = order();
+  const token = sendAssets(1).find((asset) => asset.address === zeroAddress)!;
+  act(() => first.result.current.review({ ...transfer, token }));
+  await act(() => first.result.current.approve());
+  expect(wallet.nativeArgs[1]).toMatchObject({ to: transfer.recipient, value: 100n, chainId: 1 });
+  first.unmount();
+  const restored = renderHook(() => useAddressSend());
+  expect(restored.result.current.phase).toMatchObject({ step: "in_doubt", order: { token } });
+  wallet.readable = true;
+  wallet.receiptAvailable = true;
+  wallet.mismatch = true;
+  await act(() => restored.result.current.reconcile(HASH));
+  expect(restored.result.current.phase.step).toBe("in_doubt");
+  wallet.mismatch = false;
+  await act(() => restored.result.current.reconcile(HASH));
+  expect(restored.result.current.phase).toMatchObject({ step: "sent", outcome: "confirmed" });
   expect(wallet.calls).toBe(1);
 });
