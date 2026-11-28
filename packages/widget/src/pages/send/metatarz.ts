@@ -3,6 +3,7 @@ import { z } from "zod";
 
 export const METATARZ_TESTNET = "canton:testnet";
 export const METATARZ_MAINNET = "canton:mainnet";
+export type MetatarzNetwork = typeof METATARZ_TESTNET | typeof METATARZ_MAINNET;
 export const METATARZ_INSTALL =
   "https://chromewebstore.google.com/detail/metatarz-wallet/cdpompnhkhhadajaihlfbmcafdpcholm";
 
@@ -28,9 +29,20 @@ type Method = "status" | "connect" | "getActiveNetwork" | "listAccounts" | "getP
 type Event = "statusChanged" | "accountsChanged";
 type Listener = (payload: unknown) => void;
 
-interface MetatarzProvider {
+export type MetatarzLedgerRequest =
+  | { requestMethod: "GET"; resource: "/v2/state/ledger-end" }
+  | {
+      requestMethod: "POST";
+      resource: "/v2/state/active-contracts" | "/v2/updates/flats";
+      body: object;
+      query?: { limit: number };
+    };
+
+export interface MetatarzProvider {
   isMetatarzWallet: true;
-  request(args: { method: Method }): Promise<unknown>;
+  request(
+    args: { method: Method } | { method: "ledgerApi"; params: MetatarzLedgerRequest },
+  ): Promise<unknown>;
   on(event: Event, listener: Listener): void;
   removeListener(event: Event, listener: Listener): void;
 }
@@ -67,12 +79,12 @@ export type MetatarzSession =
   | { kind: "wrong-network"; networkId: string }
   | { kind: "no-primary" }
   | { kind: "changed" }
-  | { kind: "connected"; primaryParty: string };
+  | { kind: "connected"; primaryParty: string; networkId: MetatarzNetwork };
 
 export async function readMetatarzSession(
   provider: MetatarzProvider,
   connect: boolean,
-  expectedNetwork: typeof METATARZ_TESTNET | typeof METATARZ_MAINNET = METATARZ_TESTNET,
+  expectedNetwork: MetatarzNetwork | "active" = METATARZ_TESTNET,
   signal?: AbortSignal,
 ): Promise<MetatarzSession> {
   async function request(method: Method): Promise<unknown> {
@@ -94,6 +106,15 @@ export async function readMetatarzSession(
 
   if (expectedNetwork === METATARZ_TESTNET) return readAllocatedParty(request, expectedNetwork);
 
+  const activeNetwork =
+    expectedNetwork === "active"
+      ? ((approving ? undefined : current.network?.networkId) ??
+        network.parse(await request("getActiveNetwork")).networkId)
+      : expectedNetwork;
+  if (activeNetwork !== METATARZ_TESTNET && activeNetwork !== METATARZ_MAINNET) {
+    return { kind: "wrong-network", networkId: activeNetwork };
+  }
+
   let changed = false;
   const accountsChanged = () => {
     changed = true;
@@ -106,7 +127,7 @@ export async function readMetatarzSession(
       reported.success &&
       reported.data.connection.isConnected &&
       reported.data.connection.isNetworkConnected &&
-      reported.data.network?.networkId === expectedNetwork
+      reported.data.network?.networkId === activeNetwork
     )
       return;
     changed = true;
@@ -120,7 +141,7 @@ export async function readMetatarzSession(
   provider.on("accountsChanged", accountsChanged);
   signal?.addEventListener("abort", removeListeners, { once: true });
   try {
-    const session = await readAllocatedParty(request, expectedNetwork);
+    const session = await readAllocatedParty(request, activeNetwork, true);
     return changed && session.kind === "connected" ? { kind: "changed" } : session;
   } finally {
     signal?.removeEventListener("abort", removeListeners);
@@ -130,7 +151,8 @@ export async function readMetatarzSession(
 
 async function readAllocatedParty(
   request: (method: Method) => Promise<unknown>,
-  expectedNetwork: typeof METATARZ_TESTNET | typeof METATARZ_MAINNET,
+  expectedNetwork: MetatarzNetwork,
+  recheckPrimary = false,
 ): Promise<MetatarzSession> {
   const first = network.parse(await request("getActiveNetwork"));
   if (first.networkId !== expectedNetwork) {
@@ -148,7 +170,7 @@ async function readAllocatedParty(
   if (primary.length !== 1 || accounts.some((party) => party.networkId !== expectedNetwork)) {
     return { kind: "no-primary" };
   }
-  if (expectedNetwork === METATARZ_MAINNET) {
+  if (recheckPrimary) {
     // Check the current selection again even if the change event is still in transit.
     const active = account.parse(await request("getPrimaryAccount"));
     if (
@@ -159,7 +181,7 @@ async function readAllocatedParty(
       return { kind: "changed" };
     }
   }
-  return { kind: "connected", primaryParty: primary[0].partyId };
+  return { kind: "connected", primaryParty: primary[0].partyId, networkId: expectedNetwork };
 }
 
 export function metatarzStandaloneUrl(destination?: { chainId: number; symbol: string }): string {

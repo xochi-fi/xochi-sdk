@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import publicDelivery from "../../test/fixtures/canton-mainnet-public-delivery.json";
 import { afterEach, expect, it, vi } from "vitest";
 import { SendPanel } from "./SendPanel.js";
 import { metatarzStandaloneUrl } from "./metatarz.js";
@@ -18,7 +19,7 @@ const networkId = "canton:testnet";
 const partyId = `Disposable_CaseSensitive::1220${"a".repeat(58)}b0c1d2`;
 const partyPreview = "Disposable_…b0c1d2";
 
-function openSend(enabled = true) {
+function openSend(enabled = true, openWallet = enabled) {
   flag.enabled = enabled;
   render(
     <SendPanel
@@ -29,15 +30,16 @@ function openSend(enabled = true) {
       onQuote={vi.fn()}
     />,
   );
-  if (enabled) fireEvent.click(screen.getByRole("button", { name: "Metatarz TestNet" }));
+  if (openWallet) fireEvent.click(screen.getByRole("button", { name: "Metatarz" }));
 }
 
 function mockWallet(approved = false) {
   const provider = { id: "metatarz-wallet", providerType: "browser" };
   const wallet = {
     networkId,
+    ledger: vi.fn<(params: unknown) => Promise<unknown>>(),
     accounts: [{ partyId, networkId, primary: true, status: "allocated" }],
-    request: vi.fn(async ({ method }: { method: string }) => {
+    request: vi.fn(async ({ method, params }: { method: string; params?: unknown }) => {
       switch (method) {
         case "status":
           return {
@@ -52,6 +54,10 @@ function mockWallet(approved = false) {
           return { networkId: wallet.networkId };
         case "listAccounts":
           return wallet.accounts;
+        case "getPrimaryAccount":
+          return wallet.accounts.find((account) => account.primary);
+        case "ledgerApi":
+          return wallet.ledger(params);
         default:
           throw new Error(`Unexpected wallet method: ${method}`);
       }
@@ -70,15 +76,238 @@ afterEach(() => {
 });
 
 it("leaves the ordinary Send surface in place when the deploy gate is off", () => {
+  const wallet = mockWallet(true);
   openSend(false);
   expect(screen.queryByRole("button", { name: /Metatarz/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Public MainNet receipt" })).toBeNull();
   expect(screen.getByText("Existing Send form")).toBeTruthy();
+  expect(wallet.request).not.toHaveBeenCalled();
+});
+
+function openPublicReceipt() {
+  openSend(true, false);
+  fireEvent.click(screen.getByRole("button", { name: "Public MainNet receipt" }));
+  const values = {
+    "Update ID": publicDelivery.update_id,
+    "Expected sender":
+      "user_06Af0605::12207aebff402bab27d81f9dd90f7b4152eac113c3590de88d0613bc2fc5dcc8a3e9",
+    "Expected recipient":
+      "user_C9FCf6B2::1220c9db965444bfae7bea31ef155fec1e6730562324925dc6ebcaa095ba53e37cbd",
+    "Expected CC amount": "13.2834594833",
+  };
+  for (const [label, value] of Object.entries(values)) {
+    fireEvent.change(screen.getByRole("textbox", { name: label }), { target: { value } });
+  }
+}
+
+it("checks a public receipt from Send with no wallet and detects a wrong amount", async () => {
+  const fetchUpdate = vi.fn(async () => Response.json(publicDelivery));
+  vi.stubGlobal("fetch", fetchUpdate);
+  openPublicReceipt();
+  expect(fetchUpdate).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Check receipt" }));
+  await screen.findByText("Matching delivery on public MainNet Scan.");
+  fireEvent.change(screen.getByRole("textbox", { name: "Expected CC amount" }), {
+    target: { value: "13.2834594834" },
+  });
+  expect(screen.queryByText("Matching delivery on public MainNet Scan.")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Check receipt" }));
+  await screen.findByText("Public MainNet Scan delivery does not match.");
+});
+
+it("drops an in-flight receipt after edits and distinguishes unavailable evidence", async () => {
+  const delayed = Promise.withResolvers<Response>();
+  const fetchUpdate = vi
+    .fn<typeof fetch>()
+    .mockReturnValueOnce(delayed.promise)
+    .mockResolvedValueOnce(new Response("", { status: 503 }));
+  vi.stubGlobal("fetch", fetchUpdate);
+  openPublicReceipt();
+  fireEvent.click(screen.getByRole("button", { name: "Check receipt" }));
+  const signal = fetchUpdate.mock.calls[0][1]?.signal;
+  fireEvent.change(screen.getByRole("textbox", { name: "Expected CC amount" }), {
+    target: { value: "13.2834594834" },
+  });
+  expect(signal?.aborted).toBe(true);
+  await act(async () => delayed.resolve(Response.json(publicDelivery)));
+  expect(screen.queryByText("Matching delivery on public MainNet Scan.")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Check receipt" }));
+  await screen.findByText("Public MainNet Scan evidence unavailable.");
+});
+
+it.each(["party", "network"])(
+  "discards a pending MainNet read if the %s changed",
+  async (change) => {
+    const wallet = mockWallet(true);
+    wallet.networkId = wallet.accounts[0].networkId = "canton:mainnet";
+    const pending = Promise.withResolvers<unknown>();
+    wallet.ledger.mockReturnValueOnce(pending.promise);
+    await openLedger();
+    expect(screen.getByText("MainNet connected")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Check ledger" }));
+    await waitFor(() => expect(wallet.ledger).toHaveBeenCalledTimes(1));
+    if (change === "party") wallet.accounts[0].partyId = partyId.replace("Disposable_", "Other_");
+    else wallet.networkId = wallet.accounts[0].networkId = networkId;
+    pending.resolve({ offset: 80 });
+    await screen.findByText("Couldn’t verify the active Canton network or party.");
+    expect(screen.queryByText("Ledger offset: 80")).toBeNull();
+    expect(wallet.ledger).toHaveBeenCalledTimes(1);
+  },
+);
+
+it("rejects a MainNet primary that differs from the allocated account list", async () => {
+  const wallet = mockWallet(true);
+  wallet.networkId = wallet.accounts[0].networkId = "canton:mainnet";
+  const request = wallet.request.getMockImplementation()!;
+  wallet.request.mockImplementation((args) =>
+    args.method === "getPrimaryAccount"
+      ? Promise.resolve({
+          ...wallet.accounts[0],
+          partyId: partyId.replace("Disposable_", "Other_"),
+        })
+      : request(args),
+  );
+  openSend();
+  await screen.findByText("Couldn’t verify the connection.");
+  expect(screen.queryByText("Ledger")).toBeNull();
+  expect(wallet.ledger).not.toHaveBeenCalled();
+});
+
+async function openLedger() {
+  openSend();
+  await screen.findByText(partyPreview);
+  fireEvent.click(screen.getByText("Ledger"));
+}
+
+it.each([
+  [networkId, "DSO::1220f22a8b8f2d813c25b9a684dc4dd52b532a0174d8e73a13cdf2baabfff7518337"],
+  ["canton:mainnet", "DSO::1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc"],
+])("reads on action and scopes holdings and updates on %s", async (selectedNetwork, admin) => {
+  const wallet = mockWallet(true);
+  wallet.networkId = wallet.accounts[0].networkId = selectedNetwork;
+  wallet.ledger
+    .mockResolvedValueOnce({ offset: "80" })
+    .mockResolvedValueOnce([
+      {
+        contractEntry: {
+          JsActiveContract: {
+            createdEvent: {
+              interfaceViews: [
+                {
+                  interfaceId: "package-id:Splice.Api.Token.HoldingV1:Holding",
+                  viewStatus: { code: 0 },
+                  viewValue: {
+                    owner: partyId,
+                    instrumentId: {
+                      id: "Amulet",
+                      admin,
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      },
+    ])
+    .mockResolvedValueOnce([
+      { update: { Transaction: { value: { updateId: "fixture-update", offset: 75 } } } },
+    ]);
+  await openLedger();
+  fireEvent.change(screen.getByRole("textbox", { name: "Optional update ID" }), {
+    target: { value: "fixture-update" },
+  });
+  expect(wallet.ledger).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Check ledger" }));
+  await screen.findByText("Update found in the party’s ledger view.");
+  expect(screen.getByText("Ledger offset: 80")).toBeTruthy();
+  expect(screen.getByText("Active CC holdings: 1")).toBeTruthy();
+  expect(wallet.ledger.mock.calls.map(([request]) => request)).toMatchObject([
+    { requestMethod: "GET", resource: "/v2/state/ledger-end" },
+    {
+      requestMethod: "POST",
+      resource: "/v2/state/active-contracts",
+      query: { limit: 100 },
+      body: { activeAtOffset: 80, eventFormat: { filtersByParty: { [partyId]: {} } } },
+    },
+    {
+      requestMethod: "POST",
+      resource: "/v2/updates/flats",
+      body: {
+        beginExclusive: 48,
+        endInclusive: 80,
+        updateFormat: {
+          includeTransactions: { eventFormat: { filtersByParty: { [partyId]: {} } } },
+        },
+      },
+    },
+  ]);
+});
+
+it.each([
+  [-32002, "Canton request failed: participant unavailable"],
+  [4100, "Wallet is locked. Unlock Metatarz Wallet and retry."],
+  [4001, "User rejected the request"],
+])(
+  "reports the provider error and stops before any offset-dependent query",
+  async (code, message) => {
+    const wallet = mockWallet(true);
+    wallet.ledger.mockRejectedValueOnce({ code, message });
+    await openLedger();
+    fireEvent.click(screen.getByRole("button", { name: "Check ledger" }));
+    await screen.findByText(`Ledger end: ${code} ${message}`);
+    expect(wallet.ledger).toHaveBeenCalledTimes(1);
+  },
+);
+
+it("distinguishes empty holdings and an unsupported receipt query", async () => {
+  const wallet = mockWallet(true);
+  wallet.ledger.mockResolvedValueOnce({ offset: 8 }).mockResolvedValueOnce([]);
+  wallet.ledger.mockRejectedValueOnce({ code: -32601, message: "Endpoint unsupported" });
+  await openLedger();
+  fireEvent.change(screen.getByRole("textbox", { name: "Optional update ID" }), {
+    target: { value: "fixture-update" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Check ledger" }));
+  await screen.findByText("Update lookup: -32601 Endpoint unsupported");
+  expect(screen.getByText("Active CC holdings: 0")).toBeTruthy();
+});
+
+it("looks up an older offset without scanning the intervening ledger", async () => {
+  const wallet = mockWallet(true);
+  wallet.ledger
+    .mockResolvedValueOnce({ offset: 80 })
+    .mockResolvedValueOnce([])
+    .mockResolvedValueOnce([]);
+  await openLedger();
+  fireEvent.change(screen.getByRole("textbox", { name: "Optional update ID" }), {
+    target: { value: "older-update" },
+  });
+  fireEvent.change(screen.getByRole("textbox", { name: "Optional update offset" }), {
+    target: { value: "6" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Check ledger" }));
+  await screen.findByText("No matching update visible at offsets 6–6.");
+  expect(wallet.ledger.mock.calls[2][0]).toMatchObject({
+    body: { beginExclusive: 5, endInclusive: 6 },
+  });
+});
+
+it("redacts party IDs and URLs from provider errors", async () => {
+  const wallet = mockWallet(true);
+  wallet.ledger.mockRejectedValueOnce({
+    code: -32002,
+    message: `Could not read ${partyId} at https://rpc.example/private`,
+  });
+  await openLedger();
+  fireEvent.click(screen.getByRole("button", { name: "Check ledger" }));
+  await screen.findByText("Ledger end: -32002 Could not read [redacted] at [redacted]");
 });
 
 it("opens and collapses the compact row without replacing Send", async () => {
   mockWallet();
   openSend();
-  const toggle = screen.getByRole("button", { name: "Metatarz TestNet" });
+  const toggle = screen.getByRole("button", { name: "Metatarz" });
   expect(toggle.getAttribute("aria-expanded")).toBe("true");
   await waitFor(() =>
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Connect" }).disabled).toBe(false),
@@ -93,7 +322,7 @@ it("reads an approved wallet on open and reopen without requesting permission", 
   const wallet = mockWallet(true);
   openSend();
   await screen.findByText(partyPreview);
-  const toggle = screen.getByRole("button", { name: "Metatarz TestNet" });
+  const toggle = screen.getByRole("button", { name: "Metatarz" });
   fireEvent.click(toggle);
   wallet.accounts[0].partyId = partyId.replace("Disposable_", "New_Payee_");
   fireEvent.click(toggle);
@@ -119,7 +348,7 @@ it("ignores an older passive read after an account change or collapse", async ()
   const [, changed] = wallet.on.mock.calls.find(([event]) => event === "accountsChanged")!;
   act(changed);
   await screen.findByText("New_Payee_C…b0c1d2");
-  fireEvent.click(screen.getByRole("button", { name: "Metatarz TestNet" }));
+  fireEvent.click(screen.getByRole("button", { name: "Metatarz" }));
   await act(async () => old.resolve(stale));
   expect(screen.queryByText(partyPreview)).toBeNull();
   expect(wallet.request).not.toHaveBeenCalledWith({ method: "connect" });
@@ -159,7 +388,7 @@ it("verifies the approved TestNet party and clears it when the active network ch
   wallet.networkId = "canton:mainnet";
   const [, accountsChanged] = wallet.on.mock.calls.find(([event]) => event === "accountsChanged")!;
   accountsChanged();
-  await screen.findByText(/Switch to Canton TestNet/);
+  await screen.findByText(/Select an active Canton party/);
   expect(screen.queryByText(partyPreview)).toBeNull();
   expect(screen.queryByDisplayValue(partyId)).toBeNull();
 });
@@ -172,7 +401,7 @@ it("rejects accounts returned for a different network", async () => {
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Connect" }).disabled).toBe(false),
   );
   fireEvent.click(screen.getByRole("button", { name: "Connect" }));
-  await screen.findByText(/Select an active TestNet party/);
+  await screen.findByText(/Select an active Canton party/);
   expect(screen.queryByText(partyPreview)).toBeNull();
 });
 

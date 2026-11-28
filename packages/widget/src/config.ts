@@ -53,7 +53,7 @@ export interface WidgetSettings {
    * reaches the machine.
    */
   cantonLive?: boolean;
-  /** Show Metatarz Canton TestNet connection in Send. Enable on staging only. */
+  /** Show Metatarz Canton connection and ledger checks in Send. Enable on staging only. */
   metatarzTestnetConnection?: boolean;
   /** Independently provisioned addresses, never populated from API capabilities. */
   solverPin: {
