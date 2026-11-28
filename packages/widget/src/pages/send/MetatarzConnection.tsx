@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   METATARZ_INSTALL,
-  METATARZ_TESTNET,
+  METATARZ_MAINNET,
   metatarzProvider,
   metatarzStandaloneUrl,
   readMetatarzSession,
@@ -27,16 +27,16 @@ function connectionMessage(view: View): string {
       return "Checking connection…";
     case "disconnected":
       return view.reason?.startsWith("No Canton account")
-        ? "Activate a TestNet party in your wallet."
+        ? "Activate a Canton party in your wallet."
         : "";
     case "unreachable":
-      return "TestNet connection unavailable.";
+      return "Canton connection unavailable.";
     case "wrong-network":
-      return "Switch to Canton TestNet in your wallet.";
+      return "Select Canton MainNet or TestNet.";
     case "no-primary":
-      return "Select an active TestNet party.";
+      return "Select an active Canton party.";
     case "connected":
-      return "Connected";
+      return view.networkId === METATARZ_MAINNET ? "MainNet connected" : "TestNet connected";
     case "rejected":
       return "Connection declined.";
     case "failed":
@@ -86,12 +86,12 @@ export function MetatarzConnection() {
       return false;
     }
     try {
-      let next = await readMetatarzSession(wallet, connect, METATARZ_TESTNET, request.signal);
+      let next = await readMetatarzSession(wallet, connect, "active", request.signal);
       // An approval can itself emit statusChanged. Re-read after it settles
       // if the wallet also reported a change while the request was in flight.
       while (connect && walletChanged.current && current()) {
         walletChanged.current = false;
-        next = await readMetatarzSession(wallet, false, METATARZ_TESTNET, request.signal);
+        next = await readMetatarzSession(wallet, false, "active", request.signal);
       }
       if (current()) setView(next);
     } catch (error) {
@@ -150,7 +150,11 @@ export function MetatarzConnection() {
   const preview = party && `${party.slice(0, 11)}…${party.slice(-6)}`;
 
   async function readLedger() {
-    if (!party || !provider || (pendingLedger.current && !pendingLedger.current.signal.aborted))
+    if (
+      view.kind !== "connected" ||
+      !provider ||
+      (pendingLedger.current && !pendingLedger.current.signal.aborted)
+    )
       return;
     const request = new AbortController();
     pendingLedger.current = request;
@@ -159,14 +163,14 @@ export function MetatarzConnection() {
     try {
       const result = await checkMetatarzLedger(
         provider,
-        party,
+        view,
         { id: updateId.trim(), offset: updateOffset.trim() },
         request.signal,
       );
       if (!request.signal.aborted) setLedger(result);
     } catch {
       if (!request.signal.aborted)
-        setLedger({ offset: "Couldn’t verify the active TestNet party." });
+        setLedger({ offset: "Couldn’t verify the active Canton network or party." });
     } finally {
       if (pendingLedger.current === request) {
         pendingLedger.current = null;
@@ -222,7 +226,7 @@ export function MetatarzConnection() {
       </div>
       {party && (
         <details className="send-metatarz__party">
-          <summary>TestNet ledger</summary>
+          <summary>Ledger</summary>
           <label className="send-input">
             <input
               className="send-field__control"

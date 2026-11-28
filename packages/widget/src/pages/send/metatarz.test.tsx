@@ -29,7 +29,7 @@ function openSend(enabled = true) {
       onQuote={vi.fn()}
     />,
   );
-  if (enabled) fireEvent.click(screen.getByRole("button", { name: "Metatarz TestNet" }));
+  if (enabled) fireEvent.click(screen.getByRole("button", { name: "Metatarz" }));
 }
 
 function mockWallet(approved = false) {
@@ -53,6 +53,8 @@ function mockWallet(approved = false) {
           return { networkId: wallet.networkId };
         case "listAccounts":
           return wallet.accounts;
+        case "getPrimaryAccount":
+          return wallet.accounts.find((account) => account.primary);
         case "ledgerApi":
           return wallet.ledger(params);
         default:
@@ -80,14 +82,56 @@ it("leaves the ordinary Send surface in place when the deploy gate is off", () =
   expect(wallet.request).not.toHaveBeenCalled();
 });
 
+it.each(["party", "network"])(
+  "discards a pending MainNet read if the %s changed",
+  async (change) => {
+    const wallet = mockWallet(true);
+    wallet.networkId = wallet.accounts[0].networkId = "canton:mainnet";
+    const pending = Promise.withResolvers<unknown>();
+    wallet.ledger.mockReturnValueOnce(pending.promise);
+    await openLedger();
+    expect(screen.getByText("MainNet connected")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Check ledger" }));
+    await waitFor(() => expect(wallet.ledger).toHaveBeenCalledTimes(1));
+    if (change === "party") wallet.accounts[0].partyId = partyId.replace("Disposable_", "Other_");
+    else wallet.networkId = wallet.accounts[0].networkId = networkId;
+    pending.resolve({ offset: 80 });
+    await screen.findByText("Couldn’t verify the active Canton network or party.");
+    expect(screen.queryByText("Ledger offset: 80")).toBeNull();
+    expect(wallet.ledger).toHaveBeenCalledTimes(1);
+  },
+);
+
+it("rejects a MainNet primary that differs from the allocated account list", async () => {
+  const wallet = mockWallet(true);
+  wallet.networkId = wallet.accounts[0].networkId = "canton:mainnet";
+  const request = wallet.request.getMockImplementation()!;
+  wallet.request.mockImplementation((args) =>
+    args.method === "getPrimaryAccount"
+      ? Promise.resolve({
+          ...wallet.accounts[0],
+          partyId: partyId.replace("Disposable_", "Other_"),
+        })
+      : request(args),
+  );
+  openSend();
+  await screen.findByText("Couldn’t verify the connection.");
+  expect(screen.queryByText("Ledger")).toBeNull();
+  expect(wallet.ledger).not.toHaveBeenCalled();
+});
+
 async function openLedger() {
   openSend();
   await screen.findByText(partyPreview);
-  fireEvent.click(screen.getByText("TestNet ledger"));
+  fireEvent.click(screen.getByText("Ledger"));
 }
 
-it("reads only on action and scopes holdings and the bounded update to the active party", async () => {
+it.each([
+  [networkId, "DSO::1220f22a8b8f2d813c25b9a684dc4dd52b532a0174d8e73a13cdf2baabfff7518337"],
+  ["canton:mainnet", "DSO::1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc"],
+])("reads on action and scopes holdings and updates on %s", async (selectedNetwork, admin) => {
   const wallet = mockWallet(true);
+  wallet.networkId = wallet.accounts[0].networkId = selectedNetwork;
   wallet.ledger
     .mockResolvedValueOnce({ offset: "80" })
     .mockResolvedValueOnce([
@@ -103,8 +147,7 @@ it("reads only on action and scopes holdings and the bounded update to the activ
                     owner: partyId,
                     instrumentId: {
                       id: "Amulet",
-                      admin:
-                        "DSO::1220f22a8b8f2d813c25b9a684dc4dd52b532a0174d8e73a13cdf2baabfff7518337",
+                      admin,
                     },
                   },
                 },
@@ -211,7 +254,7 @@ it("redacts party IDs and URLs from provider errors", async () => {
 it("opens and collapses the compact row without replacing Send", async () => {
   mockWallet();
   openSend();
-  const toggle = screen.getByRole("button", { name: "Metatarz TestNet" });
+  const toggle = screen.getByRole("button", { name: "Metatarz" });
   expect(toggle.getAttribute("aria-expanded")).toBe("true");
   await waitFor(() =>
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Connect" }).disabled).toBe(false),
@@ -226,7 +269,7 @@ it("reads an approved wallet on open and reopen without requesting permission", 
   const wallet = mockWallet(true);
   openSend();
   await screen.findByText(partyPreview);
-  const toggle = screen.getByRole("button", { name: "Metatarz TestNet" });
+  const toggle = screen.getByRole("button", { name: "Metatarz" });
   fireEvent.click(toggle);
   wallet.accounts[0].partyId = partyId.replace("Disposable_", "New_Payee_");
   fireEvent.click(toggle);
@@ -252,7 +295,7 @@ it("ignores an older passive read after an account change or collapse", async ()
   const [, changed] = wallet.on.mock.calls.find(([event]) => event === "accountsChanged")!;
   act(changed);
   await screen.findByText("New_Payee_C…b0c1d2");
-  fireEvent.click(screen.getByRole("button", { name: "Metatarz TestNet" }));
+  fireEvent.click(screen.getByRole("button", { name: "Metatarz" }));
   await act(async () => old.resolve(stale));
   expect(screen.queryByText(partyPreview)).toBeNull();
   expect(wallet.request).not.toHaveBeenCalledWith({ method: "connect" });
@@ -292,7 +335,7 @@ it("verifies the approved TestNet party and clears it when the active network ch
   wallet.networkId = "canton:mainnet";
   const [, accountsChanged] = wallet.on.mock.calls.find(([event]) => event === "accountsChanged")!;
   accountsChanged();
-  await screen.findByText(/Switch to Canton TestNet/);
+  await screen.findByText(/Select an active Canton party/);
   expect(screen.queryByText(partyPreview)).toBeNull();
   expect(screen.queryByDisplayValue(partyId)).toBeNull();
 });
@@ -305,7 +348,7 @@ it("rejects accounts returned for a different network", async () => {
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Connect" }).disabled).toBe(false),
   );
   fireEvent.click(screen.getByRole("button", { name: "Connect" }));
-  await screen.findByText(/Select an active TestNet party/);
+  await screen.findByText(/Select an active Canton party/);
   expect(screen.queryByText(partyPreview)).toBeNull();
 });
 

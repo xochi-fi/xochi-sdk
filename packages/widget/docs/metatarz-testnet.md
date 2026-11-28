@@ -57,12 +57,14 @@ the wallet's internal template ID determines the widget's active Canton network.
 
 ## Staging ledger check
 
-In the TestNet-only Metatarz row, connect, expand **TestNet ledger**, and
-select **Check ledger**. Only this action requests participant data. It
-revalidates the connected TestNet party, reads `/v2/state/ledger-end`, then
+In the staging Metatarz row, connect on Canton MainNet or TestNet, expand
+**Ledger**, and select **Check ledger**. Only this action requests participant
+data. It revalidates the connected network and primary party around the
+reads, starts with `/v2/state/ledger-end`, then
 requests up to 100 Holding interface results at that offset through
 `/v2/state/active-contracts`. The displayed count covers active Amulet
-holdings owned by the selected party in the returned snapshot. A capped
+holdings owned by the selected party in the returned snapshot, using the
+selected network's public registry instrument admin. A capped
 response is labeled and the count includes locked holdings. It is not a
 balance or authorization to spend.
 
@@ -83,6 +85,7 @@ execution. Provider errors retain the code and a sanitized message.
 The staged change uses fixtures for successful reads. The deployed
 middleware still needs verification against a real participant.
 [Canton 3.6 Ledger API OpenAPI](https://github.com/canton-network/wallet/blob/16f0381710216a013ad1d707ef17aac7666cfb23/api-specs/ledger-api/3.6.4/openapi.yaml)
+· [MainNet registry metadata](https://scan.sv-2.global.canton.network.digitalasset.com/registry/metadata/v1/info)
 
 ## Standard CC transfer feasibility
 

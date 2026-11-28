@@ -1,14 +1,19 @@
 import { z } from "zod";
 import {
+  METATARZ_MAINNET,
   METATARZ_TESTNET,
   metatarzProvider,
   readMetatarzSession,
   type MetatarzLedgerRequest,
   type MetatarzProvider,
+  type MetatarzSession,
 } from "./metatarz.js";
 
 const holdingInterface = "#splice-api-token-holding-v1:Splice.Api.Token.HoldingV1:Holding";
-const amuletAdmin = "DSO::1220f22a8b8f2d813c25b9a684dc4dd52b532a0174d8e73a13cdf2baabfff7518337";
+const amuletAdmin = {
+  [METATARZ_TESTNET]: "DSO::1220f22a8b8f2d813c25b9a684dc4dd52b532a0174d8e73a13cdf2baabfff7518337",
+  [METATARZ_MAINNET]: "DSO::1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc",
+};
 const holdingsLimit = 100;
 const updateWindow = 32;
 
@@ -86,18 +91,20 @@ function providerError(error: unknown): string {
 
 export async function checkMetatarzLedger(
   provider: MetatarzProvider,
-  party: string,
+  connection: Extract<MetatarzSession, { kind: "connected" }>,
   target: { id: string; offset: string },
   signal: AbortSignal,
 ): Promise<LedgerCheck> {
+  const { primaryParty: party, networkId } = connection;
   async function verifyParty() {
-    const session = await readMetatarzSession(provider, false, METATARZ_TESTNET, signal);
+    const session = await readMetatarzSession(provider, false, "active", signal);
     if (
       provider !== metatarzProvider() ||
       session.kind !== "connected" ||
-      session.primaryParty !== party
+      session.primaryParty !== party ||
+      session.networkId !== networkId
     ) {
-      throw new Error("The active TestNet party changed. Refresh the connection.");
+      throw new Error("The active Canton network or party changed.");
     }
   }
 
@@ -155,7 +162,9 @@ export async function checkMetatarzLedger(
     });
     const count = holdings.filter(
       ({ owner, instrumentId }) =>
-        owner === party && instrumentId.admin === amuletAdmin && instrumentId.id === "Amulet",
+        owner === party &&
+        instrumentId.admin === amuletAdmin[networkId] &&
+        instrumentId.id === "Amulet",
     ).length;
     result.holdings = `Active CC holdings: ${count}${entries.length >= holdingsLimit ? " (first 100 entries)" : ""}`;
   } catch (error) {

@@ -43,7 +43,7 @@ export function SendPanel({
               aria-controls={metatarzPanelId}
               onClick={() => setMetatarzOpen(!metatarzOpen)}
             >
-              Metatarz <span>TestNet</span>
+              Metatarz
             </button>
             <div id={metatarzPanelId} hidden={!metatarzOpen}>
               {metatarzOpen && active && !showQuote && <MetatarzConnection />}
