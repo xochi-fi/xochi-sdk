@@ -7,8 +7,8 @@ changes. The extension controls party selection. The hosted `/embed` page shows
 the same entry in an iframe and as a standalone page. The handoff keeps the
 widget's exact origin and opens Send with a fresh session view.
 
-The widget currently stops at connection. Use **Send Tokens** in Metatarz Wallet
-for native Canton Coin transfers.
+The staging widget exposes a read-only ledger check. Direct Canton Coin
+transfers remain unavailable in the widget.
 
 ## Published extension evidence
 
@@ -54,6 +54,35 @@ the wallet's internal template ID determines the widget's active Canton network.
 [Riddler ADR 0010](https://github.com/axol-io/Riddler/blob/main/docs/architecture/decisions/0010-canton-network-integration-spike.md) ·
 [Riddler TestNet guide](https://github.com/axol-io/Riddler/blob/main/docs/operations/guides/canton-testnet-e2e.md) ·
 [TestNet explorer](https://testnet.ccview.io)
+
+## Staging ledger check
+
+In the TestNet-only Metatarz row, connect, expand **TestNet ledger**, and
+select **Check ledger**. Only this action requests participant data. It
+revalidates the connected TestNet party, reads `/v2/state/ledger-end`, then
+requests up to 100 Holding interface results at that offset through
+`/v2/state/active-contracts`. The displayed count covers active Amulet
+holdings owned by the selected party in the returned snapshot. A capped
+response is labeled and the count includes locked holdings. It is not a
+balance or authorization to spend.
+
+To check a known update, enter its ID in the browser. With an offset the
+check queries only that offset. Without an offset it searches the last
+32 offsets. The request uses the Store middleware's observed allowlisted
+`/v2/updates/flats` route scoped to the active party. A match verifies that
+the update is visible to the party, without identifying a specific transfer
+or verifying its amount. Canton 3.6 disables this legacy endpoint by
+default and Canton 3.7 removes it. The prior proxy refused the modern
+`/v2/updates` endpoint. An endpoint error is displayed separately from a
+successful lookup with no visible match.
+
+The extension can sign short-lived, party-scoped authorization for these
+reads and renew it after HTTP 401. These checks use the injected wallet
+provider and never request a transaction signature, preparation, or
+execution. Provider errors retain the code and a sanitized message.
+The staged change uses fixtures for successful reads. The deployed
+middleware still needs verification against a real participant.
+[Canton 3.6 Ledger API OpenAPI](https://github.com/canton-network/wallet/blob/16f0381710216a013ad1d707ef17aac7666cfb23/api-specs/ledger-api/3.6.4/openapi.yaml)
 
 ## Standard CC transfer feasibility
 

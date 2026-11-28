@@ -36,8 +36,9 @@ function mockWallet(approved = false) {
   const provider = { id: "metatarz-wallet", providerType: "browser" };
   const wallet = {
     networkId,
+    ledger: vi.fn<(params: unknown) => Promise<unknown>>(),
     accounts: [{ partyId, networkId, primary: true, status: "allocated" }],
-    request: vi.fn(async ({ method }: { method: string }) => {
+    request: vi.fn(async ({ method, params }: { method: string; params?: unknown }) => {
       switch (method) {
         case "status":
           return {
@@ -52,6 +53,8 @@ function mockWallet(approved = false) {
           return { networkId: wallet.networkId };
         case "listAccounts":
           return wallet.accounts;
+        case "ledgerApi":
+          return wallet.ledger(params);
         default:
           throw new Error(`Unexpected wallet method: ${method}`);
       }
@@ -70,9 +73,139 @@ afterEach(() => {
 });
 
 it("leaves the ordinary Send surface in place when the deploy gate is off", () => {
+  const wallet = mockWallet(true);
   openSend(false);
   expect(screen.queryByRole("button", { name: /Metatarz/ })).toBeNull();
   expect(screen.getByText("Existing Send form")).toBeTruthy();
+  expect(wallet.request).not.toHaveBeenCalled();
+});
+
+async function openLedger() {
+  openSend();
+  await screen.findByText(partyPreview);
+  fireEvent.click(screen.getByText("TestNet ledger"));
+}
+
+it("reads only on action and scopes holdings and the bounded update to the active party", async () => {
+  const wallet = mockWallet(true);
+  wallet.ledger
+    .mockResolvedValueOnce({ offset: "80" })
+    .mockResolvedValueOnce([
+      {
+        contractEntry: {
+          JsActiveContract: {
+            createdEvent: {
+              interfaceViews: [
+                {
+                  interfaceId: "package-id:Splice.Api.Token.HoldingV1:Holding",
+                  viewStatus: { code: 0 },
+                  viewValue: {
+                    owner: partyId,
+                    instrumentId: {
+                      id: "Amulet",
+                      admin:
+                        "DSO::1220f22a8b8f2d813c25b9a684dc4dd52b532a0174d8e73a13cdf2baabfff7518337",
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      },
+    ])
+    .mockResolvedValueOnce([
+      { update: { Transaction: { value: { updateId: "fixture-update", offset: 75 } } } },
+    ]);
+  await openLedger();
+  fireEvent.change(screen.getByRole("textbox", { name: "Optional update ID" }), {
+    target: { value: "fixture-update" },
+  });
+  expect(wallet.ledger).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Check ledger" }));
+  await screen.findByText("Update found in the party’s ledger view.");
+  expect(screen.getByText("Ledger offset: 80")).toBeTruthy();
+  expect(screen.getByText("Active CC holdings: 1")).toBeTruthy();
+  expect(wallet.ledger.mock.calls.map(([request]) => request)).toMatchObject([
+    { requestMethod: "GET", resource: "/v2/state/ledger-end" },
+    {
+      requestMethod: "POST",
+      resource: "/v2/state/active-contracts",
+      query: { limit: 100 },
+      body: { activeAtOffset: 80, eventFormat: { filtersByParty: { [partyId]: {} } } },
+    },
+    {
+      requestMethod: "POST",
+      resource: "/v2/updates/flats",
+      body: {
+        beginExclusive: 48,
+        endInclusive: 80,
+        updateFormat: {
+          includeTransactions: { eventFormat: { filtersByParty: { [partyId]: {} } } },
+        },
+      },
+    },
+  ]);
+});
+
+it.each([
+  [-32002, "Canton request failed: participant unavailable"],
+  [4100, "Wallet is locked. Unlock Metatarz Wallet and retry."],
+  [4001, "User rejected the request"],
+])(
+  "reports the provider error and stops before any offset-dependent query",
+  async (code, message) => {
+    const wallet = mockWallet(true);
+    wallet.ledger.mockRejectedValueOnce({ code, message });
+    await openLedger();
+    fireEvent.click(screen.getByRole("button", { name: "Check ledger" }));
+    await screen.findByText(`Ledger end: ${code} ${message}`);
+    expect(wallet.ledger).toHaveBeenCalledTimes(1);
+  },
+);
+
+it("distinguishes empty holdings and an unsupported receipt query", async () => {
+  const wallet = mockWallet(true);
+  wallet.ledger.mockResolvedValueOnce({ offset: 8 }).mockResolvedValueOnce([]);
+  wallet.ledger.mockRejectedValueOnce({ code: -32601, message: "Endpoint unsupported" });
+  await openLedger();
+  fireEvent.change(screen.getByRole("textbox", { name: "Optional update ID" }), {
+    target: { value: "fixture-update" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Check ledger" }));
+  await screen.findByText("Update lookup: -32601 Endpoint unsupported");
+  expect(screen.getByText("Active CC holdings: 0")).toBeTruthy();
+});
+
+it("looks up an older offset without scanning the intervening ledger", async () => {
+  const wallet = mockWallet(true);
+  wallet.ledger
+    .mockResolvedValueOnce({ offset: 80 })
+    .mockResolvedValueOnce([])
+    .mockResolvedValueOnce([]);
+  await openLedger();
+  fireEvent.change(screen.getByRole("textbox", { name: "Optional update ID" }), {
+    target: { value: "older-update" },
+  });
+  fireEvent.change(screen.getByRole("textbox", { name: "Optional update offset" }), {
+    target: { value: "6" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Check ledger" }));
+  await screen.findByText("No matching update visible at offsets 6–6.");
+  expect(wallet.ledger.mock.calls[2][0]).toMatchObject({
+    body: { beginExclusive: 5, endInclusive: 6 },
+  });
+});
+
+it("redacts party IDs and URLs from provider errors", async () => {
+  const wallet = mockWallet(true);
+  wallet.ledger.mockRejectedValueOnce({
+    code: -32002,
+    message: `Could not read ${partyId} at https://rpc.example/private`,
+  });
+  await openLedger();
+  fireEvent.click(screen.getByRole("button", { name: "Check ledger" }));
+  await screen.findByText("Ledger end: -32002 Could not read [redacted] at [redacted]");
 });
 
 it("opens and collapses the compact row without replacing Send", async () => {

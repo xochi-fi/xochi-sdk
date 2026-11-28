@@ -28,9 +28,20 @@ type Method = "status" | "connect" | "getActiveNetwork" | "listAccounts" | "getP
 type Event = "statusChanged" | "accountsChanged";
 type Listener = (payload: unknown) => void;
 
-interface MetatarzProvider {
+export type MetatarzLedgerRequest =
+  | { requestMethod: "GET"; resource: "/v2/state/ledger-end" }
+  | {
+      requestMethod: "POST";
+      resource: "/v2/state/active-contracts" | "/v2/updates/flats";
+      body: object;
+      query?: { limit: number };
+    };
+
+export interface MetatarzProvider {
   isMetatarzWallet: true;
-  request(args: { method: Method }): Promise<unknown>;
+  request(
+    args: { method: Method } | { method: "ledgerApi"; params: MetatarzLedgerRequest },
+  ): Promise<unknown>;
   on(event: Event, listener: Listener): void;
   removeListener(event: Event, listener: Listener): void;
 }

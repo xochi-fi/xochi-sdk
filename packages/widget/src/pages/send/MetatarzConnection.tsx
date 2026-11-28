@@ -7,6 +7,7 @@ import {
   readMetatarzSession,
   type MetatarzSession,
 } from "./metatarz.js";
+import { checkMetatarzLedger, type LedgerCheck } from "./metatarzLedger.js";
 
 type View =
   | MetatarzSession
@@ -52,18 +53,27 @@ export function MetatarzConnection() {
   }));
   const [provider, setProvider] = useState(() => (isolated ? undefined : metatarzProvider()));
   const pendingRead = useRef<AbortController | null>(null);
+  const pendingLedger = useRef<AbortController | null>(null);
+  const [ledger, setLedger] = useState<LedgerCheck>();
+  const [ledgerBusy, setLedgerBusy] = useState(false);
+  const [updateId, setUpdateId] = useState("");
+  const [updateOffset, setUpdateOffset] = useState("");
   const approving = useRef<typeof provider>(undefined);
   const walletChanged = useRef(false);
 
   useEffect(
     () => () => {
       pendingRead.current?.abort();
+      pendingLedger.current?.abort();
     },
     [],
   );
 
   const refresh = useCallback(async (wallet: NonNullable<typeof provider>, connect = false) => {
     pendingRead.current?.abort();
+    pendingLedger.current?.abort();
+    setLedger(undefined);
+    setLedgerBusy(false);
     const request = new AbortController();
     pendingRead.current = request;
     setView({ kind: connect ? "pending" : "checking" });
@@ -97,6 +107,9 @@ export function MetatarzConnection() {
       const wallet = metatarzProvider();
       if (wallet !== provider) {
         pendingRead.current?.abort();
+        pendingLedger.current?.abort();
+        setLedger(undefined);
+        setLedgerBusy(false);
         setProvider(wallet);
         if (!wallet) setView({ kind: "missing" });
       } else if (approving.current === provider) {
@@ -135,49 +148,130 @@ export function MetatarzConnection() {
   const openStandalone = isolated || (embedded && view.kind === "missing");
   const party = view.kind === "connected" ? view.primaryParty : undefined;
   const preview = party && `${party.slice(0, 11)}…${party.slice(-6)}`;
+
+  async function readLedger() {
+    if (!party || !provider || (pendingLedger.current && !pendingLedger.current.signal.aborted))
+      return;
+    const request = new AbortController();
+    pendingLedger.current = request;
+    setLedger(undefined);
+    setLedgerBusy(true);
+    try {
+      const result = await checkMetatarzLedger(
+        provider,
+        party,
+        { id: updateId.trim(), offset: updateOffset.trim() },
+        request.signal,
+      );
+      if (!request.signal.aborted) setLedger(result);
+    } catch {
+      if (!request.signal.aborted)
+        setLedger({ offset: "Couldn’t verify the active TestNet party." });
+    } finally {
+      if (pendingLedger.current === request) {
+        pendingLedger.current = null;
+        if (!request.signal.aborted) setLedgerBusy(false);
+      }
+    }
+  }
+
   return (
-    <div className="send-metatarz__connection">
-      <div className="send-metatarz__status">
-        <div role="status">{connectionMessage(view)}</div>
-        {party && (
-          <details className="send-metatarz__party" key={party}>
-            <summary aria-label={`Full active party ID, ${preview}`}>
-              <code>{preview}</code>
-            </summary>
-            <div className="send-input">
-              <input
-                className="send-field__control"
-                aria-label="Active party ID"
-                readOnly
-                value={party}
-                onFocus={(event) => event.currentTarget.select()}
-              />
-            </div>
-          </details>
+    <>
+      <div className="send-metatarz__connection">
+        <div className="send-metatarz__status">
+          <div role="status">{connectionMessage(view)}</div>
+          {party && (
+            <details className="send-metatarz__party" key={party}>
+              <summary aria-label={`Full active party ID, ${preview}`}>
+                <code>{preview}</code>
+              </summary>
+              <div className="send-input">
+                <input
+                  className="send-field__control"
+                  aria-label="Active party ID"
+                  readOnly
+                  value={party}
+                  onFocus={(event) => event.currentTarget.select()}
+                />
+              </div>
+            </details>
+          )}
+        </div>
+        {openStandalone ? (
+          <a href={metatarzStandaloneUrl()} target="_blank" rel="noopener noreferrer">
+            Open Send in a new tab
+          </a>
+        ) : view.kind === "missing" ? (
+          <a href={METATARZ_INSTALL} target="_blank" rel="noopener noreferrer">
+            Get Metatarz Wallet
+          </a>
+        ) : (
+          <button
+            type="button"
+            className="send-secondary"
+            disabled={pending}
+            onClick={() => void connect()}
+          >
+            {view.kind === "connected"
+              ? "Refresh"
+              : view.kind === "ready" || pending || view.kind === "disconnected"
+                ? "Connect"
+                : "Retry"}
+          </button>
         )}
       </div>
-      {openStandalone ? (
-        <a href={metatarzStandaloneUrl()} target="_blank" rel="noopener noreferrer">
-          Open Send in a new tab
-        </a>
-      ) : view.kind === "missing" ? (
-        <a href={METATARZ_INSTALL} target="_blank" rel="noopener noreferrer">
-          Get Metatarz Wallet
-        </a>
-      ) : (
-        <button
-          type="button"
-          className="send-secondary"
-          disabled={pending}
-          onClick={() => void connect()}
-        >
-          {view.kind === "connected"
-            ? "Refresh"
-            : view.kind === "ready" || pending || view.kind === "disconnected"
-              ? "Connect"
-              : "Retry"}
-        </button>
+      {party && (
+        <details className="send-metatarz__party">
+          <summary>TestNet ledger</summary>
+          <label className="send-input">
+            <input
+              className="send-field__control"
+              aria-label="Optional update ID"
+              placeholder="Optional update ID"
+              maxLength={255}
+              value={updateId}
+              disabled={ledgerBusy}
+              onChange={(event) => {
+                setUpdateId(event.target.value);
+                setUpdateOffset("");
+                setLedger(undefined);
+              }}
+            />
+          </label>
+          {updateId.trim() && (
+            <label className="send-input">
+              <input
+                className="send-field__control"
+                aria-label="Optional update offset"
+                placeholder="Optional update offset"
+                inputMode="numeric"
+                maxLength={16}
+                value={updateOffset}
+                disabled={ledgerBusy}
+                onChange={(event) => {
+                  setUpdateOffset(event.target.value);
+                  setLedger(undefined);
+                }}
+              />
+            </label>
+          )}
+          <button
+            type="button"
+            className="send-secondary"
+            disabled={ledgerBusy}
+            onClick={() => void readLedger()}
+          >
+            {ledgerBusy ? "Reading ledger…" : "Check ledger"}
+          </button>
+          {ledger && (
+            <ul aria-live="polite">
+              <li>{ledger.offset}</li>
+              {ledger.holdings && <li>{ledger.holdings}</li>}
+              {ledger.update && <li>{ledger.update}</li>}
+            </ul>
+          )}
+        </details>
       )}
-    </div>
+    </>
   );
 }
