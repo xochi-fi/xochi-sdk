@@ -6,6 +6,7 @@ import { SEND_DESTINATION_KINDS, type SendDestinationKind } from "../trade/Widge
 import type { SendRetryDraft } from "./sendRetry.js";
 import { SendForm } from "./SendForm.js";
 import { MetatarzConnection } from "./MetatarzConnection.js";
+import { CantonPublicReceipt } from "./CantonPublicReceiptPanel.js";
 
 interface SendPanelProps {
   initialChain?: number;
@@ -50,6 +51,7 @@ export function SendPanel({
             </div>
           </div>
         )}
+        {offerMetatarz && active && !showQuote && <CantonPublicReceipt />}
         <SendForm
           key={props.retry?.nonce}
           destinations={destinations}

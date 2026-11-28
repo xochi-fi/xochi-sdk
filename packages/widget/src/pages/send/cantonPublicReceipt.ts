@@ -161,6 +161,7 @@ export async function checkCantonPublicReceipt(
   completion: { updateId: string },
   expected: PublicReceiptExpectation,
   fetchUpdate: typeof fetch = fetch,
+  signal?: AbortSignal,
 ): Promise<PublicReceiptEvidence> {
   const { updateId } = completion;
   const amount = ccAtoms(expected.amount);
@@ -178,7 +179,9 @@ export async function checkCantonPublicReceipt(
     response = await fetchUpdate(scan + updateId, {
       credentials: "omit",
       redirect: "error",
-      signal: AbortSignal.timeout(5000),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(5000)])
+        : AbortSignal.timeout(5000),
     });
   } catch {
     return { kind: "unavailable" };

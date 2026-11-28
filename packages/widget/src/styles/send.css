@@ -88,6 +88,20 @@
   white-space: nowrap;
 }
 
+.send-receipt {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0 0.625rem 0.625rem;
+}
+
+.send-receipt button {
+  justify-self: start;
+}
+
+.send-receipt [role="status"]:empty {
+  display: none;
+}
+
 .send-card__title {
   margin: 0;
   font-family: var(--font-mono);

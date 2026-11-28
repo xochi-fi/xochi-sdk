@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import publicDelivery from "../../test/fixtures/canton-mainnet-public-delivery.json";
 import { afterEach, expect, it, vi } from "vitest";
 import { SendPanel } from "./SendPanel.js";
 import { metatarzStandaloneUrl } from "./metatarz.js";
@@ -18,7 +19,7 @@ const networkId = "canton:testnet";
 const partyId = `Disposable_CaseSensitive::1220${"a".repeat(58)}b0c1d2`;
 const partyPreview = "Disposable_…b0c1d2";
 
-function openSend(enabled = true) {
+function openSend(enabled = true, openWallet = enabled) {
   flag.enabled = enabled;
   render(
     <SendPanel
@@ -29,7 +30,7 @@ function openSend(enabled = true) {
       onQuote={vi.fn()}
     />,
   );
-  if (enabled) fireEvent.click(screen.getByRole("button", { name: "Metatarz" }));
+  if (openWallet) fireEvent.click(screen.getByRole("button", { name: "Metatarz" }));
 }
 
 function mockWallet(approved = false) {
@@ -78,8 +79,60 @@ it("leaves the ordinary Send surface in place when the deploy gate is off", () =
   const wallet = mockWallet(true);
   openSend(false);
   expect(screen.queryByRole("button", { name: /Metatarz/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Public MainNet receipt" })).toBeNull();
   expect(screen.getByText("Existing Send form")).toBeTruthy();
   expect(wallet.request).not.toHaveBeenCalled();
+});
+
+function openPublicReceipt() {
+  openSend(true, false);
+  fireEvent.click(screen.getByRole("button", { name: "Public MainNet receipt" }));
+  const values = {
+    "Update ID": publicDelivery.update_id,
+    "Expected sender":
+      "user_06Af0605::12207aebff402bab27d81f9dd90f7b4152eac113c3590de88d0613bc2fc5dcc8a3e9",
+    "Expected recipient":
+      "user_C9FCf6B2::1220c9db965444bfae7bea31ef155fec1e6730562324925dc6ebcaa095ba53e37cbd",
+    "Expected CC amount": "13.2834594833",
+  };
+  for (const [label, value] of Object.entries(values)) {
+    fireEvent.change(screen.getByRole("textbox", { name: label }), { target: { value } });
+  }
+}
+
+it("checks a public receipt from Send with no wallet and detects a wrong amount", async () => {
+  const fetchUpdate = vi.fn(async () => Response.json(publicDelivery));
+  vi.stubGlobal("fetch", fetchUpdate);
+  openPublicReceipt();
+  expect(fetchUpdate).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Check receipt" }));
+  await screen.findByText("Matching delivery on public MainNet Scan.");
+  fireEvent.change(screen.getByRole("textbox", { name: "Expected CC amount" }), {
+    target: { value: "13.2834594834" },
+  });
+  expect(screen.queryByText("Matching delivery on public MainNet Scan.")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Check receipt" }));
+  await screen.findByText("Public MainNet Scan delivery does not match.");
+});
+
+it("drops an in-flight receipt after edits and distinguishes unavailable evidence", async () => {
+  const delayed = Promise.withResolvers<Response>();
+  const fetchUpdate = vi
+    .fn<typeof fetch>()
+    .mockReturnValueOnce(delayed.promise)
+    .mockResolvedValueOnce(new Response("", { status: 503 }));
+  vi.stubGlobal("fetch", fetchUpdate);
+  openPublicReceipt();
+  fireEvent.click(screen.getByRole("button", { name: "Check receipt" }));
+  const signal = fetchUpdate.mock.calls[0][1]?.signal;
+  fireEvent.change(screen.getByRole("textbox", { name: "Expected CC amount" }), {
+    target: { value: "13.2834594834" },
+  });
+  expect(signal?.aborted).toBe(true);
+  await act(async () => delayed.resolve(Response.json(publicDelivery)));
+  expect(screen.queryByText("Matching delivery on public MainNet Scan.")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Check receipt" }));
+  await screen.findByText("Public MainNet Scan evidence unavailable.");
 });
 
 it.each(["party", "network"])(
