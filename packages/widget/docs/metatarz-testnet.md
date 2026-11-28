@@ -87,6 +87,24 @@ middleware still needs verification against a real participant.
 [Canton 3.6 Ledger API OpenAPI](https://github.com/canton-network/wallet/blob/16f0381710216a013ad1d707ef17aac7666cfb23/api-specs/ledger-api/3.6.4/openapi.yaml)
 · [MainNet registry metadata](https://scan.sv-2.global.canton.network.digitalasset.com/registry/metadata/v1/info)
 
+## Local public MainNet receipt prototype
+
+`checkCantonPublicReceipt` accepts a completion update ID and independently
+supplied chain, sender, recipient and decimal amount. It checks the pinned
+MainNet Scan source, synchronizer and reviewed Splice package. It follows the
+completed factory transfer's receiver holding IDs to creations inside that
+transfer's event tree and compares their CC sum at ten decimal places. Sender
+change and unrelated roots cannot supply the delivery. The prototype supports
+the reviewed direct factory form only and has no widget UI wiring.
+
+`public-scan-match` means the public index returned a matching delivery for
+the caller's expectations. It carries no wallet authentication, escrow
+attestation, or proof of the asset's current balance. A browser transport
+failure is reported as unavailable. The public endpoint must permit the
+browser origin and the host's content security policy must permit the
+connection. The captured public update and transfer expectations are test
+fixtures only.
+
 ## Standard CC transfer feasibility
 
 The Splice token-standard client constructs a CIP-0056 transfer from the
